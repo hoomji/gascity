@@ -396,6 +396,12 @@
           "Rig": {
             "type": "string"
           },
+          "Runtime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "ScaleCheck": {
             "type": [
               "string",
@@ -531,6 +537,7 @@
           "PreStart",
           "PromptTemplate",
           "Session",
+          "Runtime",
           "Provider",
           "ContextAdvisory",
           "Upstream",

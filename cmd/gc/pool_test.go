@@ -814,6 +814,7 @@ func TestDeepCopyAgentCoversAllFields(t *testing.T) {
 		PromptTemplate:               "prompts/test.md",
 		Nudge:                        "nudge text",
 		Session:                      "acp",
+		Runtime:                      "ssh:dell",
 		Provider:                     "claude",
 		ContextAdvisory:              &config.ContextAdvisory{Enabled: &trueVal, WindowTokens: intPtr(1_000_000), Tiers: []config.ContextAdvisoryTier{{Threshold: intPtr(75), Message: strPtr("advisory {{.Pct}}"), Enabled: &trueVal}}},
 		Upstream:                     "anthropic",
