@@ -103,6 +103,8 @@ type TemplateParams struct {
 	// SessionOverride is the per-agent session provider override (e.g., "acp",
 	// "tmux", "exec:..."). Empty means use the city-level default.
 	SessionOverride string
+	// Runtime is the per-agent runtime provider override (e.g., "ssh:dell", "tmux", "k8s").
+	Runtime string
 	// EffectiveSessionProvider is the actual session provider after applying
 	// city-level defaults.
 	EffectiveSessionProvider string
@@ -737,7 +739,12 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		MCPServers:       mcpServers,
 	}
 	params.SessionOverride = cfgAgent.Session
-	params.EffectiveSessionProvider = effectiveSessionProvider(cfgAgent.Session, p.sessionProvider)
+	params.Runtime = strings.TrimSpace(cfgAgent.Runtime)
+	if params.Runtime != "" {
+		params.EffectiveSessionProvider = params.Runtime
+	} else {
+		params.EffectiveSessionProvider = effectiveSessionProvider(cfgAgent.Session, p.sessionProvider)
+	}
 	if p.city != nil {
 		params.CityRuntimes = p.city.Runtimes
 	}

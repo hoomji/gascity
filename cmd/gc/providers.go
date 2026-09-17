@@ -266,31 +266,94 @@ func resolveSessionTransportProvider(ctx sessionProviderContext, sessionBeads *s
 	if err != nil {
 		return nil, err
 	}
-	// If the city-level provider is not ACP but some agents need ACP, wrap in an
+	// If the city-level provider is not ACP but some agents need ACP, or if any
+	// agents configure an explicit Runtime provider (e.g. "ssh:..."), wrap in an
 	// auto provider that routes per-session.
-	// NOTE: agents comes from loadCityConfig which applies pack overrides, so the
-	// Session field from overrides is already resolved here.
-	// acpRouteNames is computed once and reused for both the requires/needs
-	// checks and the route registration below, instead of recomputing the
-	// (agent + named-session) x provider-resolution walk up to 3x per call.
 	acpRouteNames := configuredACPRouteNames(sessionBeads, ctx.cityName, ctx.cfg)
 	requireACPWrapper := len(acpRouteNames) > 0
 	needsACPWrapper := requireACPWrapper || (ctx.cfg != nil && hasACPProviderTargets(ctx.cfg))
-	if ctx.providerName != "acp" && needsACPWrapper {
-		acpSP, acpErr := buildSessionProviderByName(ctx.cfg, "acp", ctx.sc, ctx.cityName, ctx.cityPath)
-		if acpErr != nil {
-			if requireACPWrapper {
-				return nil, fmt.Errorf("acp provider: %w", acpErr)
+	runtimeRoutes := configuredRuntimeRoutes(sessionBeads, ctx.cityName, ctx.cfg)
+
+	if (ctx.providerName != "acp" && needsACPWrapper) || len(runtimeRoutes) > 0 {
+		var acpSP runtime.Provider
+		if needsACPWrapper {
+			var acpErr error
+			acpSP, acpErr = buildSessionProviderByName(ctx.cfg, "acp", ctx.sc, ctx.cityName, ctx.cityPath)
+			if acpErr != nil {
+				if requireACPWrapper {
+					return nil, fmt.Errorf("acp provider: %w", acpErr)
+				}
+				if len(runtimeRoutes) == 0 {
+					return base, nil
+				}
 			}
-			return base, nil
 		}
 		autoSP := sessionauto.New(base, acpSP)
 		for _, sessName := range acpRouteNames {
 			autoSP.RouteACP(sessName)
 		}
+		remoteProviders := make(map[string]runtime.Provider)
+		for sessName, rtName := range runtimeRoutes {
+			remoteSP, ok := remoteProviders[rtName]
+			if !ok {
+				var rErr error
+				remoteSP, rErr = buildSessionProviderByName(ctx.cfg, rtName, ctx.sc, ctx.cityName, ctx.cityPath)
+				if rErr != nil {
+					return nil, fmt.Errorf("remote runtime %q: %w", rtName, rErr)
+				}
+				remoteProviders[rtName] = remoteSP
+			}
+			autoSP.RouteProvider(sessName, remoteSP)
+		}
 		return autoSP, nil
 	}
 	return base, nil
+}
+
+// configuredRuntimeRoutes discovers sessions that specify an explicit Runtime provider.
+func configuredRuntimeRoutes(snapshot *sessionBeadSnapshot, cityName string, cfg *config.City) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	sessionTemplate := cfg.Workspace.SessionTemplate
+	routes := make(map[string]string)
+	for _, a := range cfg.Agents {
+		rt := strings.TrimSpace(a.Runtime)
+		if rt == "" || rt == cfg.Session.Provider {
+			continue
+		}
+		sessName := agent.SessionNameFor(cityName, a.QualifiedName(), sessionTemplate)
+		if snapshot != nil {
+			if beadName := snapshot.FindSessionNameByTemplate(a.QualifiedName()); beadName != "" {
+				sessName = beadName
+			}
+		}
+		if sessName != "" {
+			routes[sessName] = rt
+		}
+	}
+	for _, named := range cfg.NamedSessions {
+		agentCfg := config.FindAgent(cfg, named.TemplateQualifiedName())
+		if agentCfg == nil {
+			continue
+		}
+		rt := strings.TrimSpace(agentCfg.Runtime)
+		if rt == "" || rt == cfg.Session.Provider {
+			continue
+		}
+		sessionName := config.NamedSessionRuntimeName(cityName, cfg.Workspace, named.QualifiedName())
+		if snapshot != nil {
+			if info, ok := snapshot.FindInfoByNamedIdentity(named.QualifiedName()); ok {
+				if snapName := strings.TrimSpace(info.SessionNameMetadata); snapName != "" {
+					sessionName = snapName
+				}
+			}
+		}
+		if sessionName != "" {
+			routes[sessionName] = rt
+		}
+	}
+	return routes
 }
 
 func agentSessionCreateTransport(cfg *config.City, agentCfg config.Agent) string {
