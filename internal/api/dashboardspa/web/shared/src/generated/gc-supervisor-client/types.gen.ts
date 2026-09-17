@@ -99,6 +99,7 @@ export type AgentPatch = {
     Provider: string | null;
     ResumeCommand: string | null;
     Rig: string;
+    Runtime: string | null;
     ScaleCheck: string | null;
     Scope: string | null;
     Session: string | null;

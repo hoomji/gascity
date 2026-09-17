@@ -301,6 +301,7 @@ func deepCopyAgent(src *config.Agent, name, dir string) config.Agent {
 		TmuxAlias:         src.TmuxAlias,
 		Scope:             src.Scope,
 		Session:           src.Session,
+		Runtime:           src.Runtime,
 		Provider:          src.Provider,
 		ContextAdvisory:   config.CloneContextAdvisory(src.ContextAdvisory),
 		Upstream:          src.Upstream,

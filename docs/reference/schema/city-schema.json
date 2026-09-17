@@ -120,6 +120,10 @@
           ],
           "description": "Session overrides the session transport for this agent.\n\"\" (default) uses the city-level session provider (typically tmux).\n\"acp\" uses the Agent Client Protocol (JSON-RPC over stdio).\nThe agent's resolved provider must have supports_acp = true."
         },
+        "runtime": {
+          "type": "string",
+          "description": "Runtime overrides the runtime provider for this agent (e.g. \"ssh:user@host\", \"tmux\", \"k8s\").\nWhen unset, falls back to the city-level session provider."
+        },
         "provider": {
           "type": "string",
           "description": "Provider names the provider preset to use for this agent."
@@ -496,6 +500,10 @@
           "type": "string",
           "description": "Session overrides the session transport (\"acp\")."
         },
+        "runtime": {
+          "type": "string",
+          "description": "Runtime overrides the runtime provider (e.g. \"ssh:user@host\", \"tmux\", \"k8s\")."
+        },
         "provider": {
           "type": "string",
           "description": "Provider overrides the provider name."
@@ -792,6 +800,10 @@
         "session": {
           "type": "string",
           "description": "Session overrides the session transport (\"acp\" or \"tmux\")."
+        },
+        "runtime": {
+          "type": "string",
+          "description": "Runtime overrides the agent's runtime provider (e.g. \"ssh:user@host\", \"tmux\", \"k8s\")."
         },
         "provider": {
           "type": "string",
