@@ -1,21 +1,22 @@
 // Package auto provides a composite [runtime.Provider] that routes
-// sessions to a default backend (typically tmux) or ACP based on
-// per-session registration. Sessions are registered as ACP via
-// [Provider.RouteACP] before [Provider.Start] is called. Unregistered
-// sessions route to the default backend.
+// sessions to a default backend (typically tmux), ACP, or a configured
+// per-session runtime. Sessions are registered before [Provider.Start] is called.
 package auto
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/runtime"
 )
 
-// Provider routes session operations to a default or ACP backend
-// based on per-session registration.
+// Provider routes session operations to a default, ACP, or configured
+// custom runtime backend based on per-session registration.
 type Provider struct {
 	defaultSP runtime.Provider
 	acpSP     runtime.Provider
@@ -24,7 +25,9 @@ type Provider struct {
 	routes map[string]bool // true = ACP
 	// seeded is set once SeedRoutes has loaded the route table from the
 	// session beads, so a session without an ACP route is known to be default.
-	seeded bool
+	seeded         bool
+	custom         map[string]runtime.Backend // session name -> custom backend
+	customBackends map[string]runtime.Backend // unique custom backends, keyed by label
 }
 
 var (
@@ -50,9 +53,11 @@ var (
 // registered as ACP. acpSP handles sessions registered via RouteACP.
 func New(defaultSP, acpSP runtime.Provider) *Provider {
 	return &Provider{
-		defaultSP: defaultSP,
-		acpSP:     acpSP,
-		routes:    make(map[string]bool),
+		defaultSP:      defaultSP,
+		acpSP:          acpSP,
+		routes:         make(map[string]bool),
+		custom:         make(map[string]runtime.Backend),
+		customBackends: make(map[string]runtime.Backend),
 	}
 }
 
@@ -64,11 +69,57 @@ func (p *Provider) RouteACP(name string) {
 	p.mu.Unlock()
 }
 
+// RouteProvider registers a session name to use a specific runtime provider.
+// runtimeName is used as the stable backend label shared by sessions using the
+// same configured runtime.
+func (p *Provider) RouteProvider(name, runtimeName string, sp runtime.Provider) {
+	if sp == nil {
+		return
+	}
+	label := "runtime:" + strings.TrimSpace(runtimeName)
+	if label == "runtime:" {
+		label += name
+	}
+
+	p.mu.Lock()
+	if p.custom == nil {
+		p.custom = make(map[string]runtime.Backend)
+	}
+	if p.customBackends == nil {
+		p.customBackends = make(map[string]runtime.Backend)
+	}
+	previous, hadPrevious := p.custom[name]
+	if hadPrevious && previous.Label != label {
+		delete(p.custom, name)
+		p.removeCustomBackendIfUnusedLocked(previous.Label)
+	}
+	backend, ok := p.customBackends[label]
+	if !ok || backend.Provider == nil {
+		backend = runtime.Backend{Label: label, Provider: sp}
+		p.customBackends[label] = backend
+	}
+	p.custom[name] = backend
+	p.mu.Unlock()
+}
+
+func (p *Provider) removeCustomBackendIfUnusedLocked(label string) {
+	for _, backend := range p.custom {
+		if backend.Label == label {
+			return
+		}
+	}
+	delete(p.customBackends, label)
+}
+
 // Unroute removes a session's routing entry. Called on Stop to avoid
 // leaking entries for destroyed sessions.
 func (p *Provider) Unroute(name string) {
 	p.mu.Lock()
 	delete(p.routes, name)
+	if backend, ok := p.custom[name]; ok {
+		delete(p.custom, name)
+		p.removeCustomBackendIfUnusedLocked(backend.Label)
+	}
 	p.mu.Unlock()
 }
 
@@ -85,15 +136,22 @@ func (p *Provider) SeedRoutes(names []string) {
 	p.mu.Unlock()
 }
 
-// RouteFor implements [runtime.Router]. An explicit ACP route is always
-// known; the default route is known only once SeedRoutes has run.
+// RouteFor implements [runtime.Router]. Explicit ACP and custom runtime routes
+// are known; the default route is known only once SeedRoutes has run.
 func (p *Provider) RouteFor(name string) runtime.Route {
 	p.mu.RLock()
+	custom := p.custom[name]
 	isACP := p.routes[name]
 	seeded := p.seeded
 	p.mu.RUnlock()
+	if custom.Provider != nil {
+		return runtime.Route{Backend: custom, Known: true}
+	}
 	if isACP {
-		return runtime.Route{Backend: p.acpBackend(), Known: true}
+		if p.acpSP != nil {
+			return runtime.Route{Backend: p.acpBackend(), Known: true}
+		}
+		return runtime.Route{Backend: p.defaultBackend(), Known: false}
 	}
 	return runtime.Route{Backend: p.defaultBackend(), Known: seeded}
 }
@@ -108,6 +166,37 @@ func (p *Provider) acpBackend() runtime.Backend {
 
 func (p *Provider) route(name string) runtime.Provider {
 	return p.RouteFor(name).Provider
+}
+
+// fallbackBackends returns other configured providers to inspect when a route's
+// primary backend does not confirm a session. A custom runtime may have stale
+// state on the default or ACP backend, so check both when available.
+func (p *Provider) fallbackBackends(name string) []runtime.Backend {
+	p.mu.RLock()
+	_, isCustom := p.custom[name]
+	isACP := p.routes[name]
+	p.mu.RUnlock()
+
+	var fallbacks []runtime.Backend
+	add := func(backend runtime.Backend) {
+		if backend.Provider != nil {
+			fallbacks = append(fallbacks, backend)
+		}
+	}
+	switch {
+	case isCustom:
+		add(p.defaultBackend())
+		if p.acpSP != nil {
+			add(p.acpBackend())
+		}
+	case isACP:
+		add(p.defaultBackend())
+	default:
+		if p.acpSP != nil {
+			add(p.acpBackend())
+		}
+	}
+	return fallbacks
 }
 
 // SupportsTransport reports whether this provider can route the requested
@@ -125,10 +214,10 @@ func (p *Provider) SupportsTransport(transport string) bool {
 // DetectTransport reports the backend currently hosting the named session.
 // It returns "acp" for ACP-backed sessions and "" for default or unknown.
 func (p *Provider) DetectTransport(name string) string {
-	if p.defaultSP.IsRunning(name) {
+	if p.defaultSP != nil && p.defaultSP.IsRunning(name) {
 		return ""
 	}
-	if p.acpSP.IsRunning(name) {
+	if p.acpSP != nil && p.acpSP.IsRunning(name) {
 		return "acp"
 	}
 	return ""
@@ -148,7 +237,8 @@ func (p *Provider) Stop(name string) error {
 	otherLabel := "acp"
 	primaryRunning := primary.IsRunning(name)
 	p.mu.RLock()
-	primaryExplicitRoute := p.routes[name]
+	custom := p.custom[name]
+	primaryExplicitRoute := p.routes[name] || custom.Provider != nil
 	p.mu.RUnlock()
 	err := primary.Stop(name)
 	if err == nil && primaryRunning {
@@ -158,14 +248,26 @@ func (p *Provider) Stop(name string) error {
 	// Fall through to the other backend in case the route is stale.
 	var other runtime.Provider
 	p.mu.RLock()
-	if p.routes[name] {
+	switch {
+	case custom.Provider != nil:
+		primaryLabel = custom.Label
+		otherLabel = "default"
+		other = p.defaultSP
+	case p.routes[name]:
 		primaryLabel = "acp"
 		otherLabel = "default"
 		other = p.defaultSP
-	} else {
+	default:
 		other = p.acpSP
 	}
 	p.mu.RUnlock()
+	if other == nil {
+		if err == nil {
+			p.Unroute(name)
+			return nil
+		}
+		return err
+	}
 	otherRunning := other.IsRunning(name)
 	if err == nil {
 		if primaryExplicitRoute {
@@ -202,19 +304,17 @@ func (p *Provider) Interrupt(name string) error {
 }
 
 // IsRunning checks the routed backend first. If it reports not running,
-// falls through to the other backend to handle route table inconsistencies.
+// falls through to other configured backends to handle stale route tables.
 func (p *Provider) IsRunning(name string) bool {
 	if p.route(name).IsRunning(name) {
 		return true
 	}
-	// Fall through: check the other backend in case routing is stale.
-	p.mu.RLock()
-	isACP := p.routes[name]
-	p.mu.RUnlock()
-	if isACP {
-		return p.defaultSP.IsRunning(name)
+	for _, backend := range p.fallbackBackends(name) {
+		if backend.Provider.IsRunning(name) {
+			return true
+		}
 	}
-	return p.acpSP.IsRunning(name)
+	return false
 }
 
 // IsDeadRuntimeSession checks both backends for a positive dead-artifact
@@ -224,13 +324,12 @@ func (p *Provider) IsDeadRuntimeSession(name string) (bool, error) {
 	if dead, err := providerDeadRuntimeSession(primary, name); dead || err != nil {
 		return dead, err
 	}
-	p.mu.RLock()
-	isACP := p.routes[name]
-	p.mu.RUnlock()
-	if isACP {
-		return providerDeadRuntimeSession(p.defaultSP, name)
+	for _, backend := range p.fallbackBackends(name) {
+		if dead, err := providerDeadRuntimeSession(backend.Provider, name); dead || err != nil {
+			return dead, err
+		}
 	}
-	return providerDeadRuntimeSession(p.acpSP, name)
+	return false, nil
 }
 
 func providerDeadRuntimeSession(sp runtime.Provider, name string) (bool, error) {
@@ -261,7 +360,7 @@ func (p *Provider) Attach(name string) error {
 	if isACP {
 		return fmt.Errorf("agent %q uses ACP transport (no terminal to attach to)", name)
 	}
-	return p.defaultSP.Attach(name)
+	return p.route(name).Attach(name)
 }
 
 // ProcessAlive delegates to the routed backend.
@@ -276,22 +375,17 @@ func (p *Provider) ProcessAlive(name string, processNames []string) bool {
 // fold (the fragile process-table walk), reintroducing the singleton
 // restart-loop for any city that also routes some sessions to ACP.
 func (p *Provider) ObserveLiveness(name string, processNames []string) runtime.Liveness {
-	primary := runtime.ObserveLiveness(p.route(name), name, processNames)
-	if primary.Running {
-		return primary
+	observed := runtime.ObserveLiveness(p.route(name), name, processNames)
+	if observed.Running {
+		return observed
 	}
-	// Fall through: check the other backend in case routing is stale
-	// (e.g. after a controller restart clears the in-memory route table),
-	// matching IsRunning's recovery so a live ACP singleton on a
-	// herdr-default city is not misread as dead.
-	p.mu.RLock()
-	isACP := p.routes[name]
-	p.mu.RUnlock()
-	other := p.acpSP
-	if isACP {
-		other = p.defaultSP
+	for _, backend := range p.fallbackBackends(name) {
+		observed = runtime.ObserveLiveness(backend.Provider, name, processNames)
+		if observed.Running {
+			return observed
+		}
 	}
-	return runtime.ObserveLiveness(other, name, processNames)
+	return observed
 }
 
 // ObserveLivenessWithError preserves routed-backend observation failures. A
@@ -299,18 +393,17 @@ func (p *Provider) ObserveLiveness(name string, processNames []string) runtime.L
 // recovery matches IsRunning and ObserveLiveness without collapsing an
 // unavailable primary into absence.
 func (p *Provider) ObserveLivenessWithError(name string, processNames []string) (runtime.Liveness, error) {
-	primary, err := runtime.ObserveLivenessWithError(p.route(name), name, processNames)
-	if err != nil || primary.Running {
-		return primary, err
+	observed, err := runtime.ObserveLivenessWithError(p.route(name), name, processNames)
+	if err != nil || observed.Running {
+		return observed, err
 	}
-	p.mu.RLock()
-	isACP := p.routes[name]
-	p.mu.RUnlock()
-	other := p.acpSP
-	if isACP {
-		other = p.defaultSP
+	for _, backend := range p.fallbackBackends(name) {
+		observed, err = runtime.ObserveLivenessWithError(backend.Provider, name, processNames)
+		if err != nil || observed.Running {
+			return observed, err
+		}
 	}
-	return runtime.ObserveLivenessWithError(other, name, processNames)
+	return observed, nil
 }
 
 // Nudge delegates to the routed backend.
@@ -426,15 +519,38 @@ func (p *Provider) ListRunningByBackend(prefix string) []runtime.BackendListing 
 	return runtime.ListBackends(p.Backends(), prefix)
 }
 
-// Backends implements [runtime.BackendsProvider] without listing.
+// Backends implements [runtime.BackendsProvider] without listing. Custom
+// runtime backends are included once per configured runtime label.
 func (p *Provider) Backends() []runtime.Backend {
-	return []runtime.Backend{p.defaultBackend(), p.acpBackend()}
+	backends := []runtime.Backend{p.defaultBackend()}
+	if p.acpSP != nil {
+		backends = append(backends, p.acpBackend())
+	}
+
+	p.mu.RLock()
+	labels := make([]string, 0, len(p.customBackends))
+	for label, backend := range p.customBackends {
+		if backend.Provider != nil {
+			labels = append(labels, label)
+		}
+	}
+	sort.Strings(labels)
+	for _, label := range labels {
+		backends = append(backends, p.customBackends[label])
+	}
+	p.mu.RUnlock()
+	return backends
 }
 
 // ListRunningComplete implements [runtime.ListingAttestation]: the merged
-// listing is complete only when both backends attest theirs.
+// listing is complete only when every configured backend attests theirs.
 func (p *Provider) ListRunningComplete() bool {
-	return runtime.ListRunningAttested(p.defaultSP) && runtime.ListRunningAttested(p.acpSP)
+	for _, backend := range p.Backends() {
+		if !runtime.ListRunningAttested(backend.Provider) {
+			return false
+		}
+	}
+	return true
 }
 
 // GetLastActivity delegates to the routed backend.
@@ -462,20 +578,24 @@ func (p *Provider) RunLive(name string, cfg runtime.Config) error {
 	return p.route(name).RunLive(name, cfg)
 }
 
-// Capabilities returns the intersection of both backends' capabilities.
-// A capability is reported only if both default and ACP support it.
-// NeedsClaimBackstop is a need, not an ability, so it unions instead: if
-// either backend requires the stalled-claim backstop, the composite does too.
+// Capabilities returns the intersection of every configured backend's
+// capabilities. NeedsClaimBackstop is a need, not an ability, so it unions
+// across backends.
 func (p *Provider) Capabilities() runtime.ProviderCapabilities {
-	dc := p.defaultSP.Capabilities()
-	ac := p.acpSP.Capabilities()
-	return runtime.ProviderCapabilities{
-		CanReportAttachment: dc.CanReportAttachment && ac.CanReportAttachment,
-		CanReportActivity:   dc.CanReportActivity && ac.CanReportActivity,
-		CanStream:           dc.CanStream && ac.CanStream,
-		CanAttachTTY:        dc.CanAttachTTY && ac.CanAttachTTY,
-		NeedsClaimBackstop:  dc.NeedsClaimBackstop || ac.NeedsClaimBackstop,
+	backends := p.Backends()
+	if len(backends) == 0 || backends[0].Provider == nil {
+		return runtime.ProviderCapabilities{}
 	}
+	caps := backends[0].Provider.Capabilities()
+	for _, backend := range backends[1:] {
+		other := backend.Provider.Capabilities()
+		caps.CanReportAttachment = caps.CanReportAttachment && other.CanReportAttachment
+		caps.CanReportActivity = caps.CanReportActivity && other.CanReportActivity
+		caps.CanStream = caps.CanStream && other.CanStream
+		caps.CanAttachTTY = caps.CanAttachTTY && other.CanAttachTTY
+		caps.NeedsClaimBackstop = caps.NeedsClaimBackstop || other.NeedsClaimBackstop
+	}
+	return caps
 }
 
 // SleepCapability reports idle sleep capability for the routed backend,
@@ -488,17 +608,36 @@ func (p *Provider) SleepCapability(name string) runtime.SessionSleepCapability {
 	return runtime.SleepCapabilityFromCapabilities(routed.Capabilities())
 }
 
-// SubscribeSessionEvents forwards the session-event streams of the backends
-// that implement runtime.SessionEventProvider. Without this method,
-// wrapping an event-capable backend behind auto for ACP routing would fail
-// the runtime.SessionEventProvider type assertion in cmd/gc's
-// sessionEventPump.restart and silently drop the event-driven reconcile
-// poke. When both backends publish events, both streams are merged, so
-// neither backend's session deaths wait for the patrol scan; a nested
-// composite without an event-capable backend is skipped. See
-// runtime.SubscribeSessionEventSources.
+// SubscribeSessionEvents forwards the session-event streams of all configured
+// backends that implement runtime.SessionEventProvider. A nested composite
+// without an event-capable backend is skipped; any other subscribe error fails
+// the whole subscription so a backend's events are not silently lost.
 func (p *Provider) SubscribeSessionEvents(ctx context.Context) (<-chan runtime.SessionEvent, error) {
-	return runtime.SubscribeSessionEventSources(ctx,
-		runtime.SessionEventSource{Name: "default", Provider: p.defaultSP},
-		runtime.SessionEventSource{Name: "ACP", Provider: p.acpSP})
+	var streams []<-chan runtime.SessionEvent
+	for _, backend := range p.Backends() {
+		provider, ok := backend.Provider.(runtime.SessionEventProvider)
+		if !ok {
+			continue
+		}
+		stream, err := provider.SubscribeSessionEvents(ctx)
+		if errors.Is(err, runtime.ErrNoSessionEventSource) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s backend: %w", backend.Label, err)
+		}
+		streams = append(streams, stream)
+	}
+	switch len(streams) {
+	case 0:
+		return nil, runtime.ErrNoSessionEventSource
+	case 1:
+		return streams[0], nil
+	default:
+		merged := streams[0]
+		for _, stream := range streams[1:] {
+			merged = runtime.MergeSessionEvents(ctx, merged, stream)
+		}
+		return merged, nil
+	}
 }
