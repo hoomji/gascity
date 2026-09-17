@@ -904,3 +904,37 @@ func TestAutoBackends_NamesBackendsWithoutListing(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteProvider(t *testing.T) {
+	defaultSP := runtime.NewFake()
+	remoteSP := runtime.NewFake()
+	p := New(defaultSP, nil)
+
+	p.RouteProvider("dell-worker", "ssh:dell", remoteSP)
+	if got := p.RouteFor("dell-worker"); got.Provider != remoteSP || got.Label != "runtime:ssh:dell" || !got.Known {
+		t.Fatalf("RouteFor(dell-worker) = %+v, want the known remote runtime backend", got)
+	}
+	if err := p.Start(context.Background(), "dell-worker", runtime.Config{Command: "test"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !p.IsRunning("dell-worker") || defaultSP.IsRunning("dell-worker") {
+		t.Fatal("session should run only on its custom runtime provider")
+	}
+	if names, err := p.ListRunning(""); err != nil || !slices.Equal(names, []string{"dell-worker"}) {
+		t.Fatalf("ListRunning = (%v, %v), want the custom-runtime session", names, err)
+	}
+	backends := p.Backends()
+	if len(backends) != 2 || backends[1].Label != "runtime:ssh:dell" || backends[1].Provider != remoteSP {
+		t.Fatalf("Backends() = %+v, want default plus the custom runtime", backends)
+	}
+
+	if err := p.Stop("dell-worker"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if remoteSP.IsRunning("dell-worker") || p.IsRunning("dell-worker") {
+		t.Fatal("session should be stopped and its route cleaned up")
+	}
+	if got := p.Backends(); len(got) != 1 {
+		t.Fatalf("Backends() after Stop = %+v, want only the default backend", got)
+	}
+}
