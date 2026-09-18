@@ -1634,6 +1634,9 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 	if !storeQueryPartial && reconcileOpts.workDirResolver == nil && len(assignedWorkBeads) > 0 {
 		effectiveStartOptions = append(append([]startExecutionOption(nil), startOptions...), withTaskWorkDirResolver(newAssignedTaskWorkDirResolver(cityPath, assignedWorkBeads)))
 	}
+	if !storeQueryPartial && reconcileOpts.taskOptionResolver == nil && len(assignedWorkBeads) > 0 {
+		effectiveStartOptions = append(append([]startExecutionOption(nil), effectiveStartOptions...), withTaskOptionResolver(newAssignedTaskOptionResolver(assignedWorkBeads)))
+	}
 	if startupTimeout <= 0 && cfg != nil {
 		startupTimeout = cfg.Session.StartupTimeoutDuration()
 	}
@@ -6497,6 +6500,43 @@ type assignedTaskWorkDir struct {
 
 // newAssignedTaskWorkDirResolver resolves work_dir values from the
 // reconciler's snapshot; misses intentionally fall back to the live lookup.
+// newAssignedTaskOptionResolver resolves opt_<key> provider option overrides from
+// the reconciler's cross-store assigned-work snapshot, so a rig-scoped work bead
+// (which resolveTaskOptionOverrides cannot see through the leading store) still
+// renders its requested option onto the launch line. Newest in_progress bead per
+// assignee wins, matching the work_dir resolver beside it.
+func newAssignedTaskOptionResolver(assignedWorkBeads []beads.Bead) taskOptionResolver {
+	index := make(map[string]beads.Bead)
+	for _, bead := range assignedWorkBeads {
+		if bead.Status != "in_progress" {
+			continue
+		}
+		assignee := strings.TrimSpace(bead.Assignee)
+		if assignee == "" {
+			continue
+		}
+		if current, ok := index[assignee]; ok && !bead.CreatedAt.After(current.CreatedAt) {
+			continue
+		}
+		index[assignee] = bead
+	}
+	return func(candidate startCandidate, cfg *config.City, rp *config.ResolvedProvider) map[string]string {
+		if rp == nil || len(rp.OptionsSchema) == 0 {
+			return nil
+		}
+		for _, assignee := range taskWorkDirAssignees(candidate, cfg) {
+			bead, ok := index[strings.TrimSpace(assignee)]
+			if !ok {
+				continue
+			}
+			if overrides, sawOptions := workBeadOptionOverrides(bead, rp); sawOptions {
+				return overrides
+			}
+		}
+		return nil
+	}
+}
+
 func newAssignedTaskWorkDirResolver(cityPath string, assignedWorkBeads []beads.Bead) taskWorkDirResolver {
 	index := make(map[string]assignedTaskWorkDir)
 	for _, bead := range assignedWorkBeads {
@@ -6707,7 +6747,7 @@ func relaunchAgentForLaunchDrift(
 	// value is the fold-coherent Info: every start-prep mutation (stale-resume
 	// clear, session_key / instance_token mint) is folded onto it the moment it
 	// persists, so it is the post-prepare state on the success AND the error return.
-	prepared, preparedInfo, err := buildPreparedStartWithWorkDirResolver(startCandidate{info: info, tp: tp}, cityPath, cfg, store, nil)
+	prepared, preparedInfo, err := buildPreparedStartWithWorkDirResolver(startCandidate{info: info, tp: tp}, cityPath, cfg, store, nil, nil)
 	if err != nil {
 		fmt.Fprintf(stderr, "session reconciler: preparing relaunch config for %s: %v; falling back to full restart\n", name, err) //nolint:errcheck
 		return false, relaunchAbortResidueFold(preparedInfo, sessFront, hadResumeKeyBeforePrepare)
