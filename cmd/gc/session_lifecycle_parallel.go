@@ -369,6 +369,7 @@ type startExecutionOptions struct {
 	maxSessionAgeTr                maxSessionAgeTracker
 	assignedWorkDeferTr            assignedWorkDeferTracker
 	workDirResolver                taskWorkDirResolver
+	taskOptionResolver             taskOptionResolver
 	stabilityWaiter                startStabilityWaiter
 	sessionStaleKeyDetectionWaiter sessionpkg.StaleKeyDetectionWaiter
 	// deferSessionClosesOnBoot suppresses the per-session orphan/failed-create
@@ -404,6 +405,13 @@ type startExecutionOptions struct {
 type startExecutionOption func(*startExecutionOptions)
 
 type taskWorkDirResolver func(startCandidate, *config.City) string
+
+// taskOptionResolver answers the opt_<key> provider option overrides carried by
+// the in_progress work bead assigned to a start candidate, from the reconciler's
+// cross-store assigned-work snapshot. resolveTaskOptionOverrides only sees the
+// leading (city) store; rig-scoped work beads live in the rig store, so without
+// this fallback no rig lane ever received a bead-requested option.
+type taskOptionResolver func(startCandidate, *config.City, *config.ResolvedProvider) map[string]string
 
 func withAsyncStartExecution() startExecutionOption {
 	return func(opts *startExecutionOptions) {
@@ -450,6 +458,12 @@ func withMaxSessionAgeTracker(tr maxSessionAgeTracker) startExecutionOption {
 func withAssignedWorkDeferTracker(tr assignedWorkDeferTracker) startExecutionOption {
 	return func(opts *startExecutionOptions) {
 		opts.assignedWorkDeferTr = tr
+	}
+}
+
+func withTaskOptionResolver(resolver taskOptionResolver) startExecutionOption {
+	return func(opts *startExecutionOptions) {
+		opts.taskOptionResolver = resolver
 	}
 }
 
@@ -943,7 +957,7 @@ func prepareStartCandidate(
 	store beads.Store,
 	clk clock.Clock,
 ) (*preparedStart, error) {
-	return prepareStartCandidateForCity(candidate, "", "", cfg, nil, store, clk, io.Discard, nil)
+	return prepareStartCandidateForCity(candidate, "", "", cfg, nil, store, clk, io.Discard, nil, nil)
 }
 
 func prepareStartCandidateForCity(
@@ -956,6 +970,7 @@ func prepareStartCandidateForCity(
 	clk clock.Clock,
 	stderr io.Writer,
 	workDirResolver taskWorkDirResolver,
+	optionResolver taskOptionResolver,
 ) (*preparedStart, error) {
 	var undo preWakeUndo
 	if id := strings.TrimSpace(candidate.info.ID); id != "" && store != nil {
@@ -1002,7 +1017,7 @@ func prepareStartCandidateForCity(
 	// recordWakeFailure's session_key/started_config_hash) read that folded twin. The
 	// partial-Info second return is only load-bearing for recoverRunningPendingCreate's
 	// abort residue; here the prepared already carries it, so it is discarded.
-	prepared, _, err := buildPreparedStartWithWorkDirResolver(candidate, cityPath, cfg, store, workDirResolver)
+	prepared, _, err := buildPreparedStartWithWorkDirResolver(candidate, cityPath, cfg, store, workDirResolver, optionResolver)
 	if prepared != nil && undo.written != nil {
 		undo.token = prepared.candidate.info.InstanceToken
 		prepared.preWakeUndo = undo
@@ -1057,7 +1072,7 @@ func buildPreparedStart(
 	cfg *config.City,
 	store beads.Store,
 ) (*preparedStart, sessionpkg.Info, error) {
-	return buildPreparedStartWithWorkDirResolver(candidate, "", cfg, store, nil)
+	return buildPreparedStartWithWorkDirResolver(candidate, "", cfg, store, nil, nil)
 }
 
 // buildPreparedStartWithWorkDirResolver builds the prepared start for a candidate,
@@ -1077,6 +1092,7 @@ func buildPreparedStartWithWorkDirResolver(
 	cfg *config.City,
 	store beads.Store,
 	workDirResolver taskWorkDirResolver,
+	optionResolver taskOptionResolver,
 ) (*preparedStart, sessionpkg.Info, error) {
 	tp := candidate.tp
 	agentCfg, delivery, err := templateParamsToConfigWithDelivery(tp)
@@ -1109,6 +1125,9 @@ func buildPreparedStartWithWorkDirResolver(
 	// dispatch inputs from the current work bead, not durable session config.
 	// Explicit session template_overrides still win per key.
 	dispatchOptions := resolveTaskOptionOverrides(store, tp.ResolvedProvider, taskWorkDirAssignees(candidate, cfg)...)
+	if len(dispatchOptions) == 0 && optionResolver != nil {
+		dispatchOptions = optionResolver(candidate, cfg, tp.ResolvedProvider)
+	}
 	if len(dispatchOptions) > 0 {
 		launchOverrides := make(map[string]string, len(dispatchOptions))
 		for k, v := range dispatchOptions {
@@ -3942,7 +3961,7 @@ func executePlannedStartsTraced(
 						}
 					}
 				}
-				item, err := prepareStartCandidateForCity(candidate, cityPath, cityName, cfg, sp, store, clk, stderr, startOpts.workDirResolver)
+				item, err := prepareStartCandidateForCity(candidate, cityPath, cityName, cfg, sp, store, clk, stderr, startOpts.workDirResolver, startOpts.taskOptionResolver)
 				if err != nil {
 					abandonCapacityTicket(ticket, rec, stderr)
 					clearPendingStartInFlightLease(candidate.info.ID, sessFront, stderr)
