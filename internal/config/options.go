@@ -67,20 +67,21 @@ func ComputeEffectiveDefaults(schema []ProviderOption, providerDefaults, agentDe
 // ResolveOptions validates user-specified options against a provider's schema
 // and produces extra CLI args to inject into the command. Options not specified
 // by the user fall back to effectiveDefaults (then schema Default). Returns the
-// extra args and metadata entries (opt_<key>=<value>) for bead persistence.
+// extra args, metadata entries (opt_<key>=<value>) for bead persistence, and the
+// merged Env of every chosen (explicit or defaulted) choice.
 //
 // Args are emitted in schema declaration order for deterministic command lines.
-func ResolveOptions(schema []ProviderOption, options map[string]string, effectiveDefaults map[string]string) (extraArgs []string, metadata map[string]string, err error) {
+func ResolveOptions(schema []ProviderOption, options map[string]string, effectiveDefaults map[string]string) (extraArgs []string, metadata map[string]string, env map[string]string, err error) {
 	metadata = make(map[string]string)
 
 	// Validate user-specified option keys and values up front.
 	for key, value := range options {
 		opt := findOption(schema, key)
 		if opt == nil {
-			return nil, nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
+			return nil, nil, nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
 		}
 		if findChoice(opt.Choices, value) == nil {
-			return nil, nil, fmt.Errorf("invalid value for %s: %s", key, value)
+			return nil, nil, nil, fmt.Errorf("invalid value for %s: %s", key, value)
 		}
 	}
 
@@ -89,6 +90,7 @@ func ResolveOptions(schema []ProviderOption, options map[string]string, effectiv
 		if value, ok := options[opt.Key]; ok {
 			choice := findChoice(opt.Choices, value)
 			extraArgs = append(extraArgs, choice.FlagArgs...)
+			env = mergeChoiceEnv(env, choice)
 			metadata[beadmeta.OptionMetadataPrefix+opt.Key] = value
 		} else {
 			// Use effective default, falling back to schema default.
@@ -100,13 +102,14 @@ func ResolveOptions(schema []ProviderOption, options map[string]string, effectiv
 				choice := findChoice(opt.Choices, defValue)
 				if choice != nil {
 					extraArgs = append(extraArgs, choice.FlagArgs...)
+					env = mergeChoiceEnv(env, choice)
 				}
 			}
 			// Defaults are NOT written to metadata -- only explicit choices are persisted.
 		}
 	}
 
-	return extraArgs, metadata, nil
+	return extraArgs, metadata, env, nil
 }
 
 // ResolveExplicitOptions validates user-specified options against a provider's
@@ -115,20 +118,21 @@ func ResolveOptions(schema []ProviderOption, options map[string]string, effectiv
 // present in the overrides map generate flags. This is used for template_overrides
 // where agent sessions already have their own base CLI flags from config.
 //
+// Returns the args and the merged Env of every chosen override.
 // Args are emitted in schema declaration order for deterministic command lines.
-func ResolveExplicitOptions(schema []ProviderOption, overrides map[string]string) (extraArgs []string, err error) {
+func ResolveExplicitOptions(schema []ProviderOption, overrides map[string]string) (extraArgs []string, env map[string]string, err error) {
 	if len(overrides) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Validate override keys and values up front.
 	for key, value := range overrides {
 		opt := findOption(schema, key)
 		if opt == nil {
-			return nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
+			return nil, nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
 		}
 		if findChoice(opt.Choices, value) == nil {
-			return nil, fmt.Errorf("invalid value for %s: %s", key, value)
+			return nil, nil, fmt.Errorf("invalid value for %s: %s", key, value)
 		}
 	}
 
@@ -140,9 +144,25 @@ func ResolveExplicitOptions(schema []ProviderOption, overrides map[string]string
 		}
 		choice := findChoice(opt.Choices, value)
 		extraArgs = append(extraArgs, choice.FlagArgs...)
+		env = mergeChoiceEnv(env, choice)
 	}
 
-	return extraArgs, nil
+	return extraArgs, env, nil
+}
+
+// mergeChoiceEnv folds one choice's Env into the accumulated map. Later
+// choices win for a shared key, matching the schema-order arg behavior.
+func mergeChoiceEnv(env map[string]string, choice *OptionChoice) map[string]string {
+	if choice == nil || len(choice.Env) == 0 {
+		return env
+	}
+	if env == nil {
+		env = make(map[string]string, len(choice.Env))
+	}
+	for key, value := range choice.Env {
+		env[key] = value
+	}
+	return env
 }
 
 func completeResumeCommandDefaults(command, resumeFlag, resumeStyle string, schema []ProviderOption, effectiveDefaults map[string]string) string {

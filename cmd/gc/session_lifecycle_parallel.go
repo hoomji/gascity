@@ -1068,7 +1068,14 @@ func buildPreparedStartWithWorkDirResolver(
 	// "effort". Apply them after core/live hash calculation because they are
 	// dispatch inputs from the current work bead, not durable session config.
 	// Explicit session template_overrides still win per key.
-	dispatchOptions := resolveTaskOptionOverrides(store, tp.ResolvedProvider, taskWorkDirAssignees(candidate, cfg)...)
+	// The triggering bead is the authoritative source on a fresh sling: the
+	// assigned-work snapshot can predate the sling, and the newest-assignee
+	// fallback can rank a different bead first. Mirror the work_dir path
+	// (resolvePreparedTaskWorkDir) and consult the trigger bead before either.
+	dispatchOptions := resolveTriggerBeadOptionOverrides(store, tp.ResolvedProvider, candidate.info.TriggerBeadID)
+	if len(dispatchOptions) == 0 {
+		dispatchOptions = resolveTaskOptionOverrides(store, tp.ResolvedProvider, taskWorkDirAssignees(candidate, cfg)...)
+	}
 	if len(dispatchOptions) == 0 && optionResolver != nil {
 		dispatchOptions = optionResolver(candidate, cfg, tp.ResolvedProvider)
 	}
@@ -1471,13 +1478,19 @@ func applySchemaOptionOverridesForLaunch(agentCfg *runtime.Config, tp *TemplateP
 		}
 		fullOptions[k] = v
 	}
-	args, resolveErr := config.ResolveExplicitOptions(resolved.OptionsSchema, fullOptions)
+	args, optionEnv, resolveErr := config.ResolveExplicitOptions(resolved.OptionsSchema, fullOptions)
 	if resolveErr != nil {
 		log.Printf("session %s: template option resolution error: %v", sessionID, resolveErr)
 		return
 	}
 	if len(args) > 0 {
 		agentCfg.Command = replaceSchemaFlags(agentCfg.Command, resolved.OptionsSchema, args)
+	}
+	// Merge the chosen choices' env after the command so a bead-requested tier
+	// reaches harnesses whose only lever is an env var (e.g. GC_EFFORT for dsh).
+	// agentCfg.Env already carries the provider env; the choice env wins.
+	if len(optionEnv) > 0 {
+		agentCfg.Env = mergeEnv(agentCfg.Env, optionEnv)
 	}
 	if command, err := config.BuildProviderResumeCommand(resolved, overrides); err == nil && strings.TrimSpace(command) != "" {
 		dup := *resolved
