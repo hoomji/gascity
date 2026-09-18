@@ -1637,6 +1637,14 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 	if !storeQueryPartial && reconcileOpts.taskOptionResolver == nil && len(assignedWorkBeads) > 0 {
 		effectiveStartOptions = append(append([]startExecutionOption(nil), effectiveStartOptions...), withTaskOptionResolver(newAssignedTaskOptionResolver(assignedWorkBeads)))
 	}
+	// The launch line's trigger-bead opt_<key> read routes through the store that
+	// owns the trigger id's prefix, so a rig-prefixed trigger bead on a pool
+	// woken from zero (no assigned-work snapshot) still renders its option. The
+	// rig stores are attached stores, not a census read, so a partial snapshot
+	// does not taint them.
+	if len(rigStores) > 0 {
+		effectiveStartOptions = append(append([]startExecutionOption(nil), effectiveStartOptions...), withTriggerRigStores(rigStores))
+	}
 	if startupTimeout <= 0 && cfg != nil {
 		startupTimeout = cfg.Session.StartupTimeoutDuration()
 	}
@@ -6477,13 +6485,19 @@ func resolveTaskOptionOverrides(store beads.Store, rp *config.ResolvedProvider, 
 // On a fresh sling the assigned-work snapshot can predate the sling (or rank a
 // different bead newest for the assignee), so the trigger bead is the
 // authoritative source. Mirrors the work_dir path in resolvePreparedTaskWorkDir.
-func resolveTriggerBeadOptionOverrides(store beads.Store, rp *config.ResolvedProvider, triggerID string) map[string]string {
+//
+// The read is routed through the store that owns the trigger id's prefix: a
+// sling into a rig pool carries a rig-prefixed trigger bead that lives in its
+// rig store, not in the leading (city/session) store, so a plain Get on the
+// leading store misses silently and the pool wakes with the option dropped.
+// rigStores supplies the attached rig bead stores for that routing.
+func resolveTriggerBeadOptionOverrides(store beads.Store, rp *config.ResolvedProvider, triggerID string, rigStores map[string]beads.Store) map[string]string {
 	triggerID = strings.TrimSpace(triggerID)
-	if store == nil || rp == nil || len(rp.OptionsSchema) == 0 || triggerID == "" {
+	if rp == nil || len(rp.OptionsSchema) == 0 || triggerID == "" {
 		return nil
 	}
-	bead, err := store.Get(triggerID)
-	if err != nil {
+	bead, ok := readTriggerBeadAcrossStores(store, triggerID, rigStores)
+	if !ok {
 		return nil
 	}
 	overrides, sawOptions := workBeadOptionOverrides(bead, rp)
@@ -6491,6 +6505,35 @@ func resolveTriggerBeadOptionOverrides(store beads.Store, rp *config.ResolvedPro
 		return nil
 	}
 	return overrides
+}
+
+// readTriggerBeadAcrossStores reads triggerID from the store that owns its id
+// prefix, considering the leading store plus every attached rig store. The
+// prefix owner is tried first (the cheap, fork-free route for a rig-prefixed
+// bead); the ordered probe behind it keeps behavior identical for stores that
+// declare no prefix (in-memory test stores, the bd work store) and recovers a
+// bead that prefix routing alone cannot place.
+func readTriggerBeadAcrossStores(store beads.Store, triggerID string, rigStores map[string]beads.Store) (beads.Bead, bool) {
+	candidates := make([]beads.Store, 0, 1+len(rigStores))
+	if store != nil {
+		candidates = append(candidates, store)
+	}
+	for _, rigStore := range rigStores {
+		if rigStore != nil {
+			candidates = append(candidates, rigStore)
+		}
+	}
+	if owner := storeref.PrefixOwner(triggerID, candidates); owner != nil {
+		if bead, err := owner.Get(triggerID); err == nil {
+			return bead, true
+		}
+	}
+	for _, candidate := range candidates {
+		if bead, err := candidate.Get(triggerID); err == nil {
+			return bead, true
+		}
+	}
+	return beads.Bead{}, false
 }
 
 func workBeadOptionOverrides(b beads.Bead, rp *config.ResolvedProvider) (map[string]string, bool) {
@@ -6787,7 +6830,7 @@ func relaunchAgentForLaunchDrift(
 	// value is the fold-coherent Info: every start-prep mutation (stale-resume
 	// clear, session_key / instance_token mint) is folded onto it the moment it
 	// persists, so it is the post-prepare state on the success AND the error return.
-	prepared, preparedInfo, err := buildPreparedStartWithWorkDirResolver(startCandidate{info: info, tp: tp}, cityPath, cfg, store, nil, nil)
+	prepared, preparedInfo, err := buildPreparedStartWithWorkDirResolver(startCandidate{info: info, tp: tp}, cityPath, cfg, store, nil, nil, nil)
 	if err != nil {
 		fmt.Fprintf(stderr, "session reconciler: preparing relaunch config for %s: %v; falling back to full restart\n", name, err) //nolint:errcheck
 		return false, relaunchAbortResidueFold(preparedInfo, sessFront, hadResumeKeyBeforePrepare)
