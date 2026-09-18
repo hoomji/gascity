@@ -967,7 +967,7 @@ func TestBuildPreparedStartRejectsConcretePoolTemplateWorkDir(t *testing.T) {
 		},
 	}, cityPath, cfg, store, func(startCandidate, *config.City) string {
 		return templateWorkDir
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("buildPreparedStartWithWorkDirResolver error = nil, want template work_dir rejection")
 	}
