@@ -2083,6 +2083,13 @@
           },
           "type": "array",
           "description": "FlagAliases are equivalent CLI argument sequences stripped from legacy\nprovider args. Like FlagArgs, they stay server-side only."
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Env are environment variables injected into the provider process when\nthis choice is selected (e.g. {\"GC_EFFORT\": \"low\"}). Unlike FlagArgs,\nthis lets a harness with no effort CLI flag still receive the tier.\nKeys merge in schema declaration order; an explicit choice overrides a\ndefaulted one. json:\"-\" keeps the internal env names off the public DTO."
         }
       },
       "additionalProperties": false,
