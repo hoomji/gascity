@@ -127,7 +127,8 @@ func providerOptionArgs(resolved *ResolvedProvider, optionOverrides map[string]s
 	if len(mergedOptions) == 0 {
 		return nil, nil
 	}
-	return ResolveExplicitOptions(resolved.OptionsSchema, mergedOptions)
+	args, _, err := ResolveExplicitOptions(resolved.OptionsSchema, mergedOptions)
+	return args, err
 }
 
 func providerOptionMapCapacity(defaultsLen, overridesLen int) int {

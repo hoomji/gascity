@@ -31,6 +31,7 @@ type BuiltinOptionChoice struct {
 	Label       string
 	FlagArgs    []string
 	FlagAliases [][]string
+	Env         map[string]string
 }
 
 // BuiltinProviderSpec is the canonical builtin worker materialization source.
