@@ -361,15 +361,20 @@ func (p startPhaseTimings) formatLog() string {
 }
 
 type startExecutionOptions struct {
-	async                          bool
-	asyncFollowUp                  func()
-	asyncLimiter                   *asyncStartLimiter
-	asyncTracker                   *asyncStartTracker
-	asyncStopTracker               *asyncStartTracker
-	maxSessionAgeTr                maxSessionAgeTracker
-	assignedWorkDeferTr            assignedWorkDeferTracker
-	workDirResolver                taskWorkDirResolver
-	taskOptionResolver             taskOptionResolver
+	async               bool
+	asyncFollowUp       func()
+	asyncLimiter        *asyncStartLimiter
+	asyncTracker        *asyncStartTracker
+	asyncStopTracker    *asyncStartTracker
+	maxSessionAgeTr     maxSessionAgeTracker
+	assignedWorkDeferTr assignedWorkDeferTracker
+	workDirResolver     taskWorkDirResolver
+	taskOptionResolver  taskOptionResolver
+	// triggerRigStores is the attached rig bead stores keyed by rig name. The
+	// launch line routes the trigger bead's opt_<key> read through the store
+	// that owns its id prefix, so a rig-prefixed trigger bead on a pool woken
+	// from zero (no assigned-work snapshot) still renders its requested option.
+	triggerRigStores               map[string]beads.Store
 	stabilityWaiter                startStabilityWaiter
 	sessionStaleKeyDetectionWaiter sessionpkg.StaleKeyDetectionWaiter
 	// deferSessionClosesOnBoot suppresses the per-session orphan/failed-create
@@ -464,6 +469,15 @@ func withAssignedWorkDeferTracker(tr assignedWorkDeferTracker) startExecutionOpt
 func withTaskOptionResolver(resolver taskOptionResolver) startExecutionOption {
 	return func(opts *startExecutionOptions) {
 		opts.taskOptionResolver = resolver
+	}
+}
+
+// withTriggerRigStores installs the attached rig bead stores for the launch
+// line's prefix-routed trigger-bead option read. Nil leaves the trigger read on
+// the leading store alone.
+func withTriggerRigStores(rigStores map[string]beads.Store) startExecutionOption {
+	return func(opts *startExecutionOptions) {
+		opts.triggerRigStores = rigStores
 	}
 }
 
@@ -957,7 +971,7 @@ func prepareStartCandidate(
 	store beads.Store,
 	clk clock.Clock,
 ) (*preparedStart, error) {
-	return prepareStartCandidateForCity(candidate, "", "", cfg, nil, store, clk, io.Discard, nil, nil)
+	return prepareStartCandidateForCity(candidate, "", "", cfg, nil, store, clk, io.Discard, nil, nil, nil)
 }
 
 func prepareStartCandidateForCity(
@@ -971,6 +985,7 @@ func prepareStartCandidateForCity(
 	stderr io.Writer,
 	workDirResolver taskWorkDirResolver,
 	optionResolver taskOptionResolver,
+	rigStores map[string]beads.Store,
 ) (*preparedStart, error) {
 	var undo preWakeUndo
 	if id := strings.TrimSpace(candidate.info.ID); id != "" && store != nil {
@@ -1017,7 +1032,7 @@ func prepareStartCandidateForCity(
 	// recordWakeFailure's session_key/started_config_hash) read that folded twin. The
 	// partial-Info second return is only load-bearing for recoverRunningPendingCreate's
 	// abort residue; here the prepared already carries it, so it is discarded.
-	prepared, _, err := buildPreparedStartWithWorkDirResolver(candidate, cityPath, cfg, store, workDirResolver, optionResolver)
+	prepared, _, err := buildPreparedStartWithWorkDirResolver(candidate, cityPath, cfg, store, workDirResolver, optionResolver, rigStores)
 	if prepared != nil && undo.written != nil {
 		undo.token = prepared.candidate.info.InstanceToken
 		prepared.preWakeUndo = undo
@@ -1072,7 +1087,7 @@ func buildPreparedStart(
 	cfg *config.City,
 	store beads.Store,
 ) (*preparedStart, sessionpkg.Info, error) {
-	return buildPreparedStartWithWorkDirResolver(candidate, "", cfg, store, nil, nil)
+	return buildPreparedStartWithWorkDirResolver(candidate, "", cfg, store, nil, nil, nil)
 }
 
 // buildPreparedStartWithWorkDirResolver builds the prepared start for a candidate,
@@ -1093,6 +1108,7 @@ func buildPreparedStartWithWorkDirResolver(
 	store beads.Store,
 	workDirResolver taskWorkDirResolver,
 	optionResolver taskOptionResolver,
+	rigStores map[string]beads.Store,
 ) (*preparedStart, sessionpkg.Info, error) {
 	tp := candidate.tp
 	agentCfg, delivery, err := templateParamsToConfigWithDelivery(tp)
@@ -1128,7 +1144,9 @@ func buildPreparedStartWithWorkDirResolver(
 	// assigned-work snapshot can predate the sling, and the newest-assignee
 	// fallback can rank a different bead first. Mirror the work_dir path
 	// (resolvePreparedTaskWorkDir) and consult the trigger bead before either.
-	dispatchOptions := resolveTriggerBeadOptionOverrides(store, tp.ResolvedProvider, candidate.info.TriggerBeadID)
+	// It is read through the store that owns its id prefix: a rig-prefixed
+	// trigger bead lives in its rig store, not the leading store.
+	dispatchOptions := resolveTriggerBeadOptionOverrides(store, tp.ResolvedProvider, candidate.info.TriggerBeadID, rigStores)
 	if len(dispatchOptions) == 0 {
 		dispatchOptions = resolveTaskOptionOverrides(store, tp.ResolvedProvider, taskWorkDirAssignees(candidate, cfg)...)
 	}
@@ -3974,7 +3992,7 @@ func executePlannedStartsTraced(
 						}
 					}
 				}
-				item, err := prepareStartCandidateForCity(candidate, cityPath, cityName, cfg, sp, store, clk, stderr, startOpts.workDirResolver, startOpts.taskOptionResolver)
+				item, err := prepareStartCandidateForCity(candidate, cityPath, cityName, cfg, sp, store, clk, stderr, startOpts.workDirResolver, startOpts.taskOptionResolver, startOpts.triggerRigStores)
 				if err != nil {
 					abandonCapacityTicket(ticket, rec, stderr)
 					clearPendingStartInFlightLease(candidate.info.ID, sessFront, stderr)

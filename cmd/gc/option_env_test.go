@@ -88,6 +88,7 @@ func TestBuildPreparedStartResolvesOptionFromTriggerBead(t *testing.T) {
 	prepared, _, err := buildPreparedStartWithWorkDirResolver(
 		candidate, "", &config.City{}, store, nil,
 		newAssignedTaskOptionResolver(snapshot),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("buildPreparedStartWithWorkDirResolver: %v", err)
@@ -97,6 +98,48 @@ func TestBuildPreparedStartResolvesOptionFromTriggerBead(t *testing.T) {
 	}
 	if strings.Contains(prepared.cfg.Command, "--effort high") {
 		t.Fatalf("command = %q, snapshot winner's --effort high must not apply", prepared.cfg.Command)
+	}
+}
+
+// TestBuildPreparedStartResolvesRigTriggerBeadOptionOnEmptyPool pins the
+// phase-4b regression: a pool woken from zero (empty assigned-work snapshot) is
+// slung a rig-prefixed work bead that lives in the rig store, not the leading
+// store. The trigger-bead option read must route through the store that owns the
+// id prefix so the choice's flag args AND env reach the launch line.
+func TestBuildPreparedStartResolvesRigTriggerBeadOptionOnEmptyPool(t *testing.T) {
+	cityStore := beads.NewMemStore()
+	candidate := newOptionSessionCandidate(t, cityStore, nil, nil)
+	candidate.tp.ResolvedProvider = optionEnvProvider()
+
+	rigBacking := beads.NewMemStore()
+	rigBacking.HonorExplicitIDs = true
+	rigStore := prefixDeclaringStore{Store: rigBacking, prefix: "gl"}
+	trigger, err := rigStore.Create(beads.Bead{
+		ID:       "gl-u91r0y",
+		Title:    "rig-routed work",
+		Type:     "task",
+		Status:   "open",
+		Metadata: map[string]string{"opt_effort": "low", "gc.routed_to": "worker"},
+	})
+	if err != nil {
+		t.Fatalf("Create(rig trigger): %v", err)
+	}
+	candidate.info.TriggerBeadID = trigger.ID
+
+	// No snapshot resolver: an empty pool has no assignedWorkBeads, which is the
+	// wiring gap this test exercises. The rig stores are the only path to the bead.
+	prepared, _, err := buildPreparedStartWithWorkDirResolver(
+		candidate, "", &config.City{}, cityStore, nil, nil,
+		map[string]beads.Store{"gateway-llm": rigStore},
+	)
+	if err != nil {
+		t.Fatalf("buildPreparedStartWithWorkDirResolver: %v", err)
+	}
+	if !strings.Contains(prepared.cfg.Command, "--patch /tmp/effort-low.yml") {
+		t.Fatalf("command = %q, want the rig trigger bead's low flag args", prepared.cfg.Command)
+	}
+	if got := prepared.cfg.Env["GC_EFFORT"]; got != "low" {
+		t.Fatalf("GC_EFFORT = %q, want low from the rig trigger bead's choice env", got)
 	}
 }
 
