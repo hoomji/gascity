@@ -6025,11 +6025,16 @@ func applyTemplateOverridesToConfigInfo(agentCfg *runtime.Config, info sessionpk
 		}
 		fullOptions[k] = v
 	}
-	extra, err := config.ResolveExplicitOptions(tp.ResolvedProvider.OptionsSchema, fullOptions)
-	if err != nil || len(extra) == 0 {
+	extra, env, err := config.ResolveExplicitOptions(tp.ResolvedProvider.OptionsSchema, fullOptions)
+	if err != nil {
 		return
 	}
-	agentCfg.Command = replaceSchemaFlags(agentCfg.Command, tp.ResolvedProvider.OptionsSchema, extra)
+	if len(extra) > 0 {
+		agentCfg.Command = replaceSchemaFlags(agentCfg.Command, tp.ResolvedProvider.OptionsSchema, extra)
+	}
+	if len(env) > 0 {
+		agentCfg.Env = mergeEnv(agentCfg.Env, env)
+	}
 }
 
 // namedSessionActiveUseReasonInfo is the session.Info sibling of
@@ -6467,6 +6472,27 @@ func resolveTaskOptionOverrides(store beads.Store, rp *config.ResolvedProvider, 
 	return nil
 }
 
+// resolveTriggerBeadOptionOverrides returns the opt_<key> provider option
+// overrides carried by the session's triggering work bead, read live by id.
+// On a fresh sling the assigned-work snapshot can predate the sling (or rank a
+// different bead newest for the assignee), so the trigger bead is the
+// authoritative source. Mirrors the work_dir path in resolvePreparedTaskWorkDir.
+func resolveTriggerBeadOptionOverrides(store beads.Store, rp *config.ResolvedProvider, triggerID string) map[string]string {
+	triggerID = strings.TrimSpace(triggerID)
+	if store == nil || rp == nil || len(rp.OptionsSchema) == 0 || triggerID == "" {
+		return nil
+	}
+	bead, err := store.Get(triggerID)
+	if err != nil {
+		return nil
+	}
+	overrides, sawOptions := workBeadOptionOverrides(bead, rp)
+	if !sawOptions {
+		return nil
+	}
+	return overrides
+}
+
 func workBeadOptionOverrides(b beads.Bead, rp *config.ResolvedProvider) (map[string]string, bool) {
 	if rp == nil {
 		return nil, false
@@ -6484,7 +6510,7 @@ func workBeadOptionOverrides(b beads.Bead, rp *config.ResolvedProvider) (map[str
 		if value == "" {
 			continue
 		}
-		if _, err := config.ResolveExplicitOptions(rp.OptionsSchema, map[string]string{opt.Key: value}); err != nil {
+		if _, _, err := config.ResolveExplicitOptions(rp.OptionsSchema, map[string]string{opt.Key: value}); err != nil {
 			log.Printf("work %s: ignoring %s=%q: %v", b.ID, metadataKey, value, err)
 			continue
 		}
@@ -6507,7 +6533,11 @@ type assignedTaskWorkDir struct {
 // assignee wins, matching the work_dir resolver beside it.
 func newAssignedTaskOptionResolver(assignedWorkBeads []beads.Bead) taskOptionResolver {
 	index := make(map[string]beads.Bead)
+	byID := make(map[string]beads.Bead, len(assignedWorkBeads))
 	for _, bead := range assignedWorkBeads {
+		if bead.ID != "" {
+			byID[bead.ID] = bead
+		}
 		if bead.Status != "in_progress" {
 			continue
 		}
@@ -6523,6 +6553,16 @@ func newAssignedTaskOptionResolver(assignedWorkBeads []beads.Bead) taskOptionRes
 	return func(candidate startCandidate, cfg *config.City, rp *config.ResolvedProvider) map[string]string {
 		if rp == nil || len(rp.OptionsSchema) == 0 {
 			return nil
+		}
+		// The triggering bead outranks the newest-assignee snapshot pick: on a
+		// fresh sling it is the bead this session was routed to, even when the
+		// snapshot predates the sling or another bead is newer for the assignee.
+		if triggerID := strings.TrimSpace(candidate.info.TriggerBeadID); triggerID != "" {
+			if bead, ok := byID[triggerID]; ok {
+				if overrides, sawOptions := workBeadOptionOverrides(bead, rp); sawOptions {
+					return overrides
+				}
+			}
 		}
 		for _, assignee := range taskWorkDirAssignees(candidate, cfg) {
 			bead, ok := index[strings.TrimSpace(assignee)]

@@ -41,6 +41,12 @@ type OptionChoice struct {
 	// FlagAliases are equivalent CLI argument sequences stripped from legacy
 	// provider args. Like FlagArgs, they stay server-side only.
 	FlagAliases [][]string `toml:"flag_aliases,omitempty" json:"-"`
+	// Env are environment variables injected into the provider process when
+	// this choice is selected (e.g. {"GC_EFFORT": "low"}). Unlike FlagArgs,
+	// this lets a harness with no effort CLI flag still receive the tier.
+	// Keys merge in schema declaration order; an explicit choice overrides a
+	// defaulted one. json:"-" keeps the internal env names off the public DTO.
+	Env map[string]string `toml:"env,omitempty" json:"-"`
 }
 
 // ProviderSpec defines a named provider's startup parameters.
@@ -524,6 +530,7 @@ func providerChoicesFromWorker(choices []workerbuiltin.BuiltinOptionChoice) []Op
 			Label:       choice.Label,
 			FlagArgs:    cloneStrings(choice.FlagArgs),
 			FlagAliases: cloneStringSlices(choice.FlagAliases),
+			Env:         cloneStringMap(choice.Env),
 		}
 	}
 	return out

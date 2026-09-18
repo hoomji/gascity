@@ -26,7 +26,7 @@ func TestResolveOptions_ExplicitValues(t *testing.T) {
 		},
 	}
 
-	args, meta, err := ResolveOptions(schema, map[string]string{
+	args, meta, _, err := ResolveOptions(schema, map[string]string{
 		"permission_mode": "plan",
 		"thinking":        "high",
 	}, nil)
@@ -72,7 +72,7 @@ func TestResolveOptions_DefaultsApplied(t *testing.T) {
 		},
 	}
 
-	args, meta, err := ResolveOptions(schema, nil, nil)
+	args, meta, _, err := ResolveOptions(schema, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestResolveOptions_EffectiveDefaultsOverrideSchemaDefaults(t *testing.T) {
 	effectiveDefaults := map[string]string{"permission_mode": "unrestricted"}
 
 	// No user options: should use effective defaults, not schema defaults.
-	args, _, err := ResolveOptions(schema, nil, effectiveDefaults)
+	args, _, _, err := ResolveOptions(schema, nil, effectiveDefaults)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestResolveOptions_UserOptionOverridesEffectiveDefault(t *testing.T) {
 	effectiveDefaults := map[string]string{"permission_mode": "unrestricted"}
 
 	// User explicitly selects plan -- should override effective default.
-	args, meta, err := ResolveOptions(schema, map[string]string{
+	args, meta, _, err := ResolveOptions(schema, map[string]string{
 		"permission_mode": "plan",
 	}, effectiveDefaults)
 	if err != nil {
@@ -250,7 +250,7 @@ func TestResolveOptions_UnknownOption(t *testing.T) {
 	schema := []ProviderOption{
 		{Key: "mode", Choices: []OptionChoice{{Value: "a"}}},
 	}
-	_, _, err := ResolveOptions(schema, map[string]string{"bogus": "val"}, nil)
+	_, _, _, err := ResolveOptions(schema, map[string]string{"bogus": "val"}, nil)
 	if err == nil {
 		t.Fatal("expected error for unknown option")
 	}
@@ -265,7 +265,7 @@ func TestResolveOptions_InvalidValue(t *testing.T) {
 			},
 		},
 	}
-	_, _, err := ResolveOptions(schema, map[string]string{"mode": "c"}, nil)
+	_, _, _, err := ResolveOptions(schema, map[string]string{"mode": "c"}, nil)
 	if err == nil {
 		t.Fatal("expected error for invalid value")
 	}
@@ -283,7 +283,7 @@ func TestResolveOptions_EmptyStringChoice(t *testing.T) {
 	}
 
 	// Explicit empty string should be accepted (not rejected as "invalid").
-	args, meta, err := ResolveOptions(schema, map[string]string{"thinking": ""}, nil)
+	args, meta, _, err := ResolveOptions(schema, map[string]string{"thinking": ""}, nil)
 	if err != nil {
 		t.Fatalf("empty string choice should be valid: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestResolveOptions_EmptyStringChoice(t *testing.T) {
 }
 
 func TestResolveOptions_NilSchema(t *testing.T) {
-	args, meta, err := ResolveOptions(nil, map[string]string{"anything": "val"}, nil)
+	args, meta, _, err := ResolveOptions(nil, map[string]string{"anything": "val"}, nil)
 	if err == nil {
 		t.Fatal("expected error for option against nil schema")
 	}
@@ -336,7 +336,7 @@ func TestResolveExplicitOptions_OnlyExplicit(t *testing.T) {
 	}
 
 	// Only override effort — permission_mode default must NOT be injected.
-	args, err := ResolveExplicitOptions(schema, map[string]string{
+	args, _, err := ResolveExplicitOptions(schema, map[string]string{
 		"effort": "high",
 	})
 	if err != nil {
@@ -362,7 +362,7 @@ func TestResolveExplicitOptions_EmptyOverrides(t *testing.T) {
 			},
 		},
 	}
-	args, err := ResolveExplicitOptions(schema, nil)
+	args, _, err := ResolveExplicitOptions(schema, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestResolveExplicitOptions_UnknownKey(t *testing.T) {
 	schema := []ProviderOption{
 		{Key: "mode", Choices: []OptionChoice{{Value: "a"}}},
 	}
-	_, err := ResolveExplicitOptions(schema, map[string]string{"bogus": "val"})
+	_, _, err := ResolveExplicitOptions(schema, map[string]string{"bogus": "val"})
 	if err == nil {
 		t.Fatal("expected error for unknown option")
 	}
@@ -388,7 +388,7 @@ func TestResolveExplicitOptions_InvalidValue(t *testing.T) {
 	schema := []ProviderOption{
 		{Key: "mode", Choices: []OptionChoice{{Value: "a"}, {Value: "b"}}},
 	}
-	_, err := ResolveExplicitOptions(schema, map[string]string{"mode": "c"})
+	_, _, err := ResolveExplicitOptions(schema, map[string]string{"mode": "c"})
 	if err == nil {
 		t.Fatal("expected error for invalid value")
 	}
@@ -405,7 +405,7 @@ func TestResolveExplicitOptions_EmptyStringChoice(t *testing.T) {
 		},
 	}
 	// Explicit empty string should produce no flags (FlagArgs is nil).
-	args, err := ResolveExplicitOptions(schema, map[string]string{"effort": ""})
+	args, _, err := ResolveExplicitOptions(schema, map[string]string{"effort": ""})
 	if err != nil {
 		t.Fatalf("empty string choice should be valid: %v", err)
 	}
@@ -428,7 +428,7 @@ func TestResolveExplicitOptions_SchemaOrder(t *testing.T) {
 		},
 	}
 	// Override both in reverse declaration order — args should be in schema order.
-	args, err := ResolveExplicitOptions(schema, map[string]string{
+	args, _, err := ResolveExplicitOptions(schema, map[string]string{
 		"model":  "opus",
 		"effort": "high",
 	})
@@ -499,7 +499,7 @@ func TestResolveExplicitOptions_SubsetOfOptions(t *testing.T) {
 	}
 
 	// Only specify model, not permission_mode.
-	args, err := ResolveExplicitOptions(schema, map[string]string{"model": "opus"})
+	args, _, err := ResolveExplicitOptions(schema, map[string]string{"model": "opus"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ func TestResolveExplicitOptions_InvalidKey(t *testing.T) {
 	schema := []ProviderOption{
 		{Key: "mode", Choices: []OptionChoice{{Value: "a"}}},
 	}
-	_, err := ResolveExplicitOptions(schema, map[string]string{"bogus": "val"})
+	_, _, err := ResolveExplicitOptions(schema, map[string]string{"bogus": "val"})
 	if err == nil {
 		t.Fatal("expected error for unknown option")
 	}
@@ -535,7 +535,7 @@ func TestResolveExplicitOptions_EmptyMap(t *testing.T) {
 			},
 		},
 	}
-	args, err := ResolveExplicitOptions(schema, map[string]string{})
+	args, _, err := ResolveExplicitOptions(schema, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1162,7 +1162,7 @@ func TestBuiltinProviders_OpenCodeHasModelOptions(t *testing.T) {
 			if !schemaHasChoice(opencode.OptionsSchema, "model", tt.model) {
 				t.Fatalf("opencode OptionsSchema missing model choice %q", tt.model)
 			}
-			args, metadata, err := ResolveOptions(opencode.OptionsSchema, map[string]string{
+			args, metadata, _, err := ResolveOptions(opencode.OptionsSchema, map[string]string{
 				"model": tt.model,
 			}, nil)
 			if err != nil {
@@ -1272,7 +1272,7 @@ func TestResolveClaudeCanonicalModelIDsThroughResolvers(t *testing.T) {
 		t.Run(model, func(t *testing.T) {
 			want := []string{"--model", model}
 
-			args, _, err := ResolveOptions(schema, map[string]string{"model": model}, nil)
+			args, _, _, err := ResolveOptions(schema, map[string]string{"model": model}, nil)
 			if err != nil {
 				t.Fatalf("ResolveOptions(model=%q) error = %v, want nil", model, err)
 			}
@@ -1280,7 +1280,7 @@ func TestResolveClaudeCanonicalModelIDsThroughResolvers(t *testing.T) {
 				t.Errorf("ResolveOptions(model=%q) args = %v, want to contain %v", model, args, want)
 			}
 
-			explicit, err := ResolveExplicitOptions(schema, map[string]string{"model": model})
+			explicit, _, err := ResolveExplicitOptions(schema, map[string]string{"model": model})
 			if err != nil {
 				t.Fatalf("ResolveExplicitOptions(model=%q) error = %v, want nil", model, err)
 			}
@@ -1306,4 +1306,80 @@ func containsArgPair(args []string, pair []string) bool {
 		}
 	}
 	return false
+}
+
+// TestResolveExplicitOptionsReturnsChoiceEnv pins the env half of the resolver
+// contract: a chosen choice's Env is returned alongside its FlagArgs, and no
+// overrides means no env (so callers can gate on len(env)).
+func TestResolveExplicitOptionsReturnsChoiceEnv(t *testing.T) {
+	schema := []ProviderOption{
+		{
+			Key: "effort", Label: "Effort", Type: "select", Default: "medium",
+			Choices: []OptionChoice{
+				{Value: "low", FlagArgs: []string{"--thinking", "low"}, Env: map[string]string{"GC_EFFORT": "low"}},
+				{Value: "high", FlagArgs: []string{"--thinking", "high"}, Env: map[string]string{"GC_EFFORT": "high", "GC_EFFORT_FLAG": "1"}},
+			},
+		},
+	}
+
+	args, env, err := ResolveExplicitOptions(schema, map[string]string{"effort": "high"})
+	if err != nil {
+		t.Fatalf("ResolveExplicitOptions: %v", err)
+	}
+	if want := []string{"--thinking", "high"}; !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	if want := map[string]string{"GC_EFFORT": "high", "GC_EFFORT_FLAG": "1"}; !reflect.DeepEqual(env, want) {
+		t.Fatalf("env = %v, want %v", env, want)
+	}
+
+	if _, env, err := ResolveExplicitOptions(schema, nil); err != nil || env != nil {
+		t.Fatalf("ResolveExplicitOptions(nil) = env %v, err %v; want nil, nil", env, err)
+	}
+}
+
+// TestResolveOptionsReturnsMergedChoiceEnv pins that env follows the same
+// selected choices as args: explicit overrides win per option, defaults still
+// contribute, and a later schema option wins on a shared env key.
+func TestResolveOptionsReturnsMergedChoiceEnv(t *testing.T) {
+	schema := []ProviderOption{
+		{
+			Key: "effort", Default: "low",
+			Choices: []OptionChoice{
+				{Value: "low", FlagArgs: []string{"--effort", "low"}, Env: map[string]string{"GC_EFFORT": "low"}},
+				{Value: "high", FlagArgs: []string{"--effort", "high"}, Env: map[string]string{"GC_EFFORT": "high"}},
+			},
+		},
+		{
+			Key: "model", Default: "sonnet",
+			Choices: []OptionChoice{
+				{Value: "sonnet", FlagArgs: []string{"--model", "sonnet"}, Env: map[string]string{"GC_MODEL": "sonnet"}},
+				{Value: "opus", FlagArgs: []string{"--model", "opus"}, Env: map[string]string{"GC_MODEL": "opus"}},
+			},
+		},
+	}
+
+	args, meta, env, err := ResolveOptions(schema, map[string]string{"effort": "high"}, nil)
+	if err != nil {
+		t.Fatalf("ResolveOptions: %v", err)
+	}
+	if want := []string{"--effort", "high", "--model", "sonnet"}; !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	if want := map[string]string{"GC_EFFORT": "high", "GC_MODEL": "sonnet"}; !reflect.DeepEqual(env, want) {
+		t.Fatalf("env = %v, want %v", env, want)
+	}
+	if meta["opt_effort"] != "high" {
+		t.Fatalf("metadata[opt_effort] = %q, want high", meta["opt_effort"])
+	}
+
+	// A later schema option's env overrides an earlier option's shared key.
+	schema[1].Choices[0].Env = map[string]string{"GC_EFFORT": "shared"}
+	_, _, env, err = ResolveOptions(schema, nil, nil)
+	if err != nil {
+		t.Fatalf("ResolveOptions(defaults): %v", err)
+	}
+	if env["GC_EFFORT"] != "shared" {
+		t.Fatalf("env[GC_EFFORT] = %q, want shared (later schema option wins)", env["GC_EFFORT"])
+	}
 }

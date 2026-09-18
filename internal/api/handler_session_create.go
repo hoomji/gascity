@@ -105,7 +105,7 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			// Validate options against the schema without applying defaults.
-			if _, err := config.ResolveExplicitOptions(resolved.OptionsSchema, body.Options); err != nil {
+			if _, _, err := config.ResolveExplicitOptions(resolved.OptionsSchema, body.Options); err != nil {
 				s.idem.unreserve(idemKey)
 				if errors.Is(err, config.ErrUnknownOption) {
 					writeError(w, http.StatusBadRequest, "unknown_option", err.Error())
@@ -282,7 +282,7 @@ func (s *Server) createProviderSession(w http.ResponseWriter, r *http.Request, s
 	}
 	if len(resolved.OptionsSchema) > 0 {
 		var optErr error
-		_, optMeta, optErr = config.ResolveOptions(resolved.OptionsSchema, body.Options, resolved.EffectiveDefaults)
+		_, optMeta, _, optErr = config.ResolveOptions(resolved.OptionsSchema, body.Options, resolved.EffectiveDefaults)
 		if optErr != nil {
 			s.idem.unreserve(idemKey)
 			if errors.Is(optErr, config.ErrUnknownOption) {
