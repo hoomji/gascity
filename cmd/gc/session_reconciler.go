@@ -6035,6 +6035,7 @@ func applyTemplateOverridesToConfigInfo(agentCfg *runtime.Config, info sessionpk
 	}
 	extra, env, err := config.ResolveExplicitOptions(tp.ResolvedProvider.OptionsSchema, fullOptions)
 	if err != nil {
+		log.Printf("WARNING: session %s: unhonored template option pin (%v); schema flags not applied", info.ID, err)
 		return
 	}
 	if len(extra) > 0 {

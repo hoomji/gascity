@@ -333,7 +333,11 @@ func (c *CachingStore) refreshCachedBeads(query ListQuery, startSeq uint64, item
 		return items
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	var notifications []cacheNotification
+	defer func() {
+		c.mu.Unlock()
+		c.notifyChanges(notifications)
+	}()
 	if c.state != cacheLive && c.state != cachePartial {
 		return items
 	}
@@ -362,6 +366,7 @@ func (c *CachingStore) refreshCachedBeads(query ListQuery, startSeq uint64, item
 				continue
 			}
 		}
+		notifications = c.appendObservedCloseLocked(notifications, item)
 		c.absorbFreshLocked(item.ID, item, now, absorbOpts{
 			depsMode:   depsFromFieldsIfCarried,
 			seqMode:    seqClearGuarded,
@@ -378,6 +383,7 @@ func (c *CachingStore) refreshCachedBeads(query ListQuery, startSeq uint64, item
 		if _, keep := c.recentLocalBeadConflictLocked(id, bead, now, false); keep {
 			continue
 		}
+		notifications = c.appendObservedCloseLocked(notifications, bead)
 		c.absorbFreshLocked(id, bead, now, absorbOpts{
 			depsMode:   depsFromFieldsIfCarried,
 			seqMode:    seqClearGuarded,
@@ -400,6 +406,7 @@ func (c *CachingStore) refreshCachedBeads(query ListQuery, startSeq uint64, item
 		if _, keep := c.recentLocalBeadConflictLocked(id, bead, now, false); keep {
 			continue
 		}
+		notifications = c.appendObservedCloseLocked(notifications, bead)
 		c.absorbFreshLocked(id, bead, now, absorbOpts{
 			depsMode:   depsFromFieldsIfCarried,
 			seqMode:    seqClearGuarded,
@@ -531,6 +538,7 @@ func (c *CachingStore) Get(id string) (Bead, error) {
 				c.mu.Unlock()
 				return Bead{}, ErrNotFound
 			}
+			notifications := c.appendObservedCloseLocked(nil, fresh)
 			c.absorbFreshLocked(id, fresh, time.Now(), absorbOpts{
 				depsMode:   depsFromFields,
 				seqMode:    seqClearBeadSeqOnly,
@@ -539,6 +547,7 @@ func (c *CachingStore) Get(id string) (Bead, error) {
 			c.markFreshLocked(time.Now())
 			c.updateStatsLocked()
 			c.mu.Unlock()
+			c.notifyChanges(notifications)
 			return fresh, nil
 		}
 		if b, ok := c.beads[id]; ok {
