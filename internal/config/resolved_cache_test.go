@@ -137,6 +137,32 @@ func TestBuildResolvedProviderCache_AllowsValidLegacyBuiltinOptionDefaults(t *te
 	}
 }
 
+func TestBuildResolvedProviderCache_RejectsUnsupportedOpenCodeEffort(t *testing.T) {
+	base := "builtin:opencode"
+	cfg := &City{
+		Providers: map[string]ProviderSpec{
+			"opencode-glm-flash": {
+				Base: &base,
+				OptionDefaults: map[string]string{
+					"effort": "low",
+				},
+			},
+		},
+	}
+
+	err := BuildResolvedProviderCache(cfg)
+	if err == nil {
+		t.Fatal("expected unsupported OpenCode effort to fail cache build")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `provider "opencode-glm-flash" option_defaults`) {
+		t.Fatalf("error = %q, want provider option_defaults context", msg)
+	}
+	if !strings.Contains(msg, `key "effort"`) || !strings.Contains(msg, `value "low" is not a valid choice`) {
+		t.Fatalf("error = %q, want explicit unsupported effort details", msg)
+	}
+}
+
 func TestResolvedProviderCached_DeepCopyIsolatesMutations(t *testing.T) {
 	base := "builtin:codex"
 	cfg := &City{
