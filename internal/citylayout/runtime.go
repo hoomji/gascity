@@ -66,6 +66,27 @@ func ControlDispatcherTraceDefaultPathForRuntimeDirAndName(cityRoot, runtimeDir,
 	return filepath.Join(runtimeDir, ControlDispatcherTraceLogFileName(qualifiedName))
 }
 
+// ControlDispatcherLockFileName returns the per-stream lifetime-flock filename
+// for the follow-mode serve process owned by qualifiedName. The "/" → "--"
+// mapping mirrors ControlDispatcherTraceLogFileName so the stream identity used
+// by the lock, the trace log, and the tmux alias all agree.
+func ControlDispatcherLockFileName(qualifiedName string) string {
+	safe := strings.ReplaceAll(strings.TrimSpace(qualifiedName), "/", "--")
+	if safe == "" {
+		safe = "control-dispatcher"
+	}
+	return "control-dispatcher-" + safe + ".lock"
+}
+
+// ControlDispatcherLockPathFor returns the exclusive per-stream flock path a
+// `gc convoy control --serve --follow` process holds for its lifetime, under
+// cityRoot's canonical runtime root. A second server contending for the same
+// stream opens this file and LOCK_EX|LOCK_NB fails, so it logs one line and
+// exits 0 instead of double-serving the stream.
+func ControlDispatcherLockPathFor(cityRoot, qualifiedName string) string {
+	return filepath.Join(RuntimeDataDir(cityRoot), ControlDispatcherLockFileName(qualifiedName))
+}
+
 // RuntimePacksDir returns the canonical root for pack-owned runtime state.
 func RuntimePacksDir(cityRoot string) string {
 	return RuntimePath(cityRoot, "runtime", "packs")

@@ -511,6 +511,21 @@ func drainWorkflowServeWork(agentCfg config.Agent, cityPath, storePath, workQuer
 }
 
 func runWorkflowServeFollow(agentCfg config.Agent, cityPath, storePath, workQuery string, workEnv map[string]string, stderr io.Writer) error {
+	// One serve process per stream, owned until exit. Two live servers on the
+	// same stream double-process control beads (the 19h duplicate-dispatcher
+	// incident): convoys closed in bursts and mayor wakes were late, lossy and
+	// unreadable. The flock is taken before any observation so a second server
+	// cannot start, drain, or even open the event provider; it logs one line and
+	// exits 0 rather than looking like a crash.
+	held, err := acquireWorkflowServeFollowLock(cityPath, agentCfg.QualifiedName())
+	if err != nil {
+		return err
+	}
+	if !held {
+		fmt.Fprintf(stderr, "gc convoy control --serve: another control-dispatcher already owns the stream lock for %s; exiting\n", agentCfg.QualifiedName()) //nolint:errcheck
+		return nil
+	}
+
 	ep, err := workflowServeOpenEventsProvider(stderr)
 	if err != nil {
 		return err

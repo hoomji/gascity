@@ -106,13 +106,16 @@ func processFanout(store beads.Store, bead beads.Bead, opts ProcessOptions) (Con
 	if mode == "" {
 		mode = "parallel"
 	}
-	if strings.TrimSpace(bead.Metadata[beadmeta.FanoutStateMetadataKey]) == "" {
-		if err := store.SetMetadataBatch(bead.ID, map[string]string{beadmeta.FanoutStateMetadataKey: beadmeta.SpawnStateSpawning}); err != nil {
-			if controllerSpawnBoundaryPending(store, bead.ID, err, opts) {
-				return ControlResult{}, ErrControlPending
-			}
-			return ControlResult{}, fmt.Errorf("%s: recording fanout spawn start: %w", bead.ID, err)
+	if claimed, err := claimFanoutSpawn(store, bead, opts); err != nil {
+		if controllerSpawnBoundaryPending(store, bead.ID, err, opts) {
+			return ControlResult{}, ErrControlPending
 		}
+		return ControlResult{}, fmt.Errorf("%s: recording fanout spawn start: %w", bead.ID, err)
+	} else if !claimed {
+		// Another controller owns this fanout's spawn. Skip rather than
+		// instantiate a second copy of every child; report it pending so the
+		// serve loop backs off and re-reads once the owner persists its state.
+		return ControlResult{}, ErrControlPending
 	}
 	fanoutSinkBlockers := fanoutSinkBlockerIDs(blockerIDs, source.ID)
 
@@ -202,6 +205,37 @@ func processFanout(store beads.Store, bead beads.Bead, opts ProcessOptions) (Con
 		return ControlResult{}, fmt.Errorf("%s: recording fanout state: %w", bead.ID, err)
 	}
 	return ControlResult{Processed: true, Action: "fanout-spawn", Created: totalCreated}, nil
+}
+
+// claimFanoutSpawn transitions a fanout control from unclaimed ("") to
+// "spawning" with a metadata compare-and-set, so the claim-before-acting rule
+// holds under concurrent controllers. The plain SetMetadataBatch this replaced
+// let two `gc convoy control --serve` processes both expand the same fanout,
+// duplicating every child fragment before either could persist "spawned".
+//
+// A bead already carrying a non-empty gc.fanout_state was claimed by an earlier
+// pass; that is the crash-recovery resume path and proceeds without a CAS.
+// Otherwise exactly one caller wins the empty→spawning swap and expands; a
+// loser returns acquired=false and skips. Stores that cannot serve a metadata
+// CAS (a handful of embedding test wrappers, never the production graph store)
+// fall back to the legacy unconditional write, mirroring the capability seam in
+// internal/beads.
+func claimFanoutSpawn(store beads.Store, bead beads.Bead, opts ProcessOptions) (bool, error) {
+	if strings.TrimSpace(bead.Metadata[beadmeta.FanoutStateMetadataKey]) != "" {
+		return true, nil
+	}
+	if writer, ok := beads.MetadataCASWriterFor(store); ok {
+		swapped, err := writer.CompareAndSetMetadataKey(bead.ID, beadmeta.FanoutStateMetadataKey, "", beadmeta.SpawnStateSpawning)
+		if err != nil {
+			return false, err
+		}
+		return swapped, nil
+	}
+	opts.tracef("fanout-claim bead=%s store lacks metadata CAS; falling back to unconditional spawn claim", bead.ID)
+	if err := store.SetMetadataBatch(bead.ID, map[string]string{beadmeta.FanoutStateMetadataKey: beadmeta.SpawnStateSpawning}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func fanoutTargetRef(source beads.Bead, sourceRef string, index int) string {

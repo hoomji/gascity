@@ -209,6 +209,18 @@ func TestControlDispatcherTraceDefaultPathForRuntimeDirAndName(t *testing.T) {
 	})
 }
 
+func TestControlDispatcherLockPathFor(t *testing.T) {
+	if got, want := ControlDispatcherLockPathFor("/city", "control-dispatcher"), "/city/.gc/runtime/control-dispatcher-control-dispatcher.lock"; got != want {
+		t.Fatalf("ControlDispatcherLockPathFor(core) = %q, want %q", got, want)
+	}
+	if got, want := ControlDispatcherLockPathFor("/city", "app/control-dispatcher"), "/city/.gc/runtime/control-dispatcher-app--control-dispatcher.lock"; got != want {
+		t.Fatalf("ControlDispatcherLockPathFor(rig) = %q, want %q", got, want)
+	}
+	if got, want := ControlDispatcherLockPathFor("/city", ""), "/city/.gc/runtime/control-dispatcher-control-dispatcher.lock"; got != want {
+		t.Fatalf("ControlDispatcherLockPathFor(empty) = %q, want %q", got, want)
+	}
+}
+
 func TestTrustedAmbientCityRuntimeDirAcceptsLegacyCityRootAnchor(t *testing.T) {
 	cityRoot := t.TempDir()
 	runtimeDir := filepath.Join(cityRoot, ".gc", "runtime")

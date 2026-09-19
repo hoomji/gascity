@@ -360,7 +360,14 @@ func (s runtimeStateSnapshot) processAlive(sessionName string, processNames []st
 
 func (p paneRuntimeState) processAlive(names map[string]struct{}, processes processSnapshot) bool {
 	if _, ok := names[p.Command]; ok && p.Command != "" {
-		return true
+		// Name-only match is only liveness if the pane's executable still
+		// exists. A pane whose command matched but whose image was unlinked is
+		// a pre-upgrade leftover; falling through lets the PID checks (which
+		// also reject deleted images) decide, so the session is recycled
+		// instead of trusted forever.
+		if p.PID == "" || !processExeDeleted(p.PID) {
+			return true
+		}
 	}
 	if p.PID == "" {
 		return false
@@ -674,7 +681,13 @@ func (s processSnapshot) processMatchesNames(pid string, names map[string]struct
 	if !ok {
 		return false
 	}
-	return processMatchesNameSet(process.Command, process.Args, names)
+	if !processMatchesNameSet(process.Command, process.Args, names) {
+		return false
+	}
+	// A matching name on a process whose executable was unlinked is a stale
+	// pre-upgrade image, not a live agent: it must not satisfy liveness or the
+	// descendant walk keeps the session (and its stream/slot) alive forever.
+	return !processExeDeleted(pid)
 }
 
 func (s processSnapshot) hasDescendantWithNames(pid string, names map[string]struct{}, depth int) bool {

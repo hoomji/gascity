@@ -3335,7 +3335,13 @@ func processMatchesNames(pid string, names []string) bool {
 	if err != nil {
 		return false
 	}
-	return processMatchesNameSet(commPath, string(out), nameSet)
+	if !processMatchesNameSet(commPath, string(out), nameSet) {
+		return false
+	}
+	// A matching name whose executable was unlinked is a pre-upgrade leftover,
+	// not a live agent: report no match so the caller recycles the session and
+	// a fresh binary takes over.
+	return !processExeDeleted(pid)
 }
 
 // hasDescendantWithNames checks if a process has any descendant (child, grandchild, etc.)
@@ -3596,18 +3602,24 @@ func (t *Tmux) IsRuntimeRunning(session string, processNames []string) bool {
 	if err != nil {
 		return false
 	}
-	// Check direct pane command match
-	for _, name := range processNames {
-		if cmd == name {
-			return true
+	// Check direct pane command match. A name match on a pane whose executable
+	// was unlinked (a pre-upgrade image) is NOT liveness: fall through to the
+	// PID-based checks, which reject deleted images, so ensureFreshSession
+	// recycles the stale session instead of treating it as an existing runtime.
+	pid, pidErr := t.GetPanePID(session)
+	paneExeDeleted := pidErr == nil && pid != "" && processExeDeleted(pid)
+	if !paneExeDeleted {
+		for _, name := range processNames {
+			if cmd == name {
+				return true
+			}
 		}
 	}
 	// Check for child processes if pane command is a shell or unrecognized.
 	// This handles:
 	// - Agents started with "bash -c 'export ... && agent ...'"
 	// - Claude Code showing version as argv[0] (e.g., "2.1.29")
-	pid, err := t.GetPanePID(session)
-	if err != nil || pid == "" {
+	if pidErr != nil || pid == "" {
 		return false
 	}
 	// If pane command is a shell, check descendants
