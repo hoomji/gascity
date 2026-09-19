@@ -179,6 +179,10 @@ TOTAL_EXPIRED_ISSUES_CLOSED=0
 TOTAL_EXPIRED_ISSUES_SKIPPED=0
 TOTAL_SESSIONS_PRUNED=0
 SESSION_PRUNE_ATTEMPTED=0
+# Set when Step 3's husk purge fails. The final exit code is derived from this
+# so the order fails visibly instead of the controller seeing a clean
+# `order.completed` every 30m while nothing is ever purged.
+PURGE_FAILED=0
 ANOMALIES=""
 
 sanitize_output() {
@@ -982,15 +986,21 @@ while IFS= read -r DB; do
         fi
     fi
 
-    # Step 3: Purge — delete closed wisps past purge_age.
+    # Step 3: Purge — delete closed wisps past purge_age. The protection
+    # predicate is NOT EXISTS rather than NOT IN so the correlated
+    # wisp_dependencies probe is evaluated per outer row and never degrades to
+    # an all-or-nothing NULL comparison. closed_at is stored in UTC, so the
+    # boundary is computed with UTC_TIMESTAMP(); NOW() follows the server's
+    # local zone (EDT here) and skewed eligibility four hours late.
     get_sql_count "$DB" "closed wisp purge" "
         SELECT COUNT(*) FROM \`$DB\`.wisps
         WHERE status = 'closed'
-        AND closed_at < DATE_SUB(NOW(), INTERVAL $PURGE_AGE_H HOUR)
-        AND id NOT IN (
-            SELECT DISTINCT d.depends_on_wisp_id FROM \`$DB\`.wisp_dependencies d
+        AND closed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL $PURGE_AGE_H HOUR)
+        AND NOT EXISTS (
+            SELECT 1 FROM \`$DB\`.wisp_dependencies d
             INNER JOIN \`$DB\`.wisps child_wisp ON d.issue_id = child_wisp.id
-            WHERE d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
+            WHERE d.depends_on_wisp_id = wisps.id
+            AND d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
             AND child_wisp.status IN ('open', 'hooked', 'in_progress')
         )
     "
@@ -1000,11 +1010,12 @@ while IFS= read -r DB; do
         if run_sql_change "$DB" "purging closed wisps" "
             DELETE FROM \`$DB\`.wisps
             WHERE status = 'closed'
-            AND closed_at < DATE_SUB(NOW(), INTERVAL $PURGE_AGE_H HOUR)
-            AND id NOT IN (
-                SELECT DISTINCT d.depends_on_wisp_id FROM \`$DB\`.wisp_dependencies d
+            AND closed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL $PURGE_AGE_H HOUR)
+            AND NOT EXISTS (
+                SELECT 1 FROM \`$DB\`.wisp_dependencies d
                 INNER JOIN \`$DB\`.wisps child_wisp ON d.issue_id = child_wisp.id
-                WHERE d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
+                WHERE d.depends_on_wisp_id = wisps.id
+                AND d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
                 AND child_wisp.status IN ('open', 'hooked', 'in_progress')
             )
         "; then
@@ -1012,6 +1023,8 @@ while IFS= read -r DB; do
             DB_PURGED=$((DB_PURGED + PURGED_ROWS))
             TOTAL_PURGED=$((TOTAL_PURGED + PURGED_ROWS))
             DB_MUTATIONS=$((DB_MUTATIONS + PURGED_ROWS))
+        else
+            PURGE_FAILED=1
         fi
     fi
 
@@ -1515,3 +1528,11 @@ fi
 
 maintenance_done "$SUMMARY"
 echo "reaper: $SUMMARY"
+
+# Item 1: a Step 3 purge failure must fail the order, not just record an
+# anomaly. The controller only sees this process's exit status, so exiting 0
+# after a failed purge left the husk backlog growing silently. Exit after the
+# report and escalation so the failure is still observable.
+if [ "$PURGE_FAILED" -ne 0 ]; then
+    exit 1
+fi

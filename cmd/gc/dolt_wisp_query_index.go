@@ -23,12 +23,16 @@ import (
 //   - idx_wisps_status_type: composite covering the most common hot filter
 //     (status='open' AND issue_type='message') so the outer WHERE can use a
 //     single range scan instead of filtering two separate index rows.
+//   - idx_wisps_status_closed_at: composite covering the reaper's closed-husk
+//     purge scan (status='closed' AND closed_at < cutoff) so purging does not
+//     full-scan the wisps table. Mirrors schemas/wisps-composite-index.
 //
 // These belong upstream in the beads schema migrations; this gc-side guard
 // applies them immediately without waiting for a beads version bump.
 var wispQueryIndexStatements = []string{
 	"CREATE INDEX IF NOT EXISTS idx_wisp_labels_issue_id ON wisp_labels(issue_id)",
 	"CREATE INDEX IF NOT EXISTS idx_wisps_status_type ON wisps(status, issue_type)",
+	"CREATE INDEX IF NOT EXISTS idx_wisps_status_closed_at ON wisps(status, closed_at)",
 }
 
 // applyWispQueryIndexes creates the missing wisp query performance indexes on
