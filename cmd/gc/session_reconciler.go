@@ -4142,8 +4142,26 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 			// restart-handoff machinery as `gc runtime request-restart`.
 			// See #1893 (controller: alive on_demand session ignores
 			// bd update --assignee).
-			if decision.RequiresFreshCycle && info.WakeMode == "fresh" {
-				if ran, fold := cycleAliveSessionForFreshReassign(infoByID[target.info.ID], target.tp, sp, store, cfg, cb, name, decision.AssignedWorkBeadID, clk.Now(), stdout, stderr, trace); ran {
+			//
+			// Floor-lane tier cycle: a min_active_sessions floor lane is
+			// spawned with no trigger bead, so it ran at the provider default.
+			// When a sling later binds a trigger whose opt_<key> overrides
+			// differ from that launch, the alive lane must be recycled before
+			// it is handed the work — otherwise the warm-reuse branch keeps the
+			// untiered process and the option is silently dropped. The same
+			// restart-handoff machinery applies; ComputeAwakeSet cannot see
+			// this case because the floor lane has no recorded current bead.
+			freshCycleBeadID := strings.TrimSpace(decision.AssignedWorkBeadID)
+			requiresFreshCycle := decision.RequiresFreshCycle
+			if !requiresFreshCycle && info.WakeMode == "fresh" &&
+				alivePoolSessionNeedsTriggerOptionCycle(store, target.tp, info, decision.AssignedWorkBeadID, rigStores) {
+				requiresFreshCycle = true
+				if freshCycleBeadID == "" {
+					freshCycleBeadID = strings.TrimSpace(info.TriggerBeadID)
+				}
+			}
+			if requiresFreshCycle && info.WakeMode == "fresh" {
+				if ran, fold := cycleAliveSessionForFreshReassign(infoByID[target.info.ID], target.tp, sp, store, cfg, cb, name, freshCycleBeadID, clk.Now(), stdout, stderr, trace); ran {
 					if fold != nil {
 						tick.apply(target.info.ID, fold)
 					}
@@ -6505,6 +6523,66 @@ func resolveTriggerBeadOptionOverrides(store beads.Store, rp *config.ResolvedPro
 		return nil
 	}
 	return overrides
+}
+
+// alivePoolSessionNeedsTriggerOptionCycle reports whether an ALIVE pool lane
+// must be recycled so its bound trigger bead's opt_<key> overrides reach the
+// launch line. It exists for the min_active_sessions>=1 floor lane: the floor
+// restore spawns the lane with no trigger bead, so its running process was
+// launched at the provider default. A sling that later binds a trigger carrying
+// opt_<key> values therefore finds an already-live lane whose rendered options
+// differ — warm reuse would hand the bead to an untiered process, because
+// dispatch options are deliberately excluded from started_config_hash and are
+// only rendered by buildPreparedStart at (re)launch time.
+//
+// The signal is the same identity divergence ComputeAwakeSet uses for a bead
+// reassign: the running process was launched for a bead other than the one now
+// bound (or for none at all, so CurrentlyProcessingBeadID is empty). Requiring
+// a non-empty resolved override keeps a plain optionless sling from cycling a
+// lane, and a template_override that already pins the same value is left alone
+// because the trigger adds nothing the launch line lacks. Scoped to
+// wake_mode="fresh" pool lanes to mirror cycleAliveSessionForFreshReassign:
+// a resume lane's conversation is preserved and must not be discarded here.
+func alivePoolSessionNeedsTriggerOptionCycle(
+	store beads.Store,
+	tp TemplateParams,
+	info sessionpkg.Info,
+	assignedWorkBeadID string,
+	rigStores map[string]beads.Store,
+) bool {
+	if info.WakeMode != "fresh" || !isPoolManagedSessionInfo(info) || isNamedSessionInfo(info) {
+		return false
+	}
+	rp := tp.ResolvedProvider
+	if rp == nil || len(rp.OptionsSchema) == 0 {
+		return false
+	}
+	// Prefer the lane's own bound trigger; fall back to the assigned-work
+	// anchor so the cycle still fires on the tick the binding lands, when the
+	// session snapshot can still predate the trigger stamp.
+	triggerID := strings.TrimSpace(info.TriggerBeadID)
+	if triggerID == "" {
+		triggerID = strings.TrimSpace(assignedWorkBeadID)
+	}
+	if triggerID == "" {
+		return false
+	}
+	// The running process was launched for this exact bead, so its requested
+	// options (or their absence) are already in effect.
+	if strings.TrimSpace(info.CurrentlyProcessingBeadID) == triggerID {
+		return false
+	}
+	overrides := resolveTriggerBeadOptionOverrides(store, rp, triggerID, rigStores)
+	if len(overrides) == 0 {
+		return false
+	}
+	sessionOverrides := parseSessionTemplateOverridesForLaunch(info)
+	for key, value := range overrides {
+		if strings.TrimSpace(sessionOverrides[key]) != value {
+			return true
+		}
+	}
+	return false
 }
 
 // readTriggerBeadAcrossStores reads triggerID from the store that owns its id
