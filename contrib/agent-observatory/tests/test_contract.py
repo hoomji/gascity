@@ -1,0 +1,84 @@
+"""Tests for the normalized record import contract."""
+
+from __future__ import annotations
+
+import unittest
+
+try:
+    from . import support
+except ImportError:  # pragma: no cover - depends on discovery invocation
+    import support
+
+from agent_observatory.contract import payload_hash, record_identity, validate_record
+from agent_observatory.errors import ContractError
+
+
+class ContractTest(unittest.TestCase):
+    def test_accepts_valid_record_and_fills_missing_optional_fields_with_none(self):
+        record = validate_record(support.make_record())
+        self.assertEqual(record["title"], None)
+        self.assertEqual(record["text"], None)
+        self.assertEqual(record["usage"], None)
+        self.assertEqual(record["exit_code"], None)
+
+    def test_required_field_missing_is_rejected_with_line_context(self):
+        raw = support.make_record()
+        del raw["event_id"]
+        with self.assertRaises(ContractError) as caught:
+            validate_record(raw, "events.jsonl", 7)
+        self.assertIn("events.jsonl:7", str(caught.exception))
+        self.assertIn("event_id", str(caught.exception))
+
+    def test_wrong_type_is_rejected(self):
+        raw = support.make_record(duration_ms="12")
+        with self.assertRaises(ContractError):
+            validate_record(raw, "events.jsonl", 3)
+
+    def test_bool_is_not_accepted_as_integer(self):
+        raw = support.make_record(exit_code=True)
+        with self.assertRaises(ContractError):
+            validate_record(raw, "events.jsonl", 1)
+
+    def test_unknown_top_level_keys_are_dropped_so_they_stay_null(self):
+        raw = support.make_record(secret_token="oops", raw_reasoning="hidden")
+        record = validate_record(raw)
+        self.assertNotIn("secret_token", record)
+        self.assertNotIn("raw_reasoning", record)
+
+    def test_unsupported_schema_version_is_rejected(self):
+        raw = support.make_record(schema_version="999")
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
+    def test_non_iso_timestamp_is_rejected(self):
+        raw = support.make_record(timestamp="yesterday")
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
+    def test_usage_missing_versus_zero_is_preserved(self):
+        missing = validate_record(support.make_record())
+        self.assertIsNone(missing["usage"])
+
+        zeroed = validate_record(support.make_record(usage={"input_tokens": 0}))
+        self.assertEqual(zeroed["usage"]["input_tokens"], 0)
+        self.assertIsNone(zeroed["usage"]["output_tokens"])
+
+    def test_negative_usage_is_rejected(self):
+        raw = support.make_record(usage={"input_tokens": -1})
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
+    def test_identity_ignores_title_and_text(self):
+        first = validate_record(support.make_record(title="alpha", text="one"))
+        second = validate_record(support.make_record(title="beta", text="two"))
+        self.assertEqual(record_identity(first), record_identity(second))
+        self.assertNotEqual(payload_hash(first), payload_hash(second))
+
+    def test_payload_hash_is_stable_for_identical_evidence(self):
+        first = validate_record(support.make_record(command="ls", exit_code=0))
+        second = validate_record(support.make_record(command="ls", exit_code=0))
+        self.assertEqual(payload_hash(first), payload_hash(second))
+
+
+if __name__ == "__main__":
+    unittest.main()
