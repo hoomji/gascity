@@ -112,6 +112,28 @@ class CliTest(unittest.TestCase):
         self.assertEqual(replayed.returncode, 0, replayed.stderr)
         self.assertTrue(json.loads(replayed.stdout)["deduplicated"])
 
+    def test_build_request_accepts_collision_free_json_session_identity(self):
+        fixture = support.write_jsonl(
+            os.path.join(self.tmp.name, "pipes.jsonl"),
+            [support.make_record(event_id="e1", city_id="c|h", host_id="x")],
+        )
+        db = os.path.join(self.tmp.name, "pipes.db")
+        self.assertEqual(run_cli(["import-jsonl", "--db", db, fixture]).returncode, 0)
+        state_path = os.path.join(self.tmp.name, "state.json")
+        with open(state_path, "w", encoding="utf-8") as handle:
+            json.dump({"summary": "pipe identity"}, handle)
+        built = run_cli(
+            [
+                "build-request",
+                "--db", db,
+                "--state", state_path,
+                "--subject-kind", "session",
+                "--session", '["c|h","x","codex","session-1"]',
+            ]
+        )
+        self.assertEqual(built.returncode, 0, built.stderr)
+        self.assertEqual(json.loads(built.stdout)["model"], "jev-1.13.0")
+
     def test_malformed_file_fails_with_line_context(self):
         bad = os.path.join(self.tmp.name, "bad.jsonl")
         with open(bad, "w", encoding="utf-8") as handle:

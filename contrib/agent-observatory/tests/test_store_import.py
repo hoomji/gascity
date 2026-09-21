@@ -143,13 +143,45 @@ class StoreImportTest(unittest.TestCase):
         with ObservatoryStore(self.db_path) as reopened:
             self.assertEqual(reopened.schema_version(), ObservatoryStore.SCHEMA_VERSION)
 
+    def test_events_are_ordered_chronologically_across_offsets_and_fractions(self):
+        path = self._write(
+            "time.jsonl",
+            [
+                # Lexically this ".5Z" string sorts before the bare "Z" string,
+                # but it is later in time.
+                support.make_record(event_id="e1", timestamp="2026-09-21T10:00:00.5Z"),
+                support.make_record(event_id="e2", timestamp="2026-09-21T10:00:00Z"),
+                # Lexically this "09:" string sorts first, but -05:00 makes it
+                # 14:00 UTC, the latest of the three.
+                support.make_record(event_id="e3", timestamp="2026-09-21T09:00:00-05:00"),
+            ],
+        )
+        with ObservatoryStore(self.db_path) as store:
+            store.import_jsonl(path)
+            ordered = store.session_events(("city-a", "host-a", "codex", "session-1"))
+            self.assertEqual([event["event_id"] for event in ordered], ["e2", "e1", "e3"])
+            self.assertEqual([event["event_id"] for event in store.iter_events()], ["e2", "e1", "e3"])
+
+    def test_raw_timestamp_provenance_is_stored(self):
+        path = self._write(
+            "raw.jsonl",
+            [support.make_record(event_id="e1", timestamp="2026-09-21T12:00:00.5+02:00")],
+        )
+        with ObservatoryStore(self.db_path) as store:
+            store.import_jsonl(path)
+            event = store.get_event(("city-a", "host-a", "codex", "session-1", "e1"))
+            self.assertEqual(event["observed_timestamp"], "2026-09-21T12:00:00.5+02:00")
+            self.assertEqual(event["timestamp"], "2026-09-21T10:00:00.500000Z")
+
     def test_unknown_future_schema_version_is_rejected(self):
         with ObservatoryStore(self.db_path):
             pass
         conn = sqlite3.connect(self.db_path)
-        conn.execute("PRAGMA user_version = 999")
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute("PRAGMA user_version = 999")
+            conn.commit()
+        finally:
+            conn.close()
         with self.assertRaises(SchemaVersionError):
             ObservatoryStore(self.db_path)
 

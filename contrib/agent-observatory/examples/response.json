@@ -1,12 +1,12 @@
 {
   "answers": {
     "concurrency_or_race_risk": {
-      "type": "Noul",
-      "value": 0.25
+      "type": "noul",
+      "noul": 0.25
     },
     "measurement_or_telemetry": {
-      "type": "Noul",
-      "value": 0.25
+      "type": "noul",
+      "noul": 0.25
     },
     "primary_intent": {
       "confidence": 0.9,
@@ -21,16 +21,16 @@
         "test_lint_build_ci": 0.0,
         "unknown": 0.0
       },
-      "type": "Choice",
-      "value": "bugfix"
+      "type": "choice",
+      "choice": "bugfix"
     },
     "requires_runtime_provisioning": {
-      "type": "Noul",
-      "value": 0.25
+      "type": "noul",
+      "noul": 0.25
     },
     "review_heavy": {
-      "type": "Noul",
-      "value": 0.25
+      "type": "noul",
+      "noul": 0.25
     },
     "scope": {
       "confidence": 0.9,
@@ -39,12 +39,12 @@
         "small": 1.0,
         "unknown": 0.0
       },
-      "type": "Choice",
-      "value": "small"
+      "type": "choice",
+      "choice": "small"
     },
     "security_sensitive": {
-      "type": "Noul",
-      "value": 0.25
+      "type": "noul",
+      "noul": 0.25
     }
   },
   "model": "jev-1.13.0",

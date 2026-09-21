@@ -12,12 +12,14 @@ Strictness rules:
 * ``bool`` is never accepted where an integer is expected;
 * unknown keys are dropped -- they stay NULL in the projection rather than being
   silently promoted to a known column;
-* timestamps must parse as ISO-8601.
+* timestamps must be timezone-aware ISO-8601, normalized to UTC microseconds
+  for ordering and hashing, with the raw input retained as provenance;
+* ``duration_ms`` is rejected when negative.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .canonical import canonical_hash, event_identity
@@ -76,12 +78,27 @@ def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _validate_timestamp(value: str, source_path: str | None, line_number: int | None) -> None:
-    candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
+def _normalize_timestamp(value: str, source_path: str | None, line_number: int | None) -> str:
+    """Validate an ISO-8601 timestamp and return a canonical UTC string.
+
+    Timestamps **must** carry an explicit UTC offset (or ``Z``). A naive
+    timestamp is rejected because ``fromisoformat`` would otherwise accept it,
+    leaving its timezone ambiguous. The returned form is UTC at microsecond
+    precision so plain string ordering equals chronological ordering even for
+    mixed offsets and mixed fractional widths.
+    """
+    candidate = value[:-1] + "+00:00" if value.endswith(("Z", "z")) else value
     try:
-        datetime.fromisoformat(candidate)
+        parsed = datetime.fromisoformat(candidate)
     except ValueError as exc:
         raise ContractError(f"timestamp is not ISO-8601: {value!r}", source_path, line_number) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ContractError(
+            f"timestamp must include a UTC offset or Z (timezone-naive is ambiguous): {value!r}",
+            source_path,
+            line_number,
+        )
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def validate_record(
@@ -121,7 +138,11 @@ def validate_record(
             line_number,
         )
 
-    _validate_timestamp(normalized["timestamp"], source_path, line_number)
+    # ``timestamp`` becomes the canonical UTC form used for ordering and hashing;
+    # ``observed_timestamp`` preserves the exact input string as provenance.
+    raw_timestamp = normalized["timestamp"]
+    normalized["observed_timestamp"] = raw_timestamp
+    normalized["timestamp"] = _normalize_timestamp(raw_timestamp, source_path, line_number)
 
     for field in OPTIONAL_STRING_FIELDS:
         value = raw.get(field)
@@ -144,6 +165,12 @@ def validate_record(
         if not _is_int(value):
             raise ContractError(
                 f"field {field!r} must be an integer or null, got {type(value).__name__}",
+                source_path,
+                line_number,
+            )
+        if field == "duration_ms" and value < 0:
+            raise ContractError(
+                f"field {field!r} must be nonnegative, got {value!r}",
                 source_path,
                 line_number,
             )

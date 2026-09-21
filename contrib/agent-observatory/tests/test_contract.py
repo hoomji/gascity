@@ -55,6 +55,33 @@ class ContractTest(unittest.TestCase):
         with self.assertRaises(ContractError):
             validate_record(raw)
 
+    def test_timezone_naive_timestamp_is_rejected(self):
+        raw = support.make_record(timestamp="2026-09-21T10:00:00")
+        with self.assertRaises(ContractError) as caught:
+            validate_record(raw)
+        self.assertIn("timezone", str(caught.exception).lower())
+
+    def test_timestamp_is_normalized_to_utc_microseconds(self):
+        record = validate_record(support.make_record(timestamp="2026-09-21T12:00:00.5+02:00"))
+        self.assertEqual(record["timestamp"], "2026-09-21T10:00:00.500000Z")
+
+    def test_observed_timestamp_provenance_is_preserved(self):
+        original = "2026-09-21T12:00:00.5+02:00"
+        record = validate_record(support.make_record(timestamp=original))
+        self.assertEqual(record["observed_timestamp"], original)
+        self.assertNotEqual(record["timestamp"], original)
+
+    def test_offset_equivalent_timestamps_hash_identically(self):
+        first = validate_record(support.make_record(timestamp="2026-09-21T12:00:00+02:00"))
+        second = validate_record(support.make_record(timestamp="2026-09-21T10:00:00Z"))
+        self.assertEqual(first["timestamp"], second["timestamp"])
+        self.assertEqual(payload_hash(first), payload_hash(second))
+
+    def test_negative_duration_is_rejected(self):
+        raw = support.make_record(duration_ms=-1)
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
     def test_usage_missing_versus_zero_is_preserved(self):
         missing = validate_record(support.make_record())
         self.assertIsNone(missing["usage"])

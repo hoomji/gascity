@@ -20,6 +20,7 @@ from .canonical import (
     canonical_hash,
     canonical_json,
     event_snapshot_hash,
+    identity_key,
     sha256_bytes,
     session_snapshot_hash,
 )
@@ -36,9 +37,13 @@ from .errors import (
     SchemaVersionError,
 )
 
-DB_SCHEMA_VERSION = 1
+# Bump when the projection schema changes. The database is derived and
+# rebuildable, so an older schema is rejected rather than migrated in place.
+DB_SCHEMA_VERSION = 2
 
-_EVENT_COLUMNS = (
+# Normalized record fields, in table order. ``observed_timestamp`` is not here:
+# it is derived provenance (the raw input string), not part of the payload hash.
+_DATA_COLUMNS = (
     "city_id",
     "host_id",
     "provider",
@@ -59,11 +64,18 @@ _EVENT_COLUMNS = (
     "parent_session_id",
     "bead_id",
     "formula_id",
+)
+
+# Derived provenance: payload hash plus the exact source of the observation.
+_PROVENANCE_COLUMNS = (
     "payload_hash",
     "source_path",
     "source_sha256",
     "source_line",
+    "observed_timestamp",
 )
+
+_EVENT_COLUMNS = _DATA_COLUMNS + _PROVENANCE_COLUMNS
 
 _SCHEMA_STATEMENTS = (
     """
@@ -118,6 +130,7 @@ _SCHEMA_STATEMENTS = (
         source_path TEXT NOT NULL,
         source_sha256 TEXT NOT NULL,
         source_line INTEGER NOT NULL,
+        observed_timestamp TEXT,
         PRIMARY KEY (city_id, host_id, provider, session_id, event_id)
     )
     """,
@@ -177,11 +190,6 @@ _SCHEMA_STATEMENTS = (
     """,
 )
 
-# The first 20 event columns are the normalized record fields; the remaining four
-# are derived provenance. Keeping the split explicit avoids column-order drift.
-_DATA_COLUMNS = _EVENT_COLUMNS[:20]
-
-
 @dataclass
 class ImportResult:
     """Outcome of one JSONL import."""
@@ -212,7 +220,11 @@ class ObservatoryStore:
         self._conn = sqlite3.connect(self.path, isolation_level=None)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
+        try:
+            self._ensure_schema()
+        except BaseException:
+            self._conn.close()
+            raise
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -336,7 +348,7 @@ class ObservatoryStore:
             if existing["payload_hash"] != digest:
                 raise ImportConflictError(
                     "refusing to overwrite event "
-                    f"{'|'.join(identity)} (existing payload differs); "
+                    f"{identity_key(identity)} (existing payload differs); "
                     f"source {source_path}:{source_line}"
                 )
             return True
@@ -366,15 +378,16 @@ class ObservatoryStore:
                 ),
             )
         self._conn.execute(
-            "INSERT INTO events(city_id, host_id, provider, session_id, event_id, timestamp, "
-            "kind, title, text, tool_name, tool_call_id, command, exit_code, duration_ms, "
-            "model, repo, commit_sha, parent_session_id, bead_id, formula_id, payload_hash, "
-            "source_path, source_sha256, source_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            tuple(
-                [record.get(column) for column in _DATA_COLUMNS]
-                + [digest, source_path, source_sha256, source_line]
-            ),
+            f"INSERT INTO events({', '.join(_EVENT_COLUMNS)}) "
+            f"VALUES ({', '.join('?' for _ in _EVENT_COLUMNS)})",
+            [
+                *(record.get(column) for column in _DATA_COLUMNS),
+                digest,
+                source_path,
+                source_sha256,
+                source_line,
+                record.get("observed_timestamp"),
+            ],
         )
         usage = record.get("usage")
         if usage is not None:
@@ -439,7 +452,7 @@ class ObservatoryStore:
         row = self.get_event(tuple(session_key) + (event_id,))
         if row is None:
             raise ContractError(
-                f"event {'|'.join(tuple(session_key) + (event_id,))} not found in projection"
+                f"event {identity_key(tuple(session_key) + (event_id,))} not found in projection"
             )
         return event_snapshot_hash(tuple(session_key) + (event_id,), row["payload_hash"])
 
@@ -447,7 +460,7 @@ class ObservatoryStore:
         events = self.session_events(session_key)
         if not events:
             raise ContractError(
-                f"session {'|'.join(session_key)} has no events in projection"
+                f"session {identity_key(session_key)} has no events in projection"
             )
         return session_snapshot_hash(
             session_key, [(event["event_id"], event["payload_hash"]) for event in events]
@@ -559,7 +572,7 @@ class ObservatoryStore:
                         classification_id,
                         answer["question_id"],
                         answer["question_type"],
-                        canonical_json(answer["value"]),
+                        canonical_json(answer["answer"]),
                     ),
                 )
             self._conn.execute("COMMIT")
@@ -589,7 +602,7 @@ class ObservatoryStore:
             {
                 "question_id": answer["question_id"],
                 "question_type": answer["question_type"],
-                "value": json.loads(answer["value_json"]),
+                "answer": json.loads(answer["value_json"]),
             }
             for answer in answers
         ]

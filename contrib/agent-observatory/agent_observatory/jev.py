@@ -81,7 +81,6 @@ def build_request(
 
     body = {
         "model": taxonomy.model,
-        "instructions": taxonomy.instructions,
         "state": state,
         "questions": taxonomy.as_request_questions(),
     }
@@ -173,10 +172,12 @@ def _validate_usage(usage: Any) -> dict[str, int]:
 def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[str, Any]]:
     """Validate *response* against the request body; return normalized answers.
 
-    Checks the model string, usage counters, question ids and types, Choice
-    probability distributions (all options present, finite, in [0,1], summing to
-    ~1) with confidence in [0,1], and Noul values in [0,1] with no confidence
-    field.
+    Follows the real ``/v1/systemone`` response shape: answers use lowercase
+    ``type`` values and carry ``choice``/``noul`` fields (never ``value``).
+    Checks the model string, usage counters, question ids and types, choice
+    probability distributions (all criteria options present, finite, in [0,1],
+    summing to ~1) with confidence in [0,1], and noul probabilities in [0,1]
+    with no confidence field.
     """
     if not isinstance(response, dict):
         raise ResponseError("response must be a JSON object")
@@ -219,7 +220,7 @@ def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[
                 {
                     "question_id": question_id,
                     "question_type": CHOICE,
-                    "value": _validate_choice_answer(question_id, question, answer),
+                    "answer": _validate_choice_answer(question_id, question, answer),
                 }
             )
         elif question_type == NOUL:
@@ -227,7 +228,7 @@ def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[
                 {
                     "question_id": question_id,
                     "question_type": NOUL,
-                    "value": _validate_noul_answer(question_id, answer),
+                    "answer": _validate_noul_answer(question_id, answer),
                 }
             )
         else:
@@ -236,14 +237,15 @@ def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[
 
 
 def _validate_choice_answer(question_id: str, question: dict[str, Any], answer: dict[str, Any]) -> dict[str, Any]:
-    options = question.get("options")
-    if not isinstance(options, list) or not options:
-        raise ResponseError(f"stored Choice question {question_id!r} has no options")
+    criteria = question.get("criteria")
+    if not isinstance(criteria, dict) or not criteria:
+        raise ResponseError(f"stored choice question {question_id!r} has no criteria map")
+    options = list(criteria)
 
-    value = answer.get("value")
+    value = answer.get("choice")
     if value not in options:
         raise ResponseError(
-            f"answer {question_id!r} value {value!r} is not one of {options!r}"
+            f"answer {question_id!r} choice {value!r} is not one of {options!r}"
         )
 
     confidence = answer.get("confidence")
@@ -284,7 +286,7 @@ def _validate_choice_answer(question_id: str, question: dict[str, Any], answer: 
         )
 
     return {
-        "value": value,
+        "choice": value,
         "confidence": float(confidence),
         "probabilities": normalized_probabilities,
     }
@@ -293,12 +295,12 @@ def _validate_choice_answer(question_id: str, question: dict[str, Any], answer: 
 def _validate_noul_answer(question_id: str, answer: dict[str, Any]) -> dict[str, Any]:
     if "confidence" in answer:
         raise ResponseError(f"Noul answer {question_id!r} must not carry a confidence field")
-    value = answer.get("value")
+    value = answer.get("noul")
     if not _is_finite_number(value) or not (0.0 <= float(value) <= 1.0):
         raise ResponseError(
-            f"Noul answer {question_id!r} value must be a finite number in [0,1], got {value!r}"
+            f"Noul answer {question_id!r} noul must be a finite number in [0,1], got {value!r}"
         )
-    return {"value": float(value)}
+    return {"noul": float(value)}
 
 
 @dataclass

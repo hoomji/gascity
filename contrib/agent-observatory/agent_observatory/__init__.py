@@ -14,7 +14,7 @@ Beads and events remain the authoritative record; the SQLite file is only a
 derived analytical projection.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .contract import SCHEMA_VERSION, validate_record
 from .errors import (
