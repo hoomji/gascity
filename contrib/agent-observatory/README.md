@@ -39,6 +39,7 @@ contrib/agent-observatory/
     response.json            synthetic saved Jev response
     demo.sh                  end-to-end CLI demo into a temp SQLite file
   tests/                     unittest suite
+    fixtures/jev_smoke_contract.json  synthetic-only pinned real wire exchange
   README.md
 ```
 
@@ -53,8 +54,9 @@ python3 -m agent_observatory import-jsonl --db /tmp/obs.db examples/synthetic_ev
 python3 -m agent_observatory report --db /tmp/obs.db
 ```
 
-Requires Python 3.9+ (stdlib only; tested on CPython 3.14). No new pip
-dependencies.
+Requires Python 3.11+ (stdlib only; tested on CPython 3.14). Arbitrary
+fractional-second ISO-8601 parsing uses `datetime.fromisoformat` support added
+in 3.11. No new pip dependencies.
 
 ## 1. Normalized JSONL import contract
 
@@ -68,7 +70,7 @@ Each non-empty line is one JSON object. `schema_version` is `"1.0"`.
 | `provider` | yes | string | Runtime/provider, e.g. `codex`, `claude`, `dsh`. |
 | `session_id` | yes | string | Provider session id. |
 | `event_id` | yes | string | Event id, unique within the canonical identity. |
-| `timestamp` | yes | string | ISO-8601. |
+| `timestamp` | yes | string | Timezone-aware ISO-8601; normalized to UTC microseconds. |
 | `kind` | yes | string | Event kind (`command`, `tool_call`, `tool_result`, ...). |
 | `title` | no | string | Human title. Never part of identity. |
 | `text` | no | string | Observed text. Never part of identity; treated only as data. |
@@ -76,7 +78,7 @@ Each non-empty line is one JSON object. `schema_version` is `"1.0"`.
 | `tool_call_id` | no | string | Links a result to its invocation. |
 | `command` | no | string | Command text. Never executed. |
 | `exit_code` | no | integer | Observed exit code; missing means unknown. |
-| `duration_ms` | no | integer | Observed duration. |
+| `duration_ms` | no | integer | Observed duration; must be nonnegative. |
 | `model` | no | string | Model that produced the event. |
 | `repo` | no | string | Repository. |
 | `commit_sha` | no | string | Commit. |
@@ -100,7 +102,12 @@ the tool executed, and does not prove success. Only a result event with an
 ### Strictness and safety
 
 - Required fields must be present, non-empty strings; `bool` is never accepted
-  as an integer; `timestamp` must parse as ISO-8601.
+  as an integer.
+- **Timestamps must be timezone-aware** (an explicit offset or `Z`). Naive
+  timestamps are rejected because their timezone is ambiguous. The stored
+  `timestamp` is normalized to UTC at microsecond precision so plain string
+  ordering equals chronological ordering across mixed offsets and mixed
+  fractional widths; `duration_ms`, when present, must be nonnegative.
 - Optional fields, when present and non-null, must have the declared type.
 - **Unknown keys are dropped** and stay NULL in the projection. There is no
   column for secrets or raw chain-of-thought, and none is stored by default.
@@ -108,7 +115,11 @@ the tool executed, and does not prove success. Only a result event with an
   -- never `title` or `text`. The same event id under a different provider or
   host is a different event.
 - Source `source_path`, `source_sha256`, and 1-based `source_line` are preserved
-  for every event.
+  for every event. The exact input `timestamp` is retained separately as
+  `observed_timestamp` provenance; it is not part of the payload hash.
+- Identity components are unrestricted strings, so reports and CLI records use a
+  collision-free JSON-array encoding of the identity tuple (for example
+  `["city-a","host-a","codex","session-1"]`) rather than a delimiter join.
 - Instruction-like text inside `text` or payloads is stored and reported only as
   data; it never becomes instructions to any model.
 
@@ -146,20 +157,28 @@ projection are byte-identical. It contains:
 
 - `coverage`: `sessions`, `events`, `by_provider`, `by_kind`, and
   `missing_fields` NULL counts.
-- `tool_counts`: events per `tool_name`.
-- `command_categories`: counts for every category across distinct
-  command-bearing invocations. Result events are never counted as invocations.
-  Recognition is conservative and non-executing; compound commands may have
-  multiple categories; anything unrecognized falls back to `unknown`. Categories:
-  `search`, `read`, `edit`, `test`, `lint`, `typecheck`, `build`, `package`,
-  `git`, `worktree`, `ci`, `review`, `dispatch`, `wait`, `unknown`.
-- `observed_outcomes`: `success`/`failure`/`unknown` by category and in total.
-  Missing `exit_code` is `unknown`.
+- `tool_counts`: **invocation-only** counts per `tool_name`. A result event that
+  repeats a tool name never adds a count.
+- `command_categories`: counts for every category across distinct invocations.
+  Result events and arbitrary prose records are never promoted to invocations,
+  even when they contain a command. Recognition is conservative and
+  non-executing; compound commands may have multiple categories; anything
+  unrecognized falls back to `unknown`. Categories: `search`, `read`, `edit`,
+  `test`, `lint`, `typecheck`, `build`, `package`, `git`, `worktree`, `ci`,
+  `review`, `dispatch`, `wait`, `unknown`.
+- `observed_outcomes`: `success`/`failure`/`unknown` by category and in total,
+  counted once per invocation. An invocation's outcome is paired to a result by
+  `(session, tool_call_id)` and inherits the invocation's categories even when
+  the result carries no command. A request-only event stays `unknown` even if it
+  carries a claimed exit code; a directly observed `command` may use its own
+  exit code. Missing `exit_code` is `unknown`, never success. Orphan result
+  events (no matching invocation) are still observed once, but never become
+  invocations.
 - `test`: `invocations` and `results` (`passed`/`failed`/`unknown`) are reported
-  separately. Result events linked by `(session, tool_call_id)` are counted once;
-  duplicate result events never inflate invocation counts.
-- `session_steps`: per session key, ordered `sequence` of kinds and
-  `transitions` counts.
+  separately. Duplicate or conflicting result events never inflate invocations;
+  conflicting exit codes for one invocation stay `unknown`.
+- `session_steps`: per collision-free session identity key, ordered `sequence` of
+  kinds and `transitions` counts.
 
 The report includes explicit notes that counts are observational and do not
 establish effectiveness, causality, or cost.
@@ -167,26 +186,49 @@ establish effectiveness, causality, or cost.
 ## 4. Jev request builder
 
 `build-request` produces a `POST /v1/systemone` body from an **explicitly
-supplied sanitized state JSON file**:
+supplied sanitized state JSON file**. The wire shape follows the real TypeSafe
+API reference:
 
 ```json
 {
   "model": "jev-1.13.0",
-  "instructions": "<explicit taxonomy instructions>",
   "state": { "...": "caller-supplied only" },
-  "questions": { "<id>": { "type": "Choice|Noul", "description": "...", "options": [...] } }
+  "questions": {
+    "primary_intent": {
+      "type": "choice",
+      "instructions": "Classify the primary requested software task ...",
+      "criteria": {
+        "bugfix": "Correct an existing defect.",
+        "implementation": "Add new behavior ...",
+        "unknown": "Insufficient evidence ..."
+      }
+    },
+    "requests_test": {
+      "type": "noul",
+      "instructions": "What is the probability that ...?",
+      "criteria": { "true": "...", "false": "..." }
+    }
+  }
 }
 ```
 
-- `primary_intent` is a `Choice` with an `unknown` option and the categories
-  `bugfix`, `implementation`, `pr_review`, `adversarial_review`,
+- There is **no top-level `instructions` field**, no per-question `description`,
+  and no `options` list. Question `type` is lowercase `choice`/`noul`; a choice
+  question's `criteria` keys are its options, and each question carries its own
+  `instructions`.
+- `primary_intent` is a `choice` whose criteria include an `unknown` option and
+  the categories `bugfix`, `implementation`, `pr_review`, `adversarial_review`,
   `planning_spec`, `test_lint_build_ci`, `dependency_worktree_agent_ops`,
   `research_docs`.
 - `scope` (`small`/`large`/`unknown`) is judged **independently of intent**.
-- Overlapping labels are `Noul` questions.
-- Taxonomy definitions live in the versioned `taxonomy/jev_taxonomy_v1.json`.
+- Overlapping labels are `noul` yes/no probability questions with explicit
+  `true`/`false` criteria (a probability, not an unanchored degree score).
+- Taxonomy definitions live in the versioned `taxonomy/jev_taxonomy_v1.json`
+  (taxonomy version `1.1.0`). The question hash covers the taxonomy version,
+  model, and every effective instruction and criterion, so any rubric change
+  produces a new classification key.
 - **Question map keys are identifiers, not model instructions**; instructions
-  are carried explicitly in `instructions`.
+  are carried in each question's `instructions` value.
 - The serialized body is capped at **24 KB of UTF-8** (`REQUEST_BYTE_CAP`).
   Exceeding it raises `RequestByteCapExceeded` instead of silently truncating.
   This is a **byte safety cap, not tokenizer proof**.
@@ -200,14 +242,17 @@ supplied sanitized state JSON file**:
 
 - `model` must match; `usage.input_tokens`/`output_tokens` must be nonnegative
   integers.
-- Question ids and types must match exactly (no missing/extra answers).
-- `Choice`: `value` must be one of the options; `probabilities` must cover every
-  option with finite values in `[0,1]` summing to ~1; `confidence` finite in
-  `[0,1]`.
-- `Noul`: one finite value in `[0,1]` and **no confidence field**.
+- Question ids and lowercase types must match exactly (no missing/extra answers).
+- `choice` answers: the `choice` field must be one of the question's criteria
+  keys; `probabilities` must cover every criterion with finite values in `[0,1]`
+  summing to ~1; `confidence` finite in `[0,1]`. The previously invented
+  `value` field is not accepted.
+- `noul` answers: exactly one finite `noul` probability in `[0,1]` and **no
+  confidence field**.
 - Non-finite JSON (`NaN`/`Infinity`) is rejected.
 - Nothing is fabricated: missing labels, missing confidences, and live calls are
-  all errors, not defaults.
+  all errors, not defaults. `tests/fixtures/jev_smoke_contract.json` pins a
+  synthetic-only real exchange so the wire shape cannot silently regress.
 
 ## CLI reference
 
@@ -215,7 +260,8 @@ supplied sanitized state JSON file**:
 agent-observatory import-jsonl --db DB FILE [FILE ...]
 agent-observatory report --db DB [--out FILE]
 agent-observatory build-request --state STATE.json
-    [--db DB] [--subject-kind event|session] [--session city|host|provider|session]
+    [--db DB] [--subject-kind event|session]
+    [--session '["city","host","provider","session"]' | city|host|provider|session]
     [--event-id ID] [--snapshot-hash HASH] [--taxonomy PATH] [--out FILE]
 agent-observatory import-response --db DB --response RESP.json --request-hash HASH
 agent-observatory --version
@@ -227,11 +273,16 @@ agent-observatory --version
 python3 -m unittest discover -s contrib/agent-observatory/tests -v
 ```
 
-The suite covers duplicate replay, same-session different providers/hosts,
-conflict rollback, truncated input, nonzero vs unknown exit codes, tokens missing
-vs zero, the request byte cap, ambiguous commands, instruction-like text treated
-as data, and invalid/NaN responses. `examples/demo.sh` runs the CLI end to end
-against the synthetic fixture; replay preserves event and classification counts.
+The suite covers duplicate replay, same-session different providers/hosts and
+delimiter-colliding identities, conflict rollback, truncated input, nonzero vs
+unknown exit codes, invocation/result pairing, orphan and duplicate and
+conflicting results, request-only vs directly observed outcomes, tokens missing
+vs zero, timezone-aware timestamp normalization and chronological ordering across
+offsets and fractional precision, the request byte cap, the real lowercase
+Jev question/answer wire shape, ambiguous commands, instruction-like text treated
+as data, question-hash sensitivity to instructions/criteria, and invalid/NaN
+responses. `examples/demo.sh` runs the CLI end to end against the synthetic
+fixture; replay preserves event and classification counts.
 
 ## Limitations and next adapter requirements
 

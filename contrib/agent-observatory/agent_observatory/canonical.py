@@ -52,8 +52,15 @@ def event_identity(record: dict[str, Any]) -> tuple[str, str, str, str, str]:
 
 
 def identity_key(identity: Sequence[str]) -> str:
-    """Return a single string form of an identity tuple for indexing/logging."""
-    return "|".join(identity)
+    """Return a collision-free string form of an identity tuple.
+
+    Identity components are arbitrary strings, so joining them with a delimiter
+    would make ``("c|h", "x")`` and ``("c", "h|x")`` collide. The JSON-array
+    encoding used here cannot collide: it escapes and length-delimits every
+    component. Use this for report keys, CLI records, and log labels; never use
+    a bare delimiter join.
+    """
+    return canonical_json(list(identity))
 
 
 def event_snapshot_hash(identity: Sequence[str], payload_hash: str) -> str:

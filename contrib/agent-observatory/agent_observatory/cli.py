@@ -37,10 +37,28 @@ def _read_json_object(path: str, what: str) -> Any:
 
 
 def _session_key(value: str) -> tuple[str, str, str, str]:
-    parts = value.split("|")
-    if len(parts) != 4 or not all(parts):
+    """Parse a session identity from a collision-free JSON array or a legacy pipe form.
+
+    Identity components may contain any character, so the pipe form cannot
+    represent a component that itself contains ``|``. The JSON-array form always
+    can (and matches the collision-free keys emitted in reports).
+    """
+    raw = value.strip()
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except ValueError as exc:
+            raise ObservatoryError(f"--session JSON is not valid: {exc}") from exc
+        if not isinstance(parsed, list):
+            raise ObservatoryError("--session JSON form must be an array of four strings")
+        parts = parsed
+    else:
+        parts = raw.split("|")
+    if len(parts) != 4 or not all(isinstance(part, str) and part for part in parts):
         raise ObservatoryError(
-            "--session must be 'city_id|host_id|provider|session_id' (four non-empty parts)"
+            "--session must be a JSON array of four non-empty strings "
+            '(["city_id","host_id","provider","session_id"]) or the legacy '
+            "'city_id|host_id|provider|session_id' form"
         )
     return parts[0], parts[1], parts[2], parts[3]
 
@@ -189,7 +207,11 @@ def build_parser() -> argparse.ArgumentParser:
     request_parser.add_argument("--db", default=None, help="SQLite projection path (optional; used to store request)")
     request_parser.add_argument("--state", required=True, help="explicit sanitized state JSON file")
     request_parser.add_argument("--subject-kind", choices=("event", "session"), default="session")
-    request_parser.add_argument("--session", default=None, help="city_id|host_id|provider|session_id")
+    request_parser.add_argument(
+        "--session",
+        default=None,
+        help='JSON array ["city_id","host_id","provider","session_id"], or legacy city_id|host_id|provider|session_id',
+    )
     request_parser.add_argument("--event-id", default=None, help="event id for --subject-kind event")
     request_parser.add_argument("--snapshot-hash", default=None, help="explicit subject snapshot hash")
     request_parser.add_argument("--taxonomy", default=None, help="taxonomy JSON path")

@@ -54,22 +54,27 @@ def questions_from(request_body):
 
 
 def valid_response(request_body, *, model=None, usage=None, choice_value=None, noul_value=0.25):
-    """Build a fully valid saved response for *request_body*."""
+    """Build a fully valid saved ``/v1/systemone`` response for *request_body*.
+
+    The wire shape is the real one: lowercase ``type`` values and
+    ``choice``/``noul`` answer fields (never ``value``), with the Choice option
+    set taken from the question's ``criteria`` keys.
+    """
     answers = {}
     for question_id, question in request_body["questions"].items():
-        if question["type"] == "Choice":
-            options = list(question["options"])
+        if question["type"] == "choice":
+            options = list(question["criteria"])
             chosen = choice_value if choice_value in options else options[0]
             probabilities = {option: 0.0 for option in options}
             probabilities[chosen] = 1.0
             answers[question_id] = {
-                "type": "Choice",
-                "value": chosen,
+                "type": "choice",
+                "choice": chosen,
                 "confidence": 0.9,
                 "probabilities": probabilities,
             }
         else:
-            answers[question_id] = {"type": "Noul", "value": noul_value}
+            answers[question_id] = {"type": "noul", "noul": noul_value}
     return {
         "model": model if model is not None else request_body["model"],
         "usage": usage if usage is not None else {"input_tokens": 12, "output_tokens": 7},

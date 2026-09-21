@@ -4,6 +4,18 @@ Reports are observational. Counts describe what the imported evidence contains;
 they do not establish effectiveness, causality, or dollar cost. The output has no
 timestamps and uses sorted keys so two runs over the same projection are
 byte-identical.
+
+Evidence accounting rules:
+
+* a tool request is not proof of execution, so only *invocation* events add to
+  tool counts and command categories;
+* an invocation's outcome comes from a result event linked by
+  ``(session, tool_call_id)``; a request-only event stays ``unknown`` even if it
+  carries a claimed exit code;
+* one final outcome is counted per invocation (and per category), so duplicate
+  result events never inflate outcomes;
+* a result with no matching invocation is still observed evidence and is counted
+  once by its own call identity, but its command never becomes an invocation.
 """
 
 from __future__ import annotations
@@ -11,6 +23,7 @@ from __future__ import annotations
 from collections import Counter, OrderedDict
 from typing import Any, Iterable
 
+from .canonical import identity_key
 from .commands import CATEGORIES, categorize_command
 from .contract import COVERAGE_FIELDS
 from .store import ObservatoryStore
@@ -19,6 +32,11 @@ REPORT_VERSION = "1"
 
 RESULT_KINDS = frozenset({"result", "tool_result", "command_result", "test_result", "test_call_result"})
 INVOCATION_KINDS = frozenset({"tool_call", "tool_request", "command", "test_invocation"})
+
+# Request-only invocation kinds: their own exit_code is a claim about a request,
+# not an observed execution result, so it never yields success/failure without a
+# linked result event.
+REQUEST_ONLY_KINDS = frozenset({"tool_call", "tool_request", "test_invocation"})
 
 _OUTCOME_SUCCESS = "success"
 _OUTCOME_FAILURE = "failure"
@@ -50,12 +68,6 @@ def exit_outcome(exit_code: int | None) -> str:
     return _OUTCOME_FAILURE
 
 
-def _session_label(event: dict[str, Any]) -> str:
-    return "|".join(
-        [event["city_id"], event["host_id"], event["provider"], event["session_id"]]
-    )
-
-
 def _usage_is_present(usage_row: dict[str, Any] | None) -> bool:
     if usage_row is None:
         return False
@@ -63,6 +75,33 @@ def _usage_is_present(usage_row: dict[str, Any] | None) -> bool:
         usage_row.get(field) is not None
         for field in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "total_tokens")
     )
+
+
+def _outcome_from_exit_codes(exit_codes: set[int]) -> str:
+    """Collapse one unit's observed exit codes into a single outcome.
+
+    Zero codes means no usable result (``unknown``); exactly one distinct code is
+    usable; conflicting codes cannot be collapsed, so they stay ``unknown``.
+    """
+    if len(exit_codes) == 1:
+        return exit_outcome(next(iter(exit_codes)))
+    return _OUTCOME_UNKNOWN
+
+
+def _invocation_outcome(invocation: dict[str, Any], linked_results: list[dict[str, Any]]) -> str:
+    """Return the single observed outcome for one invocation."""
+    exit_codes = {
+        result["event"]["exit_code"]
+        for result in linked_results
+        if result["event"].get("exit_code") is not None
+    }
+    if exit_codes:
+        return _outcome_from_exit_codes(exit_codes)
+    event = invocation["event"]
+    if event["kind"] not in REQUEST_ONLY_KINDS and event.get("exit_code") is not None:
+        # A directly observed command carries its own result. A request does not.
+        return exit_outcome(event["exit_code"])
+    return _OUTCOME_UNKNOWN
 
 
 def build_report(store: ObservatoryStore) -> dict[str, Any]:
@@ -81,14 +120,11 @@ def build_report(store: ObservatoryStore) -> dict[str, Any]:
 
     usage_cache: dict[tuple[str, str, str, str, str], bool] = {}
 
-    # First pass: per-event projections and role classification.
+    # Per-event projections and role classification.
     projections: list[dict[str, Any]] = []
     for event in events:
         provider_counts[event["provider"]] += 1
         kind_counts[event["kind"]] += 1
-
-        if event["tool_name"]:
-            tool_counts[event["tool_name"]] += 1
 
         identity = (
             event["city_id"],
@@ -107,84 +143,103 @@ def build_report(store: ObservatoryStore) -> dict[str, Any]:
                 missing_counts[field] += 1
 
         categories = categorize_command(event.get("command")) if event.get("command") else frozenset()
-
         projections.append(
             {
                 "event": event,
-                "session": _session_label(event),
+                "session": identity_key(
+                    (event["city_id"], event["host_id"], event["provider"], event["session_id"])
+                ),
                 "call_id": event.get("tool_call_id") or "",
                 "categories": categories,
                 "role": event_role(event["kind"]),
-                "outcome": exit_outcome(event.get("exit_code")),
             }
         )
 
-    # Command categories describe invocations, not results: a result event that
-    # repeats its invocation's command must not inflate invocation counts.
-    seen_category_keys: set[tuple[str, str]] = set()
-    for projection in projections:
-        if projection["role"] == "result" or not projection["categories"]:
-            continue
-        key = (projection["session"], projection["call_id"] or projection["event"]["event_id"])
-        if key in seen_category_keys:
-            continue
-        seen_category_keys.add(key)
-        for category in projection["categories"]:
-            category_counts[category] += 1
+    def unit_key(projection: dict[str, Any]) -> tuple[str, str]:
+        return (projection["session"], projection["call_id"] or projection["event"]["event_id"])
 
-    # Observed outcomes: a result event is counted once per (session, call id)
-    # so a repeated result cannot inflate counts.
-    seen_result_keys: set[tuple[str, str]] = set()
-    for projection in projections:
-        event = projection["event"]
-        role = projection["role"]
-        if not event.get("command") and role != "result":
-            continue
-        if role == "result":
-            key = (projection["session"], projection["call_id"] or event["event_id"])
-            if key in seen_result_keys:
-                continue
-            seen_result_keys.add(key)
-        for category in projection["categories"]:
-            outcomes_by_category[category][projection["outcome"]] += 1
-        totals[projection["outcome"]] += 1
-
-    # Test invocations and their observed results are reported separately. A
-    # result event is linked to its invocation by (session, tool_call_id); if no
-    # result event exists, the invocation's own exit_code (or unknown) is used.
-    result_index: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for projection in projections:
-        if projection["role"] != "result":
-            continue
-        key = (projection["session"], projection["call_id"] or projection["event"]["event_id"])
-        result_index.setdefault(key, []).append(projection)
-
-    test_invocations = 0
-    test_results: Counter[str] = Counter()
+    # One entry per distinct invocation; repeated invocation records with the same
+    # call identity cannot inflate counts.
+    invocations: list[dict[str, Any]] = []
     seen_invocation_keys: set[tuple[str, str]] = set()
     for projection in projections:
-        if projection["role"] != "invocation" or "test" not in projection["categories"]:
+        if projection["role"] != "invocation":
             continue
-        event = projection["event"]
-        key = (projection["session"], projection["call_id"] or event["event_id"])
+        key = unit_key(projection)
         if key in seen_invocation_keys:
             continue
         seen_invocation_keys.add(key)
-        test_invocations += 1
-        linked = result_index.get(key)
-        if linked:
-            outcome = linked[0]["outcome"]
-        else:
-            outcome = projection["outcome"]
-        test_results[outcome] += 1
+        invocations.append(projection)
 
-    # Sessions and step sequences.
+    # Results indexed by call identity so outcomes can be paired with invocations.
+    results_by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for projection in projections:
+        if projection["role"] != "result":
+            continue
+        results_by_key.setdefault(unit_key(projection), []).append(projection)
+
+    # Invocation-only tool counts: a result event never adds a tool count.
+    for invocation in invocations:
+        tool_name = invocation["event"].get("tool_name")
+        if tool_name:
+            tool_counts[tool_name] += 1
+
+    # Command categories describe invocations. A result or arbitrary prose
+    # record that merely contains a command is never promoted to an invocation.
+    for invocation in invocations:
+        for category in invocation["categories"]:
+            category_counts[category] += 1
+
+    # One final outcome per invocation, applied to each of its categories.
+    test_invocations = 0
+    test_results: Counter[str] = Counter()
+    matched_result_keys: set[tuple[str, str]] = set()
+    for invocation in invocations:
+        key = unit_key(invocation)
+        linked = results_by_key.get(key, [])
+        if linked:
+            matched_result_keys.add(key)
+        outcome = _invocation_outcome(invocation, linked)
+        totals[outcome] += 1
+        for category in invocation["categories"]:
+            outcomes_by_category[category][outcome] += 1
+        if "test" in invocation["categories"]:
+            test_invocations += 1
+            test_results[outcome] += 1
+
+    # Orphan results (no matching invocation) are still observed evidence. Count
+    # one outcome per call identity; their command never becomes an invocation.
+    orphan_results: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for projection in projections:
+        if projection["role"] != "result":
+            continue
+        key = unit_key(projection)
+        if key in matched_result_keys:
+            continue
+        orphan_results.setdefault(key, []).append(projection)
+
+    for group in orphan_results.values():
+        exit_codes = {
+            result["event"]["exit_code"]
+            for result in group
+            if result["event"].get("exit_code") is not None
+        }
+        outcome = _outcome_from_exit_codes(exit_codes)
+        totals[outcome] += 1
+        orphan_categories: set[str] = set()
+        for result in group:
+            orphan_categories.update(result["categories"])
+        for category in orphan_categories:
+            outcomes_by_category[category][outcome] += 1
+
+    # Sessions and step sequences. Labels use a collision-free identity encoding
+    # because identity components are unrestricted strings.
     session_steps: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
     for session_key in store.session_keys():
         session_events = store.session_events(session_key)
         if not session_events:
             continue
-        label = "|".join(session_key)
+        label = identity_key(session_key)
         sequence = [event["kind"] for event in session_events]
         transitions: Counter[str] = Counter()
         for previous, following in zip(sequence, sequence[1:]):
@@ -232,7 +287,7 @@ def build_report(store: ObservatoryStore) -> dict[str, Any]:
         "session_steps": session_steps,
         "notes": [
             "Counts are observational and do not establish effectiveness, causality, or cost.",
-            "A tool request event does not prove execution or success; only result events carry an observed outcome.",
+            "A tool request event does not prove execution or success; only a linked or directly observed result carries an outcome.",
             "A missing exit_code is reported as unknown, never as success.",
         ],
     }

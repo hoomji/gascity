@@ -32,7 +32,12 @@ class JevResponseTest(unittest.TestCase):
         self.valid = support.valid_response(self.request.body)
 
     def _primary_options(self):
-        return self.request.body["questions"]["primary_intent"]["options"]
+        return list(self.request.body["questions"]["primary_intent"]["criteria"])
+
+    def _noul_id(self):
+        return next(
+            qid for qid, q in self.request.body["questions"].items() if q["type"] == "noul"
+        )
 
     def test_valid_response_is_stored_with_all_probabilities(self):
         result = import_response(self.store, self.valid, request_hash=self.request.request_hash)
@@ -47,7 +52,18 @@ class JevResponseTest(unittest.TestCase):
         )
         self.assertEqual(stored["response_hash"], result.response_hash)
         primary = next(a for a in stored["answers"] if a["question_id"] == "primary_intent")
-        self.assertEqual(set(primary["value"]["probabilities"]), set(self._primary_options()))
+        self.assertEqual(set(primary["answer"]["probabilities"]), set(self._primary_options()))
+        self.assertEqual(primary["answer"]["choice"], self._primary_options()[0])
+
+    def test_wire_response_uses_choice_and_noul_fields_not_value(self):
+        answers = self.valid["answers"]
+        self.assertEqual(answers["primary_intent"]["type"], "choice")
+        self.assertIn("choice", answers["primary_intent"])
+        self.assertNotIn("value", answers["primary_intent"])
+        noul = answers[self._noul_id()]
+        self.assertEqual(noul["type"], "noul")
+        self.assertIn("noul", noul)
+        self.assertNotIn("value", noul)
 
     def test_replayed_response_deduplicates(self):
         first = import_response(self.store, self.valid, request_hash=self.request.request_hash)
@@ -72,7 +88,20 @@ class JevResponseTest(unittest.TestCase):
 
     def test_unknown_answer_is_rejected(self):
         broken = copy.deepcopy(self.valid)
-        broken["answers"]["not_a_question"] = {"type": "Noul", "value": 0.5}
+        broken["answers"]["not_a_question"] = {"type": "noul", "noul": 0.5}
+        with self.assertRaises(ResponseError):
+            import_response(self.store, broken, request_hash=self.request.request_hash)
+
+    def test_answer_type_must_match_question_type(self):
+        broken = copy.deepcopy(self.valid)
+        broken["answers"]["primary_intent"]["type"] = "noul"
+        with self.assertRaises(ResponseError):
+            import_response(self.store, broken, request_hash=self.request.request_hash)
+
+    def test_invented_value_field_is_not_accepted_as_a_choice(self):
+        broken = copy.deepcopy(self.valid)
+        primary = broken["answers"]["primary_intent"]
+        primary["value"] = primary.pop("choice")
         with self.assertRaises(ResponseError):
             import_response(self.store, broken, request_hash=self.request.request_hash)
 
@@ -110,19 +139,13 @@ class JevResponseTest(unittest.TestCase):
 
     def test_noul_must_not_carry_confidence(self):
         broken = copy.deepcopy(self.valid)
-        noul_id = next(
-            qid for qid, q in self.request.body["questions"].items() if q["type"] == "Noul"
-        )
-        broken["answers"][noul_id]["confidence"] = 0.5
+        broken["answers"][self._noul_id()]["confidence"] = 0.5
         with self.assertRaises(ResponseError):
             import_response(self.store, broken, request_hash=self.request.request_hash)
 
-    def test_noul_value_must_be_in_unit_interval(self):
+    def test_noul_must_be_in_unit_interval(self):
         broken = copy.deepcopy(self.valid)
-        noul_id = next(
-            qid for qid, q in self.request.body["questions"].items() if q["type"] == "Noul"
-        )
-        broken["answers"][noul_id]["value"] = 2.0
+        broken["answers"][self._noul_id()]["noul"] = 2.0
         with self.assertRaises(ResponseError):
             import_response(self.store, broken, request_hash=self.request.request_hash)
 
@@ -139,7 +162,7 @@ class JevResponseTest(unittest.TestCase):
             with self.assertRaises(ResponseError):
                 import_response(self.store, broken, request_hash=self.request.request_hash)
 
-    def test_stored_noul_answer_has_no_confidence(self):
+    def test_stored_noul_answer_has_only_noul(self):
         import_response(self.store, self.valid, request_hash=self.request.request_hash)
         stored = self.store.get_classification(
             subject_kind=self.request.subject_kind,
@@ -148,8 +171,8 @@ class JevResponseTest(unittest.TestCase):
             question_hash=self.request.question_hash,
             model_version=self.request.model,
         )
-        noul = next(a for a in stored["answers"] if a["question_type"] == "Noul")
-        self.assertEqual(set(noul["value"]), {"value"})
+        noul = next(a for a in stored["answers"] if a["question_type"] == "noul")
+        self.assertEqual(set(noul["answer"]), {"noul"})
 
     def test_unknown_request_hash_is_rejected(self):
         with self.assertRaises(ResponseError):

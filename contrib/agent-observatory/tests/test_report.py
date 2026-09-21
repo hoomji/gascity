@@ -12,6 +12,7 @@ try:
 except ImportError:  # pragma: no cover
     import support
 
+from agent_observatory.canonical import identity_key
 from agent_observatory.commands import CATEGORIES
 from agent_observatory.report import build_report
 from agent_observatory.store import ObservatoryStore
@@ -46,16 +47,16 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report["coverage"]["missing_fields"]["title"], 1)
         self.assertEqual(report["coverage"]["missing_fields"]["usage"], 1)
 
-    def test_tool_counts(self):
+    def test_tool_counts_are_invocation_only(self):
         store = self._store_with(
             [
-                support.make_record(event_id="e1", tool_name="rg"),
-                support.make_record(event_id="e2", tool_name="rg"),
+                support.make_record(event_id="e1", kind="tool_call", tool_name="bash", tool_call_id="x"),
+                support.make_record(event_id="e2", kind="tool_result", tool_name="bash", tool_call_id="x", exit_code=0),
                 support.make_record(event_id="e3", tool_name="go"),
             ]
         )
         report = build_report(store)
-        self.assertEqual(report["tool_counts"], {"go": 1, "rg": 2})
+        self.assertEqual(report["tool_counts"], {"bash": 1, "go": 1})
 
     def test_command_categories_and_unknown_fallback(self):
         store = self._store_with(
@@ -81,6 +82,66 @@ class ReportTest(unittest.TestCase):
         totals = report["observed_outcomes"]["totals"]
         self.assertEqual(totals, {"success": 1, "failure": 1, "unknown": 1})
 
+    def test_reproduction_invocation_and_result_count_once_with_paired_outcome(self):
+        store = self._store_with(
+            [
+                support.make_record(
+                    event_id="e1", kind="tool_call", tool_name="bash",
+                    tool_call_id="x", command="npm run lint",
+                ),
+                support.make_record(
+                    event_id="e2", kind="tool_result", tool_name="bash",
+                    tool_call_id="x", exit_code=0,
+                ),
+            ]
+        )
+        report = build_report(store)
+        self.assertEqual(report["tool_counts"], {"bash": 1})
+        self.assertEqual(report["command_categories"]["lint"], 1)
+        self.assertEqual(
+            report["observed_outcomes"]["by_category"]["lint"],
+            {"success": 1, "failure": 0, "unknown": 0},
+        )
+        self.assertEqual(report["observed_outcomes"]["totals"], {"success": 1, "failure": 0, "unknown": 0})
+
+    def test_result_without_command_inherits_invocation_category_and_outcome(self):
+        store = self._store_with(
+            [
+                support.make_record(event_id="e1", kind="tool_call", command="go test ./...", tool_call_id="tc1"),
+                support.make_record(event_id="e2", kind="tool_result", tool_call_id="tc1", exit_code=0),
+            ]
+        )
+        report = build_report(store)
+        self.assertEqual(report["command_categories"]["test"], 1)
+        self.assertEqual(report["test"]["invocations"], 1)
+        self.assertEqual(report["test"]["results"], {"passed": 1, "failed": 0, "unknown": 0})
+        self.assertEqual(report["observed_outcomes"]["totals"], {"success": 1, "failure": 0, "unknown": 0})
+
+    def test_result_repeating_invocation_command_does_not_inflate_categories(self):
+        store = self._store_with(
+            [
+                support.make_record(event_id="e1", kind="tool_call", command="npm run lint", tool_call_id="x"),
+                support.make_record(event_id="e2", kind="tool_result", command="npm run lint", tool_call_id="x", exit_code=0),
+            ]
+        )
+        report = build_report(store)
+        self.assertEqual(report["command_categories"]["lint"], 1)
+        self.assertEqual(report["observed_outcomes"]["by_category"]["lint"]["success"], 1)
+
+    def test_build_invocation_outcome_is_paired_with_its_result(self):
+        store = self._store_with(
+            [
+                support.make_record(event_id="e1", kind="tool_call", command="go build ./...", tool_call_id="b1"),
+                support.make_record(event_id="e2", kind="tool_result", tool_call_id="b1", exit_code=1),
+            ]
+        )
+        report = build_report(store)
+        self.assertEqual(report["command_categories"]["build"], 1)
+        self.assertEqual(
+            report["observed_outcomes"]["by_category"]["build"],
+            {"success": 0, "failure": 1, "unknown": 0},
+        )
+
     def test_test_invocation_and_result_are_reported_separately(self):
         store = self._store_with(
             [
@@ -95,6 +156,7 @@ class ReportTest(unittest.TestCase):
         report = build_report(store)
         self.assertEqual(report["test"]["invocations"], 1)
         self.assertEqual(report["test"]["results"], {"passed": 0, "failed": 1, "unknown": 0})
+        self.assertEqual(report["command_categories"]["test"], 1)
 
     def test_missing_exit_code_is_unknown_not_success(self):
         store = self._store_with(
@@ -103,6 +165,41 @@ class ReportTest(unittest.TestCase):
         report = build_report(store)
         self.assertEqual(report["test"]["invocations"], 1)
         self.assertEqual(report["test"]["results"], {"passed": 0, "failed": 0, "unknown": 1})
+
+    def test_request_only_with_claimed_exit_code_stays_unknown(self):
+        store = self._store_with(
+            [support.make_record(event_id="e1", kind="tool_call", command="go test ./...", tool_call_id="tc1", exit_code=0)]
+        )
+        report = build_report(store)
+        self.assertEqual(report["observed_outcomes"]["totals"], {"success": 0, "failure": 0, "unknown": 1})
+        self.assertEqual(report["test"]["results"], {"passed": 0, "failed": 0, "unknown": 1})
+
+    def test_direct_command_uses_its_own_exit_code(self):
+        store = self._store_with(
+            [support.make_record(event_id="e1", kind="command", command="git status --short", exit_code=0)]
+        )
+        report = build_report(store)
+        self.assertEqual(report["observed_outcomes"]["totals"], {"success": 1, "failure": 0, "unknown": 0})
+        self.assertEqual(report["observed_outcomes"]["by_category"]["git"]["success"], 1)
+
+    def test_arbitrary_prose_with_command_is_not_promoted_to_invocation(self):
+        store = self._store_with(
+            [support.make_record(event_id="e1", kind="assistant_message", command="npm run lint", exit_code=0)]
+        )
+        report = build_report(store)
+        self.assertEqual(report["command_categories"]["lint"], 0)
+        self.assertEqual(report["tool_counts"], {})
+        self.assertEqual(report["observed_outcomes"]["totals"], {"success": 0, "failure": 0, "unknown": 0})
+
+    def test_orphan_result_is_observed_but_not_an_invocation(self):
+        store = self._store_with(
+            [support.make_record(event_id="e1", kind="tool_result", tool_call_id="orphan", command="npm run lint", exit_code=0)]
+        )
+        report = build_report(store)
+        self.assertEqual(report["command_categories"]["lint"], 0)
+        self.assertEqual(report["tool_counts"], {})
+        self.assertEqual(report["observed_outcomes"]["by_category"]["lint"], {"success": 1, "failure": 0, "unknown": 0})
+        self.assertEqual(report["observed_outcomes"]["totals"], {"success": 1, "failure": 0, "unknown": 0})
 
     def test_duplicate_result_events_are_not_counted_twice(self):
         store = self._store_with(
@@ -121,6 +218,19 @@ class ReportTest(unittest.TestCase):
         # Result events must not be counted as command invocations either.
         self.assertEqual(report["command_categories"]["test"], 1)
 
+    def test_conflicting_duplicate_results_are_unknown(self):
+        store = self._store_with(
+            [
+                support.make_record(event_id="e1", kind="tool_call", command="go test ./...", tool_call_id="tc1"),
+                support.make_record(event_id="e2", kind="tool_result", tool_call_id="tc1", exit_code=0),
+                support.make_record(event_id="e3", kind="tool_result", tool_call_id="tc1", exit_code=1),
+            ]
+        )
+        report = build_report(store)
+        self.assertEqual(report["test"]["invocations"], 1)
+        self.assertEqual(report["test"]["results"], {"passed": 0, "failed": 0, "unknown": 1})
+        self.assertEqual(report["observed_outcomes"]["totals"], {"success": 0, "failure": 0, "unknown": 1})
+
     def test_same_session_different_provider_and_host_have_distinct_step_sequences(self):
         store = self._store_with(
             [
@@ -129,8 +239,21 @@ class ReportTest(unittest.TestCase):
             ]
         )
         report = build_report(store)
-        self.assertIn("city-a|h1|codex|session-1", report["session_steps"])
-        self.assertIn("city-a|h1|claude|session-1", report["session_steps"])
+        self.assertIn(identity_key(("city-a", "h1", "codex", "session-1")), report["session_steps"])
+        self.assertIn(identity_key(("city-a", "h1", "claude", "session-1")), report["session_steps"])
+
+    def test_delimiter_identity_collision_stays_two_sessions(self):
+        store = self._store_with(
+            [
+                support.make_record(event_id="e1", city_id="c|h", host_id="x"),
+                support.make_record(event_id="e1", city_id="c", host_id="h|x"),
+            ]
+        )
+        report = build_report(store)
+        self.assertEqual(report["coverage"]["sessions"], 2)
+        self.assertEqual(len(report["session_steps"]), 2)
+        self.assertIn(identity_key(("c|h", "x", "codex", "session-1")), report["session_steps"])
+        self.assertIn(identity_key(("c", "h|x", "codex", "session-1")), report["session_steps"])
 
     def test_step_sequences_and_transitions_are_recorded(self):
         store = self._store_with(
@@ -140,7 +263,7 @@ class ReportTest(unittest.TestCase):
             ]
         )
         report = build_report(store)
-        steps = report["session_steps"]["city-a|host-a|codex|session-1"]
+        steps = report["session_steps"][identity_key(("city-a", "host-a", "codex", "session-1"))]
         self.assertEqual(steps["sequence"], ["tool_call", "tool_result"])
         self.assertEqual(steps["transitions"], {"tool_call->tool_result": 1})
 
