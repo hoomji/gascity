@@ -51,6 +51,41 @@ func TestCodexHooksDriftCheckPassesCurrentHooks(t *testing.T) {
         "type": "command",
         "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city %s handoff --auto --hook-format codex \"context cycle\""
       }]
+    }],
+    "PostToolUse": [{
+      "hooks": [{
+        "type": "command",
+        "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city %s hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject --context-only --hook-format codex"
+      }]
+    }]
+  }
+}`, shellquote.Quote(dir), shellquote.Quote(dir), shellquote.Quote(dir)))
+
+	check := newCodexHooksDriftCheck(dir, []string{dir})
+	result := check.Run(&doctor.CheckContext{})
+
+	if result.Status != doctor.StatusOK {
+		t.Fatalf("status = %v, want ok; message=%s", result.Status, result.Message)
+	}
+}
+
+// A doc that predates only the PostToolUse context advisory is still managed
+// and must be reported stale, not mistaken for user-owned.
+func TestCodexHooksDriftCheckReportsManagedMissingPostToolUse(t *testing.T) {
+	dir := t.TempDir()
+	writeCodexHooksForDoctorTest(t, dir, fmt.Sprintf(`{
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc --city %s prime --hook --hook-format codex"
+      }]
+    }],
+    "PreCompact": [{
+      "hooks": [{
+        "type": "command",
+        "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city %s handoff --auto --hook-format codex \"context cycle\""
+      }]
     }]
   }
 }`, shellquote.Quote(dir), shellquote.Quote(dir)))
@@ -58,8 +93,11 @@ func TestCodexHooksDriftCheckPassesCurrentHooks(t *testing.T) {
 	check := newCodexHooksDriftCheck(dir, []string{dir})
 	result := check.Run(&doctor.CheckContext{})
 
-	if result.Status != doctor.StatusOK {
-		t.Fatalf("status = %v, want ok; message=%s", result.Status, result.Message)
+	if result.Status != doctor.StatusWarning {
+		t.Fatalf("status = %v, want warning; message=%s", result.Status, result.Message)
+	}
+	if !strings.Contains(result.Message, "need upgrade") {
+		t.Fatalf("message = %q, want need upgrade", result.Message)
 	}
 }
 

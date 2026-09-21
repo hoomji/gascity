@@ -294,6 +294,7 @@ Defaults to $GC_ALIAS or $GC_SESSION_ID when run inside a session.`,
 func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 	var inject bool
 	var hookFormat string
+	var contextOnly bool
 	cmd := &cobra.Command{
 		Use:    "drain [session]",
 		Short:  "Deliver queued nudges for a session",
@@ -301,13 +302,14 @@ func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 		Args:   cobra.MaximumNArgs(1),
 		Hidden: true,
 		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdNudgeDrainWithFormat(args, inject, hookFormat, stdout, stderr) != 0 {
+			if cmdNudgeDrainWithFormat(args, inject, contextOnly, hookFormat, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&inject, "inject", false, "emit <system-reminder> output for hook injection")
+	cmd.Flags().BoolVar(&contextOnly, "context-only", false, "with --inject, emit only the context-pressure advisory and never drain the nudge queue (tool-boundary hooks)")
 	cmd.Flags().StringVar(&hookFormat, "hook-format", "", "format hook output for a provider")
 	return cmd
 }
@@ -449,7 +451,41 @@ func nonNilQueuedNudges(items []queuedNudge) []queuedNudge {
 	return items
 }
 
-func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
+// cmdNudgeContextOnly emits the context-pressure advisory for a tool-boundary
+// hook (Codex PostToolUse) without touching the nudge queue. It is the
+// autonomous-turn half of the context-warning integration: UserPromptSubmit
+// fires only on user input, so an agent that runs tools for a long stretch
+// would never see the advisory. Reading the payload once and emitting a single
+// provider-formatted document mirrors the prompt path's fail-safe contract —
+// any parse/read problem is silent, never a blocked tool call.
+//
+// The event name comes from the hook payload itself (hookEventNameFromInput):
+// Codex's output schema pins hookSpecificOutput.hookEventName to the emitting
+// event, so a PostToolUse hook must not answer as UserPromptSubmit. Thresholds
+// and window come from the same env-overridable policy as the prompt path.
+func cmdNudgeContextOnly(hookFormat string, stdout io.Writer) {
+	if !hookHasManagedIdentity() {
+		return
+	}
+	hookInput := readHookStdin()
+	line := contextInjectLine(hookInput)
+	if strings.TrimSpace(line) == "" {
+		return
+	}
+	_ = writeProviderHookContextForEvent(stdout, hookFormat, hookEventNameFromInput(hookInput), line)
+}
+
+func cmdNudgeDrainWithFormat(args []string, inject, contextOnly bool, hookFormat string, stdout, stderr io.Writer) int {
+	// --context-only is the tool-boundary lane: emit just the current
+	// context-pressure advisory, tagged with the emitting hook event, and never
+	// claim or ack a queued nudge. It exists because UserPromptSubmit only
+	// fires on user input, so a long autonomous tool loop would otherwise never
+	// receive the advisory (see context_inject.go); draining notifications on
+	// every tool call is what this branch deliberately avoids.
+	if contextOnly {
+		cmdNudgeContextOnly(hookFormat, stdout)
+		return 0
+	}
 	// --inject writes a <system-reminder> straight into a provider's system
 	// prompt, and gc stages the overlays that call it into the session work
 	// directory — commonly a city or rig root — so a human who opens the same

@@ -3499,7 +3499,7 @@ func TestCmdNudgeDrainStampsLastNudgeDeliveredAt(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := cmdNudgeDrainWithFormat([]string{created.ID}, tc.inject, "", &stdout, &stderr)
+			code := cmdNudgeDrainWithFormat([]string{created.ID}, tc.inject, false, "", &stdout, &stderr)
 			if code != 0 {
 				t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%s", code, stderr.String())
 			}
@@ -3523,6 +3523,91 @@ func TestCmdNudgeDrainStampsLastNudgeDeliveredAt(t *testing.T) {
 				t.Fatalf("%s timestamp drift %s is outside the 1-minute test window (raw=%q)", session.MetadataLastNudgeDeliveredAt, drift, raw)
 			}
 		})
+	}
+}
+
+// TestNudgeContextOnlyDoesNotDrainQueue is the tool-boundary safety contract:
+// the PostToolUse context-only lane emits the advisory tagged with the actual
+// hook event and leaves a queued nudge pending. A per-tool hook must never
+// drain or ack notifications — that would turn every tool call into a delivery
+// loop and deliver nudges mid-turn.
+func TestNudgeContextOnlyDoesNotDrainQueue(t *testing.T) {
+	clearGCEnv(t)
+	disableManagedDoltRecoveryForTest(t)
+	t.Setenv("GC_BEADS", "file")
+	clearContextInjectEnv(t)
+	t.Setenv("GC_CONTEXT_ADVISORY_PCT", "50")
+	t.Setenv("GC_CONTEXT_URGENT_PCT", "60")
+	t.Setenv("GC_AGENT", "worker") // managed identity; deliberately no GC_ALIAS/GC_SESSION_ID
+
+	cityDir := t.TempDir()
+	writeNamedSessionCityTOML(t, cityDir)
+	t.Setenv("GC_CITY", cityDir)
+
+	store, err := openCityStoreAt(cityDir)
+	if err != nil {
+		t.Fatalf("openCityStoreAt: %v", err)
+	}
+	created, err := store.Create(beads.Bead{
+		Title:  "Session: worker",
+		Type:   session.BeadType,
+		Status: "open",
+		Labels: []string{session.LabelSession},
+		Metadata: map[string]string{
+			"session_name": "worker-session",
+			"agent_name":   "worker",
+			"template":     "worker",
+			"state":        string(session.StateActive),
+		},
+	})
+	if err != nil {
+		t.Fatalf("store.Create session: %v", err)
+	}
+
+	item := newQueuedNudgeWithOptions("worker", "queued nudge text must not drain", "session", time.Now().Add(-time.Minute), queuedNudgeOptions{
+		SessionID: created.ID,
+	})
+	if err := enqueueQueuedNudgeWithStore(cityDir, beads.NudgesStore{Store: store}, item); err != nil {
+		t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
+	}
+
+	transcript := writeTranscript(t,
+		codexTurnContextLine("gpt-6-astra"),
+		codexTokenCountLine(180_880, 150_000, 258_400), // ~70% of the live window
+	)
+	withHookStdin(t, []byte(fmt.Sprintf(`{"transcript_path":%q,"hook_event_name":"PostToolUse"}`, transcript)))
+
+	var stdout bytes.Buffer
+	cmdNudgeContextOnly("codex", &stdout)
+	var payload struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout is not a Codex hook document: %v\nraw: %s", err, stdout.String())
+	}
+	if got := payload.HookSpecificOutput.HookEventName; got != "PostToolUse" {
+		t.Errorf("hookEventName = %q, want PostToolUse", got)
+	}
+	if !strings.Contains(payload.HookSpecificOutput.AdditionalContext, "181k/258k") {
+		t.Errorf("additionalContext missing the live-window advisory: %q", payload.HookSpecificOutput.AdditionalContext)
+	}
+	if strings.Contains(stdout.String(), "queued nudge text") {
+		t.Errorf("context-only output drained the nudge queue: %q", stdout.String())
+	}
+
+	target, err := resolveNudgeTarget(created.ID)
+	if err != nil {
+		t.Fatalf("resolveNudgeTarget: %v", err)
+	}
+	pending, inFlight, _, err := listQueuedNudgesForTarget(cityDir, target, time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudgesForTarget: %v", err)
+	}
+	if len(pending)+len(inFlight) != 1 {
+		t.Fatalf("queued nudge was claimed/drained by the context-only lane: pending=%d in_flight=%d", len(pending), len(inFlight))
 	}
 }
 
@@ -3593,7 +3678,7 @@ func TestCmdNudgeDrainReValidatesMailAgainstRealProvider(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdNudgeDrainWithFormat([]string{created.ID}, false, "", &stdout, &stderr); code != 0 {
+	if code := cmdNudgeDrainWithFormat([]string{created.ID}, false, false, "", &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "You have mail from alice") {

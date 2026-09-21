@@ -297,7 +297,7 @@ func TestNudgeDrainInjectEmitsAdvisoryWithoutASessionTarget(t *testing.T) {
 	withHookStdin(t, hookInputFor(transcript))
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdNudgeDrainWithFormat(nil, true, "", &stdout, &stderr); code != 0 {
+	if code := cmdNudgeDrainWithFormat(nil, true, false, "", &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%q", code, stderr.String())
 	}
 	out := stdout.String()
@@ -534,5 +534,80 @@ func TestContextInjectCodexFallsBackToTurnContextWindow(t *testing.T) {
 	got := contextInjectLine(hookInputFor(p))
 	if !strings.Contains(got, "181k/258k") || !strings.Contains(got, "~70%") {
 		t.Errorf("turn_context model window fallback not applied: %q", got)
+	}
+}
+
+// The owner's updated Astra policy (advisory at 50% USED, orderly handoff at
+// 60% USED) arrives through the same GC_CONTEXT_ADVISORY_PCT /
+// GC_CONTEXT_URGENT_PCT knobs the Claude mayor uses, so this pins the exact
+// boundary semantics the city.toml env pair relies on:
+//
+//   - pct < 50        : silent
+//   - 50 <= pct <= 60 : advisory (the advisory threshold is inclusive)
+//   - pct > 60        : urgent   (the higher tier is strictly greater)
+//
+// The strict-greater high tier is the pre-existing SelectTier contract (see
+// TestDefaultContextAdvisoryPreservesThresholdBoundaries); keeping it here
+// ensures the new Astra numbers do not silently change Claude's defaults.
+func TestContextInjectCodexAstraPolicyEnvBoundaries(t *testing.T) {
+	clearContextInjectEnv(t)
+	t.Setenv("GC_CONTEXT_ADVISORY_PCT", "50")
+	t.Setenv("GC_CONTEXT_URGENT_PCT", "60")
+	tests := []struct {
+		name  string
+		input int
+		want  string // "", "ADVISORY", "URGENT"
+	}{
+		{"below advisory", 49_999, ""},
+		{"at advisory", 50_000, "ADVISORY"},
+		{"between thresholds", 59_999, "ADVISORY"},
+		{"at urgent stays lower tier", 60_000, "ADVISORY"},
+		{"above urgent", 60_001, "URGENT"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := writeTranscript(t,
+				codexTurnContextLine("gpt-6-astra"),
+				codexTokenCountLine(tt.input, tt.input/2, 100_000),
+			)
+			got := contextInjectLine(hookInputFor(p))
+			switch tt.want {
+			case "":
+				if got != "" {
+					t.Errorf("%d/100000: want silent, got %q", tt.input, got)
+				}
+			case "ADVISORY":
+				if !strings.Contains(got, "Approaching the recycle zone") {
+					t.Errorf("%d/100000: want advisory tier, got %q", tt.input, got)
+				}
+				if strings.Contains(got, "HIGH") {
+					t.Errorf("%d/100000: advisory tier must not be marked HIGH: %q", tt.input, got)
+				}
+			case "URGENT":
+				if !strings.Contains(got, "HIGH") {
+					t.Errorf("%d/100000: want urgent tier, got %q", tt.input, got)
+				}
+			}
+		})
+	}
+}
+
+// hookEventNameFromInput must trust the payload's own hook_event_name (the
+// Codex output schema rejects an event mismatch) and fall back to
+// GC_HOOK_EVENT_NAME only when the payload omits it.
+func TestHookEventNameFromInput(t *testing.T) {
+	t.Setenv("GC_HOOK_EVENT_NAME", "FallbackEvent")
+	if got := hookEventNameFromInput([]byte(`{"hook_event_name":"PostToolUse"}`)); got != "PostToolUse" {
+		t.Errorf("payload event = %q, want PostToolUse", got)
+	}
+	if got := hookEventNameFromInput([]byte(`{"transcript_path":"/tmp/x"}`)); got != "FallbackEvent" {
+		t.Errorf("env fallback = %q, want FallbackEvent", got)
+	}
+	if got := hookEventNameFromInput([]byte(`not json`)); got != "FallbackEvent" {
+		t.Errorf("malformed payload fallback = %q, want FallbackEvent", got)
+	}
+	t.Setenv("GC_HOOK_EVENT_NAME", "")
+	if got := hookEventNameFromInput(nil); got != "" {
+		t.Errorf("no evidence event = %q, want empty", got)
 	}
 }

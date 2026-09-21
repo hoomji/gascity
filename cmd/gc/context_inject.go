@@ -21,11 +21,20 @@ import (
 // compaction by default — losing the deliberate wrap-up (durable notes, bead
 // updates, clean seams) the handoff machinery exists to provide.
 //
-// This reads the provider hook input (UserPromptSubmit JSON on stdin carries
+// This reads the provider hook input (the JSON on stdin carries
 // transcript_path), computes the session's current context footprint from the
 // last usage entry in the transcript, and injects ONE line of guidance —
 // folded into the same single provider payload as the clock (see
 // cmd_nudge.go), so JSON hook formats stay one valid document.
+//
+// The advisory is delivered on BOTH provider boundaries that matter. Codex
+// fires UserPromptSubmit only on user input, so a long autonomous tool loop
+// would never see a warning; a supported PostToolUse hook (see
+// cmdNudgeContextOnly) re-emits the same advisory at every tool boundary,
+// tagged with the hook's own event name (hookEventNameFromInput) because the
+// Codex output schema keys hookSpecificOutput to the exact event. The tool
+// boundary deliberately emits only the advisory and never drains the nudge
+// queue, so per-tool delivery cannot loop notifications.
 //
 // The reader is provider-aware: Claude transcripts expose per-message
 // message.usage and name the model, while Codex rollouts emit event_msg
@@ -54,6 +63,22 @@ import (
 // hookStdinInput is the subset of the provider hook JSON we need.
 type hookStdinInput struct {
 	TranscriptPath string `json:"transcript_path"`
+	HookEventName  string `json:"hook_event_name"`
+}
+
+// hookEventNameFromInput resolves which provider hook event a payload is for.
+// The payload's own hook_event_name is authoritative — Codex's output schema
+// requires hookSpecificOutput.hookEventName to equal the emitting event — with
+// GC_HOOK_EVENT_NAME (set by the rendered managed hook command) as the
+// fallback. An empty result leaves the choice to the output writer's default.
+func hookEventNameFromInput(hookInput []byte) string {
+	var in hookStdinInput
+	if err := json.Unmarshal(hookInput, &in); err == nil {
+		if name := strings.TrimSpace(in.HookEventName); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(os.Getenv("GC_HOOK_EVENT_NAME"))
 }
 
 // transcriptUsage is the usage block shape inside Claude transcript entries.
