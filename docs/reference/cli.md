@@ -2909,8 +2909,13 @@ older than --stale-after so a fresh in-flight order is not interrupted.
 Closed order-tracking history is deleted after
 [beads.policies.order_tracking].delete_after_close, defaulting to 7d, while
 always retaining at least the latest 10 closed tracking beads per order.
-The manual command runs to completion; controller startup and watchdog sweeps
-use bounded cleanup to avoid spending an unbounded tick on stale work.
+The manual command runs to completion unless --max-delete or --time-budget
+bounds it. Run as an exec order, the prune stops on its own before the order
+timeout (it reads GC_ORDER_DEADLINE and keeps 20% of the remaining time, at
+least 15s, as headroom). Deletes run oldest-first and each one is durable, so a
+bounded pass always shrinks the backlog and the next run resumes where it
+stopped; the number left is reported on stderr. Controller startup and
+watchdog sweeps use bounded cleanup the same way.
 
 Use --include-wisps for operator recovery of abandoned order-run wisp
 subtrees whose open descendants are also older than --stale-after. Pass one
@@ -2931,8 +2936,10 @@ gc order sweep-tracking [order ...] [flags]
 | `--confirm` | bool |  | confirm bulk deletion when eligible count &gt; GC_BULK_DELETE_CONFIRM_THRESHOLD (default 20) |
 | `--dry-run` | bool |  | report stale order-tracking and order wisp beads without closing them |
 | `--include-wisps` | bool |  | also close stale order-run wisp subtrees with open descendants |
+| `--max-delete` | int |  | delete at most this many closed order-tracking beads this run (0 = no cap) |
 | `--quiet` | bool |  | suppress success output |
 | `--stale-after` | duration | `10m0s` | minimum age for an open tracking bead to be closed |
+| `--time-budget` | duration | `0s` | stop pruning closed history after this long (0 = derive from the exec order deadline, else unbounded) |
 
 ## gc pack
 
