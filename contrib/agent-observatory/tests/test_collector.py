@@ -221,6 +221,19 @@ class CollectTests(CollectorTestCase):
             run = self.collect(store, max_bytes_per_run=1)
         self.assertEqual(run.by_status, {"unchanged": 2})
 
+    def test_failed_source_waits_for_a_change_instead_of_taking_the_slot(self):
+        with open(os.path.join(self.claude_dir, "a-bad.jsonl"), "wb") as handle:
+            handle.write(b"\xff\xfe not utf-8 \xff\n")
+        self.claude_source("z.jsonl")
+        with ObservatoryStore(self.db) as store:
+            run = self.collect(store, max_sources_per_run=1)
+            self.assertEqual(run.by_status.get("deferred"), 1)
+            failed = set(run.by_status) - {"deferred"}
+            self.assertTrue(failed <= {"error", "unreadable"}, run.by_status)
+            run = self.collect(store, max_sources_per_run=1)
+        self.assertEqual(run.by_status.get("imported"), 1, run.by_status)
+        self.assertNotIn("deferred", run.by_status)
+
     def test_byte_cap_and_storage_cap(self):
         self.claude_source("a.jsonl")
         self.claude_source("b.jsonl")
@@ -346,6 +359,21 @@ class QueueTests(CollectorTestCase):
         self.assertEqual(self.collect(self.store).sessions_enqueued, 0)
         self.assertEqual(len(self.queue()), 1)
 
+    def test_crash_before_checkpoint_still_queues_sessions(self):
+        from unittest import mock
+
+        from agent_observatory import collector
+
+        path = self.claude_source("second.jsonl")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(EXTRA_LINE.replace("claude-sess-1", "claude-sess-2"))
+        with mock.patch.object(collector, "enqueue_sessions", side_effect=RuntimeError("killed")):
+            with self.assertRaises(RuntimeError):
+                self.collect(self.store)
+        run = self.collect(self.store)
+        self.assertEqual(run.by_status.get("imported"), 1, run.by_status)
+        self.assertGreaterEqual(run.sessions_enqueued, 1)
+
     def test_classified_item_is_done(self):
         result, calls = self.drain([("classified", None)])
         self.assertEqual((result.classified, len(calls)), (1, 1))
@@ -368,7 +396,7 @@ class QueueTests(CollectorTestCase):
         self.assertEqual(status["queue"]["unknown"][0]["last_failure_class"], "http_500")
 
     def test_budget_and_circuit_stop_without_charging_attempts(self):
-        for failure in ("budget_exhausted", "circuit_open", "credential_error"):
+        for failure in ("budget_exhausted", "circuit_open", "credential_error", "http_401", "http_403", "http_429", "http_529"):
             result, _ = self.drain([("pending", failure)])
             self.assertEqual(result.status, "stopped")
             item = self.queue()[0]
@@ -462,6 +490,11 @@ class StatusAndCliTests(CollectorTestCase):
         code, _, err = self.run_cli("queue-drain", "--db", self.db)
         self.assertEqual(code, 1)
         self.assertIn("--max-requests", err)
+
+    def test_cli_refuses_cost_ceiling_without_prices(self):
+        code, _, err = self.run_cli("queue-drain", "--db", self.db, "--max-requests", "1", "--max-cost-usd", "0.5")
+        self.assertEqual(code, 1)
+        self.assertIn("--price-per-million-input-usd", err)
 
     def test_cli_queue_drain_without_credential_stays_pending(self):
         self.claude_source()

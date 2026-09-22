@@ -88,8 +88,24 @@ SOURCE_STATUSES = (
 QUEUE_STATUSES = ("pending", "done", "unknown", "superseded")
 
 # Failure classes that say nothing about the subject: the drain stops and the
-# item stays pending with no attempt charged.
-_STOP_FAILURES = frozenset({"budget_exhausted", "circuit_open", "credential_error", "model_drift"})
+# item stays pending with no attempt charged. A rejected key (401/403) and a
+# throttle that outlasted the transport's retries (429/529) are account or
+# provider state, not evidence about the session.
+_STOP_FAILURES = frozenset(
+    {
+        "budget_exhausted",
+        "circuit_open",
+        "credential_error",
+        "model_drift",
+        "http_401",
+        "http_403",
+        "http_429",
+        "http_529",
+    }
+)
+# Failed sources are retried only when their stat changes, so a file that
+# cannot parse does not take a per-run slot on every pass.
+_STAT_SKIP_STATUSES = frozenset({"imported", "unchanged", "error", "unreadable"})
 
 _COLLECTOR_SCHEMA = (
     """
@@ -342,7 +358,10 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
                 continue
 
             if _stat_unchanged(prev, stat):
-                _save_source(store, row, "unchanged", "size and mtime match the checkpoint", run)
+                if prev["status"] in {"error", "unreadable"}:
+                    _save_source(store, row, prev["status"], prev["reason"], run)
+                else:
+                    _save_source(store, row, "unchanged", "size and mtime match the checkpoint", run)
                 continue
             # Record the observed stat so lag is measurable while the file waits.
             # A waiting status is never ``unchanged``-eligible, and generation
@@ -367,7 +386,7 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
 
             processed += 1
             run.bytes_read += stat.st_size
-            _import_source(store, context, source, prev, row, stat, spool_dir, run, touched)
+            _import_source(store, context, source, prev, row, stat, spool_dir, run, touched, config.enqueue)
 
         for record in unreadable:
             realpath = str(record.get("realpath") or record.get("path"))
@@ -394,10 +413,6 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
         row["last_seen_at"] = prev["last_seen_at"]
         _save_source(store, row, "missing", "source no longer present under its root; prior events are kept", run)
 
-    if config.enqueue and touched:
-        enqueued, superseded = enqueue_sessions(store, sorted(touched), clock=lambda: now)
-        run.sessions_enqueued += enqueued
-        run.queue_superseded += superseded
 
 
 def _deferral_reason(
@@ -438,10 +453,16 @@ def _import_source(
     spool_dir: str,
     run: CollectRun,
     touched: set[tuple[str, str, str, str]],
+    enqueue: bool = True,
 ) -> None:
     try:
         adapter, data, digest = load_source_data(source.path, provider=source.provider)
-    except (AdapterError, OSError) as exc:
+    except AdapterError as exc:
+        _save_source(store, row, "unreadable", str(exc), run)
+        return
+    except OSError as exc:
+        # I/O trouble may clear on its own: drop the stat so the next run retries.
+        row.update(mtime=None)
         _save_source(store, row, "unreadable", str(exc), run)
         return
 
@@ -479,6 +500,8 @@ def _import_source(
         Path(spool_path).write_text(records_to_jsonl(records), encoding="utf-8")
         imported = store.import_jsonl(spool_path)
     except (ContractError, OSError) as exc:
+        # A store-side failure says nothing about the file: always retry it.
+        row.update(mtime=None)
         _save_source(store, row, "error", f"import failed: {exc}", run)
         return
     finally:
@@ -489,8 +512,16 @@ def _import_source(
     run.events_duplicate += imported.duplicates
     run.events_conflicting += imported.skipped_conflicts
     run.by_change[change] = run.by_change.get(change, 0) + 1
-    for record in records:
-        touched.add((record["city_id"], record["host_id"], record["provider"], record["session_id"]))
+    sessions = {(record["city_id"], record["host_id"], record["provider"], record["session_id"]) for record in records}
+    touched.update(sessions)
+    # Queue before the "imported" checkpoint: a crash between the two re-imports
+    # the source next run (duplicates are ignored and re-enqueueing an unchanged
+    # snapshot is a no-op), while the reverse order would lose the sessions.
+    if enqueue and sessions:
+        now = row["last_seen_at"]
+        enqueued, superseded = enqueue_sessions(store, sorted(sessions), clock=lambda: now)
+        run.sessions_enqueued += enqueued
+        run.queue_superseded += superseded
     row.update(
         records=len(records),
         partial_trailing_line=1 if result.partial_trailing_line else 0,
@@ -508,7 +539,7 @@ def _import_source(
 def _stat_unchanged(prev: dict[str, Any] | None, stat: os.stat_result) -> bool:
     return (
         prev is not None
-        and prev.get("status") in {"imported", "unchanged"}
+        and prev.get("status") in _STAT_SKIP_STATUSES
         and prev.get("raw_size") == stat.st_size
         and prev.get("mtime") == stat.st_mtime
     )

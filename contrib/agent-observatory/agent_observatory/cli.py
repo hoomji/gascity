@@ -274,6 +274,13 @@ def _transport_config_from_args(args: argparse.Namespace) -> TransportConfig:
         budget = replace(
             budget, price_per_million_output_usd=args.price_per_million_output_usd
         )
+    if budget.max_cost_usd is not None and (
+        budget.price_per_million_input_usd is None or budget.price_per_million_output_usd is None
+    ):
+        # Without both prices the cost is unknown and the ceiling never trips.
+        raise ObservatoryError(
+            "--max-cost-usd needs --price-per-million-input-usd and --price-per-million-output-usd"
+        )
     if budget is not config.budget:
         config = replace(config, budget=budget)
 
