@@ -60,3 +60,15 @@ class ResponseError(ObservatoryError):
 
 class LabelConflictError(ObservatoryError):
     """A classification already exists for this subject and would be overwritten."""
+
+
+class AnnotationError(ObservatoryError):
+    """A gold annotation set or annotation record is invalid."""
+
+
+class EpisodeError(ObservatoryError):
+    """Episode segmentation or split input is invalid."""
+
+
+class EvaluationError(ObservatoryError):
+    """An evaluation request is inconsistent (for example gold/prediction mismatch)."""

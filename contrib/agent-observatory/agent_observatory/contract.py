@@ -106,6 +106,22 @@ def _normalize_timestamp(value: str, source_path: str | None, line_number: int |
     return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
+def normalize_timestamp(
+    value: str,
+    source_path: str | None = None,
+    line_number: int | None = None,
+) -> str:
+    """Validate an ISO-8601 timestamp and return canonical UTC microseconds.
+
+    Public wrapper around the import-contract normalizer so evaluation and
+    annotation inputs use the exact same timezone and precision rules as imported
+    evidence.
+    """
+    if not isinstance(value, str) or not value:
+        raise ContractError("timestamp must be a non-empty string", source_path, line_number)
+    return _normalize_timestamp(value, source_path, line_number)
+
+
 def validate_record(
     raw: Any,
     source_path: str | None = None,

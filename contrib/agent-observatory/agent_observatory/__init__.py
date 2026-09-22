@@ -14,11 +14,16 @@ Beads and events remain the authoritative record; the SQLite file is only a
 derived analytical projection.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
+from .annotations import GoldEpisode, GoldSet, load_gold_set
 from .contract import SCHEMA_VERSION, validate_record
+from .episodes import Episode, EpisodeConfig, segment_events, segment_store
 from .errors import (
+    AnnotationError,
     ContractError,
+    EpisodeError,
+    EvaluationError,
     ImportConflictError,
     LabelConflictError,
     ObservatoryError,
@@ -27,6 +32,16 @@ from .errors import (
     ResponseError,
     SchemaVersionError,
     TaxonomyError,
+)
+from .evaluation import (
+    EvaluationConfig,
+    HoldoutSplit,
+    Prediction,
+    audit_split,
+    evaluate_gold_set,
+    grouped_temporal_split,
+    load_predictions,
+    report_json,
 )
 from .jev import (
     REQUEST_BYTE_CAP,
@@ -53,8 +68,26 @@ __all__ = [
     "build_report",
     "load_taxonomy",
     "validate_record",
+    "GoldEpisode",
+    "GoldSet",
+    "load_gold_set",
+    "Episode",
+    "EpisodeConfig",
+    "segment_events",
+    "segment_store",
+    "EvaluationConfig",
+    "HoldoutSplit",
+    "Prediction",
+    "audit_split",
+    "evaluate_gold_set",
+    "grouped_temporal_split",
+    "load_predictions",
+    "report_json",
     "ObservatoryError",
+    "AnnotationError",
     "ContractError",
+    "EpisodeError",
+    "EvaluationError",
     "ImportConflictError",
     "LabelConflictError",
     "SchemaVersionError",
