@@ -134,6 +134,39 @@ class DshAdapterTest(unittest.TestCase):
         result = self._parse()
         self.assertIsNone(result.skipped.get("tool_result_unpaired"))
 
+    def test_negative_tool_result_delta_is_flagged(self):
+        # F9: a result that predates its call cannot have a duration. The
+        # contradiction is recorded instead of a silent None.
+        result = self._parse_bytes(
+            [
+                {
+                    "type": "tool/call",
+                    "seq": 1,
+                    "time": 2000,
+                    "data": {"callId": "call-neg", "name": "bash", "arguments": "{}"},
+                },
+                {
+                    "type": "tool/result",
+                    "seq": 2,
+                    "time": 1500,
+                    "data": {
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "tool-result",
+                                    "toolCallId": "call-neg",
+                                    "content": [{"type": "text", "text": "out"}],
+                                }
+                            ]
+                        }
+                    },
+                },
+            ]
+        )
+        self.assertEqual(result.skipped.get("tool_result_negative_delta"), 1)
+        record = next(record for record in result.records if record["kind"] == "tool_result")
+        self.assertIsNone(record["duration_ms"])
+
     def test_detect_requires_content_signature_for_uncompressed(self):
         adapter = DshAdapter()
         session_dir = os.path.join(self.tmp.name, ".dsh", "sessions", "--tmp--", "session-x")
@@ -154,6 +187,63 @@ class DshAdapterTest(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("just notes")
         self.assertFalse(DshAdapter().detect(path))
+
+    def test_detect_sees_past_an_oversized_first_record(self):
+        # F2: a valid first record larger than the old 64 KiB prefix must not
+        # hide the dsh signature in the records that follow it.
+        adapter = DshAdapter()
+        session_dir = os.path.join(self.tmp.name, ".dsh", "sessions", "--tmp--", "session-big")
+        os.makedirs(session_dir, exist_ok=True)
+        transcript = os.path.join(session_dir, "session.v3.jsonl")
+        first_line = json.dumps(
+            {
+                "type": "user/message",
+                "seq": 1,
+                "time": 1790000000,
+                "data": {"content": [{"type": "text", "text": "x" * 200000}]},
+            }
+        )
+        self.assertGreater(len(first_line), 65536)
+        with open(transcript, "w", encoding="utf-8") as handle:
+            handle.write(first_line + "\n")
+            handle.write(json.dumps({"type": "session/title", "seq": 2, "time": 1790000001, "data": {"title": "t"}}) + "\n")
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "assistant/message",
+                        "seq": 3,
+                        "time": 1790000002,
+                        "data": {"message": {"id": "m-big", "content": [{"type": "text", "text": "after"}]}},
+                    }
+                )
+                + "\n"
+            )
+        self.assertTrue(adapter.detect(transcript))
+
+    def test_detect_requires_dsh_layout_for_compressed(self):
+        # F3: a ``session.v3.jsonl.zstd`` name outside ``.dsh/sessions`` is not
+        # enough on its own.
+        path = os.path.join(self.tmp.name, "elsewhere", "session.v3.jsonl.zstd")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(b"not really zstd")
+        self.assertFalse(DshAdapter().detect(path))
+
+    @unittest.skipUnless(support.zstd_available(), "zstd binary is not available")
+    def test_compressed_non_dsh_jsonl_is_flagged_not_a_silent_session(self):
+        # F3: decompressing a valid zstd of unrelated JSONL must not look like an
+        # empty dsh session.
+        source = os.path.join(self.tmp.name, "not-dsh.jsonl")
+        with open(source, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"note": "definitely not a dsh transcript"}) + "\n")
+            handle.write(json.dumps({"type": "unrelated/record"}) + "\n")
+        target = os.path.join(
+            self.tmp.name, ".dsh", "sessions", "--tmp--", "session-x", "session.v3.jsonl.zstd"
+        )
+        support.compress_zstd(source, target)
+        result = read_source(target, provider="dsh", context=support.CONTEXT)
+        self.assertEqual(result.skipped.get("no_dsh_signature"), 1)
+        self.assertEqual(result.records, [])
 
     def test_uncompressed_session_round_trips_through_read_source(self):
         session_dir = os.path.join(self.tmp.name, ".dsh", "sessions", "--tmp--", "session-u")

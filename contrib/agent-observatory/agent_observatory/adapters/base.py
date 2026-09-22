@@ -249,10 +249,6 @@ def iso_from_epoch(value: Any) -> str | None:
         return None
 
 
-# Retained for callers that only deal in milliseconds; it is magnitude-aware too.
-iso_from_epoch_millis = iso_from_epoch
-
-
 def number_or_none(value: Any) -> int | float | None:
     """Return *value* when it is a non-``bool`` number, else ``None``.
 

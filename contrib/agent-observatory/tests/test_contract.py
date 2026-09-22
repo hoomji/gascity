@@ -9,9 +9,18 @@ try:
 except ImportError:  # pragma: no cover - depends on discovery invocation
     import support
 
+from agent_observatory import ImportConflictError
 from agent_observatory.canonical import event_snapshot_hash
 from agent_observatory.contract import payload_hash, record_identity, validate_record
 from agent_observatory.errors import ContractError
+
+
+class RetainedErrorTest(unittest.TestCase):
+    def test_import_conflict_error_is_retained_for_callers(self):
+        # F8: the class stays exported for compatibility even though the
+        # importer no longer raises it.
+        self.assertTrue(issubclass(ImportConflictError, Exception))
+        self.assertIn("Retained for callers", ImportConflictError.__doc__ or "")
 
 
 class ContractTest(unittest.TestCase):

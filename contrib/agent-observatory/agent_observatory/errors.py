@@ -27,7 +27,7 @@ class ContractError(ObservatoryError):
 
 
 class ImportConflictError(ObservatoryError):
-    """An existing event id would be silently overwritten with different content."""
+    """Retained for callers; no longer raised by import."""
 
 
 class SchemaVersionError(ObservatoryError):

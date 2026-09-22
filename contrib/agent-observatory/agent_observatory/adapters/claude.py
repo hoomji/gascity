@@ -437,10 +437,15 @@ def _claude_timestamp(value: Any) -> str | None:
 
     Claude normally writes ISO strings, but some records carry a numeric epoch
     value instead; dropping those silently loses the record. Numeric values are
-    unit-detected the same way dsh timestamps are.
+    unit-detected the same way dsh timestamps are, and a bare all-digit string
+    is treated as that numeric epoch rather than passed through as an invalid
+    ISO timestamp.
     """
 
     if isinstance(value, str) and value:
+        stripped = value.strip()
+        if stripped.isascii() and stripped.isdigit():
+            return iso_from_epoch(int(stripped))
         return value
     return iso_from_epoch(value)
 

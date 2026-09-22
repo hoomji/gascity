@@ -68,33 +68,38 @@ _DSH_SIGNATURE_TYPES = _META_TYPES | frozenset(
     }
 )
 
-# How much of an uncompressed candidate to scan for a dsh record signature.
-_DSH_SIGNATURE_BYTES = 65536
+# How many leading records to scan for a dsh signature. A byte prefix is the
+# wrong bound: one oversized but valid first record consumes it before any
+# complete line is seen. Streaming complete lines, bounded by record count,
+# detects a transcript regardless of how large a single record is.
+_DSH_SIGNATURE_RECORDS = 64
 
 
 def _looks_like_dsh_transcript(path: Path) -> bool:
     """Return whether *path* begins with a recognizable dsh record.
 
     Detection cannot rely on the directory layout alone: ``.dsh/sessions`` can
-    contain logs, notes and other JSONL that are not transcripts. Reading a
-    bounded prefix and looking for a dsh ``type`` keeps discovery honest.
+    contain logs, notes and other JSONL that are not transcripts. Scanning a
+    bounded number of complete lines for a dsh ``type`` keeps discovery honest
+    without truncating a valid first record that exceeds a byte prefix.
     """
 
     try:
         with open(path, "rb") as handle:
-            prefix = handle.read(_DSH_SIGNATURE_BYTES)
+            for index, raw_line in enumerate(handle):
+                if index >= _DSH_SIGNATURE_RECORDS:
+                    break
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    decoded = json.loads(line.decode("utf-8", "replace"))
+                except ValueError:
+                    continue
+                if isinstance(decoded, dict) and decoded.get("type") in _DSH_SIGNATURE_TYPES:
+                    return True
     except OSError:
         return False
-    for raw_line in prefix.split(b"\n"):
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            decoded = json.loads(line.decode("utf-8", "replace"))
-        except ValueError:
-            continue
-        if isinstance(decoded, dict) and decoded.get("type") in _DSH_SIGNATURE_TYPES:
-            return True
     return False
 
 
@@ -107,12 +112,16 @@ class DshAdapter(SourceAdapter):
     def detect(self, source_path: str) -> bool:
         path = Path(source_path)
         name = path.name
-        if name.endswith(".zstd"):
-            # Compressed content cannot be sniffed without decompressing; the
-            # session filename is the only signal available.
-            return "session.v3.jsonl" in name
         parts = path.parts
-        if ".dsh" not in parts or "sessions" not in parts or not name.endswith(".jsonl"):
+        if ".dsh" not in parts or "sessions" not in parts:
+            return False
+        if name.endswith(".zstd"):
+            # Compressed content cannot be sniffed without decompressing, so the
+            # filename plus the ``.dsh/sessions`` layout is the detection signal.
+            # parse() then content-checks the decompressed records and emits a
+            # ``no_dsh_signature`` note when none of them are dsh types.
+            return "session.v3.jsonl" in name
+        if not name.endswith(".jsonl"):
             return False
         return _looks_like_dsh_transcript(path)
 
@@ -174,12 +183,15 @@ class DshAdapter(SourceAdapter):
         )
         model: str | None = None
         call_times: dict[str, float] = {}
+        saw_dsh_signature = False
 
         for line_number, obj in decoded:
             if not isinstance(obj, dict):
                 result.note_skip("non_object")
                 continue
             record_type = obj.get("type")
+            if isinstance(record_type, str) and record_type in _DSH_SIGNATURE_TYPES:
+                saw_dsh_signature = True
             payload = obj.get("data") if isinstance(obj.get("data"), dict) else {}
             if record_type == "session":
                 session_id = obj.get("id")
@@ -210,6 +222,12 @@ class DshAdapter(SourceAdapter):
                 result.note_skip(f"meta:{record_type}")
             else:
                 result.note_skip(f"type:{record_type}")
+
+        if not saw_dsh_signature:
+            # A file that decompressed cleanly but carries no dsh record type is
+            # not a transcript; flag it instead of reporting a silent empty
+            # session.
+            result.note_skip("no_dsh_signature")
 
         return result
 
@@ -453,6 +471,10 @@ class DshAdapter(SourceAdapter):
                 # ``duration_ms`` is an integer field in the normalized contract;
                 # a fractional source clock is truncated, never emitted as float.
                 duration_ms = int(delta)
+            else:
+                # A result that predates its call cannot have a duration; flag the
+                # contradiction rather than leaving None as the only signal.
+                result.note_skip("tool_result_negative_delta")
         seq = obj.get("seq")
         event_id = f"seq:{seq}" if isinstance(seq, int) else fallback_event_id(self.provider, generation, line_number, "tool_result", payload)
         result.records.append(

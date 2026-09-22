@@ -31,6 +31,14 @@ class EpochTimestampTest(unittest.TestCase):
             self.assertIsNone(iso_from_epoch(value), repr(value))
 
 
+class DeadAliasTest(unittest.TestCase):
+    def test_iso_from_epoch_millis_alias_is_removed(self):
+        # F8: the alias had no callers outside its own definition.
+        import agent_observatory.adapters.base as base
+
+        self.assertFalse(hasattr(base, "iso_from_epoch_millis"))
+
+
 class SplitJsonlTest(unittest.TestCase):
     def test_bom_prefixed_two_valid_lines_parse_without_error(self):
         records, partial, errors = split_jsonl(BOM + b'{"a":1}\n{"b":2}\n', "bom.jsonl")

@@ -64,6 +64,24 @@ class ClaudeAdapterTest(unittest.TestCase):
         self.assertEqual(len(result.records), 1)
         self.assertEqual(result.records[0]["timestamp"][:4], "2026", result.records[0]["timestamp"])
 
+    def test_digit_string_timestamp_is_treated_as_epoch_not_dropped(self):
+        # F7: a bare all-digit string is an epoch, not an ISO timestamp.
+        path = self._write_records(
+            "digit-ts.jsonl",
+            [
+                {
+                    "type": "user",
+                    "uuid": "u-digit",
+                    "sessionId": "sess-digit",
+                    "timestamp": "1758198061",  # epoch seconds as a string
+                    "message": {"role": "user", "content": [{"type": "text", "text": "digit"}]},
+                }
+            ],
+        )
+        result = self._read(path)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0]["timestamp"][:4], "2025", result.records[0]["timestamp"])
+
     def test_float_usage_values_are_kept(self):
         path = self._write_records(
             "float-usage.jsonl",

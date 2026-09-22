@@ -130,6 +130,29 @@ class AdapterCliTest(unittest.TestCase):
             self.assertIn("error:", stderr, f"generation={bad!r}")
             self.assertIn("--generation", stderr, f"generation={bad!r}")
 
+    def test_export_rejects_multi_sign_generation_with_a_clean_error(self):
+        # F1: ``--5`` and ``+-5`` must not slip through lstrip("+-").isdigit()
+        # and raise a bare ValueError. Use the ``=`` form so argparse passes the
+        # sign-led value through instead of treating it as an option.
+        for bad in ("--5", "+-5", "5+", "++3"):
+            code, _stdout, stderr = self._run(
+                [
+                    "export",
+                    "--provider",
+                    "claude",
+                    "--input",
+                    support.fixture("claude"),
+                    "--city",
+                    "c",
+                    "--host",
+                    "h",
+                    f"--generation={bad}",
+                ]
+            )
+            self.assertEqual(code, 1, f"generation={bad!r}")
+            self.assertIn("error:", stderr, f"generation={bad!r}")
+            self.assertIn("--generation", stderr, f"generation={bad!r}")
+
     def test_export_accepts_positive_generation(self):
         code, stdout, _stderr = self._run(
             [

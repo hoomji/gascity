@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -105,7 +106,9 @@ def _validated_generation(value: Any) -> int:
         raise ObservatoryError(f"--generation must be a positive integer, got {value!r}")
     if isinstance(value, int):
         generation = value
-    elif isinstance(value, str) and value.strip().lstrip("+-").isdigit():
+    elif isinstance(value, str) and re.fullmatch(r"[+-]?\d+", value.strip()):
+        # A single optional sign only: ``lstrip("+-")`` would accept ``--5`` and
+        # ``+-5`` here and then hand an int() ValueError to the caller.
         generation = int(value.strip())
     else:
         raise ObservatoryError(f"--generation must be a positive integer, got {value!r}")

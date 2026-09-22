@@ -68,6 +68,33 @@ class RedactionTest(unittest.TestCase):
             self.assertNotIn(address, redacted)
             self.assertIn("[REDACTED]", redacted)
 
+    def test_email_hostname_may_contain_underscore(self):
+        # F5: ``_`` is legal in a hostname, so this is still a personal address.
+        redacted = redact_text("contact alice@host_name.com now")
+        self.assertNotIn("alice@host_name.com", redacted)
+        self.assertIn("[REDACTED]", redacted)
+
+    def test_url_path_segments_are_not_home_directories(self):
+        # F4: a doc URL path is not a user home directory.
+        for value in (
+            "https://docs.example.com/Users/guide",
+            "https://docs.example.com/home/guide",
+            "https://docs.example.com:8443/root/guide",
+        ):
+            self.assertEqual(redact_text(value), value)
+            self.assertNotIn("[REDACTED]", redact_text(value))
+
+    def test_home_paths_at_value_starts_are_still_redacted(self):
+        for value in (
+            "/home/alice/secret",
+            "see /home/alice/secret now",
+            "path=/home/alice/secret",
+            "path:/home/alice/secret",
+            '"/home/alice/secret"',
+        ):
+            self.assertIn("[REDACTED]", redact_text(value), value)
+            self.assertNotIn("alice", redact_text(value), value)
+
     def test_home_directory_paths_are_redacted(self):
         for path in ("/home/alice/secret", "/Users/alice/proj", r"C:\Users\alice\secret"):
             redacted = redact_text(f"see {path} now")

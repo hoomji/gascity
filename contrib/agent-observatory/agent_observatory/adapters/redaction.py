@@ -44,11 +44,17 @@ _ASSIGNMENT_RE = re.compile(
 )
 _BEARER_RE = re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})")
 # A personal email address is identifying regardless of the surrounding key.
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+# Underscores are legal in a hostname (``alice@host_name.com``).
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9._\-]+\.[A-Za-z]{2,}\b")
 # Home-directory prefixes named by the OS: the account component is identifying.
+# The path must begin a value (start of string, whitespace, a quote, or one of
+# ``=/:``) so a URL path segment such as ``https://host/Users/guide`` is not
+# mistaken for a home directory. The delimiter is captured and re-emitted.
+_HOME_PATH_DELIMITER = r"""(^|[\s"'=/:])"""
 _HOME_PATH_RE = re.compile(
-    r"(?:/home/|/Users/|[A-Za-z]:\\Users\\)[^/\\\s\"',;]+"
-    r"|(?<![\w/])/root(?![A-Za-z0-9_])"
+    _HOME_PATH_DELIMITER
+    + r"((?:/home/|/Users/|[A-Za-z]:\\Users\\)[^/\\\s\"',;]+"
+    + r"|/root(?![A-Za-z0-9_]))"
 )
 # Well-known token shapes that are secret regardless of surrounding key names.
 _TOKEN_SHAPE_RE = re.compile(
@@ -80,13 +86,16 @@ def redact_text(value: str) -> str:
         prefix, quote, _secret, closing = match.group(1), match.group(2), match.group(3), match.group(4)
         return f"{prefix}{quote}{REDACTED}{closing}"
 
+    def _home_path(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{REDACTED}"
+
     # Bearer/token shapes run first so an ``Authorization: Bearer <secret>``
     # header cannot leave the secret behind when the assignment rule consumes
     # only the ``Bearer`` word.
     redacted = _BEARER_RE.sub(lambda m: f"{m.group(1)}{REDACTED}", value)
     redacted = _TOKEN_SHAPE_RE.sub(REDACTED, redacted)
     redacted = _EMAIL_RE.sub(REDACTED, redacted)
-    redacted = _HOME_PATH_RE.sub(REDACTED, redacted)
+    redacted = _HOME_PATH_RE.sub(_home_path, redacted)
     redacted = _ASSIGNMENT_RE.sub(_assignment, redacted)
     return redacted
 
