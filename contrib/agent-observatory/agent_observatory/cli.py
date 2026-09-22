@@ -9,8 +9,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -30,6 +32,7 @@ from .jev import REQUEST_BYTE_CAP, build_request, import_response, persist_reque
 from .report import build_report
 from .store import ObservatoryStore
 from .taxonomy import load_taxonomy
+from .transport import TransportConfig, classify
 
 
 def _reject_json_constant(value: str) -> Any:
@@ -109,25 +112,50 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _open_store(path: str) -> ObservatoryStore:
+    """Open the projection, surfacing a local sqlite failure as a clean error."""
+    try:
+        return ObservatoryStore(path)
+    except sqlite3.Error as exc:
+        raise ObservatoryError(f"sqlite error: {exc}") from exc
+
+
+def _resolve_snapshot_hash(args: argparse.Namespace) -> str:
+    """Resolve a subject snapshot hash from an explicit value or the projection.
+
+    When an explicit ``--snapshot-hash`` is supplied *and* the subject can be
+    resolved from the projection (``--db`` plus ``--session``), the explicit
+    value is cross-checked against the store and refused on mismatch rather than
+    silently classifying a phantom subject.
+    """
+    explicit = args.snapshot_hash
+    if not args.db or not args.session:
+        if explicit:
+            return explicit
+        raise ObservatoryError(
+            "provide --snapshot-hash, or --db and --session so the subject snapshot can be computed"
+        )
+    session_key = _session_key(args.session)
+    with _open_store(args.db) as store:
+        if args.subject_kind == "event":
+            if not args.event_id:
+                raise ObservatoryError("--event-id is required for --subject-kind event")
+            computed = store.event_snapshot(session_key, args.event_id)
+        else:
+            computed = store.session_snapshot(session_key)
+    if explicit and explicit != computed:
+        raise ObservatoryError(
+            f"explicit --snapshot-hash {explicit!r} does not match the projection "
+            f"snapshot {computed!r} for the supplied session; refusing to classify "
+            "a phantom subject"
+        )
+    return computed
+
+
 def _cmd_build_request(args: argparse.Namespace) -> int:
     taxonomy = load_taxonomy(args.taxonomy)
     state = _read_json_object(args.state, "state")
-
-    if args.snapshot_hash:
-        snapshot_hash = args.snapshot_hash
-    else:
-        if not args.db or not args.session:
-            raise ObservatoryError(
-                "provide --snapshot-hash, or --db and --session so the subject snapshot can be computed"
-            )
-        session_key = _session_key(args.session)
-        with ObservatoryStore(args.db) as store:
-            if args.subject_kind == "event":
-                if not args.event_id:
-                    raise ObservatoryError("--event-id is required for --subject-kind event")
-                snapshot_hash = store.event_snapshot(session_key, args.event_id)
-            else:
-                snapshot_hash = store.session_snapshot(session_key)
+    snapshot_hash = _resolve_snapshot_hash(args)
 
     request = build_request(
         state,
@@ -165,6 +193,69 @@ def _cmd_build_request(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     return 0
+
+
+def _transport_config_from_args(args: argparse.Namespace) -> TransportConfig:
+    """Merge an optional JSON config file with explicit CLI overrides."""
+    data: dict[str, Any] = {}
+    if args.config:
+        data = _read_json_object(args.config, "config")
+    config = TransportConfig.from_mapping(data)
+
+    if args.timeout is not None:
+        config = replace(config, timeout_seconds=args.timeout)
+    if args.max_attempts is not None:
+        config = replace(config, retry=replace(config.retry, max_attempts=args.max_attempts))
+
+    budget = config.budget
+    if args.max_requests is not None:
+        budget = replace(budget, max_requests=args.max_requests)
+    if args.max_tokens is not None:
+        budget = replace(budget, max_tokens=args.max_tokens)
+    if args.max_cost_usd is not None:
+        budget = replace(budget, max_cost_usd=args.max_cost_usd)
+    if args.price_per_million_input_usd is not None:
+        budget = replace(
+            budget, price_per_million_input_usd=args.price_per_million_input_usd
+        )
+    if args.price_per_million_output_usd is not None:
+        budget = replace(
+            budget, price_per_million_output_usd=args.price_per_million_output_usd
+        )
+    if budget is not config.budget:
+        config = replace(config, budget=budget)
+
+    if args.allow_model_drift:
+        config = replace(config, allow_model_drift=True)
+    return config
+
+
+def _cmd_classify(args: argparse.Namespace) -> int:
+    """Send one built request with the bounded transport and record the outcome.
+
+    The credential is read at runtime from ``JEV_API_KEY`` or ``JEV_KEY_FILE``;
+    a missing credential or any transport/validation failure is recorded as
+    ``pending``/unknown rather than raised.
+    """
+    taxonomy = load_taxonomy(args.taxonomy)
+    state = _read_json_object(args.state, "state")
+    snapshot_hash = _resolve_snapshot_hash(args)
+    request = build_request(
+        state,
+        taxonomy,
+        snapshot_hash=snapshot_hash,
+        subject_kind=args.subject_kind,
+    )
+    config = _transport_config_from_args(args)
+    with _open_store(args.db) as store:
+        result = classify(store, request, config=config)
+    _write_output(
+        json.dumps(result.to_dict(), indent=2, sort_keys=True, ensure_ascii=False),
+        args.out,
+    )
+    # A pending/unknown classification is a delivered, recorded outcome rather
+    # than a crash; the nonzero status tells an operator to look at the failure.
+    return 0 if result.outcome == "classified" else 1
 
 
 def _cmd_import_response(args: argparse.Namespace) -> int:
@@ -385,6 +476,42 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--db", default=None, help="import the exported JSONL into this projection")
     export_parser.set_defaults(func=_cmd_export)
 
+    classify_parser = subparsers.add_parser(
+        "classify", help="send a built Jev request with the bounded live transport"
+    )
+    classify_parser.add_argument("--db", required=True, help="SQLite projection path")
+    classify_parser.add_argument("--state", required=True, help="explicit sanitized state JSON file")
+    classify_parser.add_argument("--taxonomy", default=None, help="taxonomy JSON path")
+    classify_parser.add_argument("--subject-kind", choices=("event", "session"), default="session")
+    classify_parser.add_argument(
+        "--session",
+        default=None,
+        help='JSON array ["city_id","host_id","provider","session_id"], or legacy city_id|host_id|provider|session_id',
+    )
+    classify_parser.add_argument("--event-id", default=None, help="event id for --subject-kind event")
+    classify_parser.add_argument("--snapshot-hash", default=None, help="explicit subject snapshot hash")
+    classify_parser.add_argument(
+        "--config",
+        default=None,
+        help="JSON transport config (timeout/retry/budget/circuit); unknown keys are rejected",
+    )
+    classify_parser.add_argument("--timeout", type=float, default=None, help="HTTP timeout in seconds (default 30)")
+    classify_parser.add_argument("--max-attempts", type=int, default=None, help="maximum HTTP attempts")
+    classify_parser.add_argument("--max-requests", type=int, default=None, help="per-run request cap")
+    classify_parser.add_argument("--max-tokens", type=int, default=None, help="per-run token budget ceiling")
+    classify_parser.add_argument("--max-cost-usd", type=float, default=None, help="per-run dollar budget ceiling")
+    classify_parser.add_argument(
+        "--price-per-million-input-usd", type=float, default=None, help="input token price (USD per million)"
+    )
+    classify_parser.add_argument(
+        "--price-per-million-output-usd", type=float, default=None, help="output token price (USD per million)"
+    )
+    classify_parser.add_argument(
+        "--allow-model-drift", action="store_true", help="allow a model other than the pinned jev-1.13.0"
+    )
+    classify_parser.add_argument("--out", default=None, help="write the result JSON to this path instead of stdout")
+    classify_parser.set_defaults(func=_cmd_classify)
+
     return parser
 
 
@@ -405,6 +532,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"error: {exc.filename}: {reason}", file=sys.stderr)
         else:
             print(f"error: {reason}", file=sys.stderr)
+        return 1
+    except sqlite3.Error as exc:
+        # A projection that cannot be opened or written is an operator error, not
+        # a crash: report it as ``error: ...`` and exit 1 with no traceback.
+        print(f"error: sqlite error: {exc}", file=sys.stderr)
         return 1
 
 
