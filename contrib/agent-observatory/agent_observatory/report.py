@@ -156,7 +156,13 @@ def build_report(store: ObservatoryStore) -> dict[str, Any]:
         )
 
     def unit_key(projection: dict[str, Any]) -> tuple[str, str]:
-        return (projection["session"], projection["call_id"] or projection["event"]["event_id"])
+        # Pair results to invocations by call identity. Invocations with no call
+        # id fall back to their own event id, but in a separate namespace so a
+        # result whose tool_call_id happens to equal that event id cannot pair.
+        call_id = projection["call_id"]
+        if call_id:
+            return (projection["session"], f"call:{call_id}")
+        return (projection["session"], f"event:{projection['event']['event_id']}")
 
     # One entry per distinct invocation; repeated invocation records with the same
     # call identity cannot inflate counts.
@@ -179,10 +185,10 @@ def build_report(store: ObservatoryStore) -> dict[str, Any]:
         results_by_key.setdefault(unit_key(projection), []).append(projection)
 
     # Invocation-only tool counts: a result event never adds a tool count.
+    # Invocations without a tool name still contribute an observed outcome, so
+    # they are counted under "unknown" instead of silently disappearing here.
     for invocation in invocations:
-        tool_name = invocation["event"].get("tool_name")
-        if tool_name:
-            tool_counts[tool_name] += 1
+        tool_counts[invocation["event"].get("tool_name") or "unknown"] += 1
 
     # Command categories describe invocations. A result or arbitrary prose
     # record that merely contains a command is never promoted to an invocation.

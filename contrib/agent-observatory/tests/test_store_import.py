@@ -13,7 +13,12 @@ try:
 except ImportError:  # pragma: no cover
     import support
 
-from agent_observatory.errors import ContractError, ImportConflictError, SchemaVersionError
+from agent_observatory.errors import (
+    ContractError,
+    ImportConflictError,
+    LabelConflictError,
+    SchemaVersionError,
+)
 from agent_observatory.store import ObservatoryStore
 
 
@@ -25,6 +30,27 @@ class StoreImportTest(unittest.TestCase):
 
     def _write(self, name, records):
         return support.write_jsonl(os.path.join(self.tmp.name, name), records)
+
+    def _first_timestamp(self, store):
+        row = store.conn.execute(
+            "SELECT first_timestamp FROM sessions WHERE city_id = 'city-a' AND "
+            "host_id = 'host-a' AND provider = 'codex' AND session_id = 'session-1'"
+        ).fetchone()
+        return row["first_timestamp"] if row is not None else None
+
+    def _save_classification(self, store, response_hash, answers=None):
+        if answers is None:
+            answers = [{"question_id": "q1", "question_type": "noul", "answer": {"noul": 0.5}}]
+        return store.save_classification(
+            subject_kind="session",
+            snapshot_hash="s" * 64,
+            taxonomy_version="1.1.0",
+            question_hash="q" * 64,
+            model_version="jev-1.13.0",
+            request_hash="r" * 64,
+            response_hash=response_hash,
+            answers=answers,
+        )
 
     def test_repeated_file_is_idempotent_and_does_not_duplicate_events(self):
         path = self._write("a.jsonl", [support.make_record(event_id="e1"), support.make_record(event_id="e2")])
@@ -172,6 +198,111 @@ class StoreImportTest(unittest.TestCase):
             event = store.get_event(("city-a", "host-a", "codex", "session-1", "e1"))
             self.assertEqual(event["observed_timestamp"], "2026-09-21T12:00:00.5+02:00")
             self.assertEqual(event["timestamp"], "2026-09-21T10:00:00.500000Z")
+
+    def test_unicode_line_separators_inside_strings_do_not_split_records(self):
+        # U+2028/U+2029/U+0085 are legal unescaped inside JSON strings; splitting
+        # on them (str.splitlines) would reject this valid file wholesale.
+        path = os.path.join(self.tmp.name, "unicode_separators.jsonl")
+        text_value = "before\u2028after\u2029more\u0085end"
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(support.make_record(event_id="e1", text=text_value), ensure_ascii=False)
+                + "\n"
+            )
+            handle.write(json.dumps(support.make_record(event_id="e2"), ensure_ascii=False) + "\n")
+        with ObservatoryStore(self.db_path) as store:
+            result = store.import_jsonl(path)
+            self.assertEqual(result.inserted, 2)
+            self.assertEqual(store.event_count(), 2)
+            event = store.get_event(("city-a", "host-a", "codex", "session-1", "e1"))
+            self.assertEqual(event["text"], text_value)
+
+    def test_skipped_file_line_count_ignores_unicode_separators(self):
+        path = os.path.join(self.tmp.name, "unicode_replay.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(support.make_record(event_id="e1", text="a\u2028b"), ensure_ascii=False)
+                + "\n"
+            )
+        with ObservatoryStore(self.db_path) as store:
+            store.import_jsonl(path)
+            replay = store.import_jsonl(path)
+            self.assertTrue(replay.skipped_identical_file)
+            self.assertEqual(replay.lines_read, 1)
+
+    def test_malformed_line_number_is_lf_based_with_unicode_separators(self):
+        path = os.path.join(self.tmp.name, "bad_unicode.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(support.make_record(event_id="e1", text="a\u2028b"), ensure_ascii=False)
+                + "\n"
+            )
+            handle.write('{"schema_version": "1.0",\n')
+        with ObservatoryStore(self.db_path) as store:
+            with self.assertRaises(ContractError) as caught:
+                store.import_jsonl(path)
+            self.assertIn(":2", str(caught.exception))
+            self.assertEqual(store.event_count(), 0)
+
+    def test_later_import_of_earlier_event_lowers_session_first_timestamp(self):
+        later = self._write(
+            "later.jsonl",
+            [support.make_record(event_id="e2", timestamp="2026-09-21T10:00:00Z")],
+        )
+        earlier = self._write(
+            "earlier.jsonl",
+            [support.make_record(event_id="e1", timestamp="2026-09-21T09:00:00Z")],
+        )
+        with ObservatoryStore(self.db_path) as store:
+            store.import_jsonl(later)
+            self.assertEqual(self._first_timestamp(store), "2026-09-21T10:00:00.000000Z")
+            store.import_jsonl(earlier)
+            self.assertEqual(self._first_timestamp(store), "2026-09-21T09:00:00.000000Z")
+
+    def test_importing_a_later_event_does_not_raise_first_timestamp(self):
+        earlier = self._write(
+            "first.jsonl",
+            [support.make_record(event_id="e1", timestamp="2026-09-21T09:00:00Z")],
+        )
+        later = self._write(
+            "second.jsonl",
+            [support.make_record(event_id="e2", timestamp="2026-09-21T11:00:00Z")],
+        )
+        with ObservatoryStore(self.db_path) as store:
+            store.import_jsonl(earlier)
+            store.import_jsonl(later)
+            self.assertEqual(self._first_timestamp(store), "2026-09-21T09:00:00.000000Z")
+
+    def _racing_find(self, store):
+        """Return a finder that misses the first lookup, simulating a UNIQUE race."""
+        original = store._find_classification
+        calls = {"count": 0}
+
+        def racing_find(**kwargs):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                return None
+            return original(**kwargs)
+
+        return racing_find
+
+    def test_save_classification_unique_race_deduplicates(self):
+        with ObservatoryStore(self.db_path) as store:
+            first_id, first_dedup = self._save_classification(store, "a" * 64)
+            self.assertFalse(first_dedup)
+            store._find_classification = self._racing_find(store)
+            second_id, second_dedup = self._save_classification(store, "a" * 64)
+            self.assertEqual(second_id, first_id)
+            self.assertTrue(second_dedup)
+            self.assertEqual(store.classification_count(), 1)
+
+    def test_save_classification_unique_race_conflict_raises_label_conflict(self):
+        with ObservatoryStore(self.db_path) as store:
+            self._save_classification(store, "a" * 64)
+            store._find_classification = self._racing_find(store)
+            with self.assertRaises(LabelConflictError):
+                self._save_classification(store, "b" * 64)
+            self.assertEqual(store.classification_count(), 1)
 
     def test_unknown_future_schema_version_is_rejected(self):
         with ObservatoryStore(self.db_path):

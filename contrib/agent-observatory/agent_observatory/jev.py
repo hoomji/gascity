@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .canonical import canonical_hash, canonical_json
-from .errors import RequestByteCapExceeded, RequestError, ResponseError
+from .errors import ContractError, RequestByteCapExceeded, RequestError, ResponseError
 from .store import ObservatoryStore
 from .taxonomy import CHOICE, NOUL, Taxonomy
 
@@ -236,6 +236,22 @@ def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[
     return normalized
 
 
+def _reject_unknown_answer_keys(
+    question_id: str, answer: dict[str, Any], allowed: frozenset[str]
+) -> None:
+    """Reject answer keys outside the wire contract, naming every offender.
+
+    Unknown keys are not silently dropped: dropping them let two responses with
+    identical stored answers but different junk keys hash differently, which
+    surfaced as a spurious LabelConflictError instead of a clean dedupe.
+    """
+    unknown = sorted(set(answer) - allowed)
+    if unknown:
+        raise ContractError(
+            f"answer {question_id!r} contains unknown key(s): {', '.join(unknown)}"
+        )
+
+
 def _validate_choice_answer(question_id: str, question: dict[str, Any], answer: dict[str, Any]) -> dict[str, Any]:
     criteria = question.get("criteria")
     if not isinstance(criteria, dict) or not criteria:
@@ -285,6 +301,9 @@ def _validate_choice_answer(question_id: str, question: dict[str, Any], answer: 
             f"answer {question_id!r} probabilities sum to {total!r}, not ~1"
         )
 
+    _reject_unknown_answer_keys(
+        question_id, answer, frozenset({"type", "choice", "confidence", "probabilities"})
+    )
     return {
         "choice": value,
         "confidence": float(confidence),
@@ -300,6 +319,7 @@ def _validate_noul_answer(question_id: str, answer: dict[str, Any]) -> dict[str,
         raise ResponseError(
             f"Noul answer {question_id!r} noul must be a finite number in [0,1], got {value!r}"
         )
+    _reject_unknown_answer_keys(question_id, answer, frozenset({"type", "noul"}))
     return {"noul": float(value)}
 
 

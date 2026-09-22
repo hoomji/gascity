@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover
     import support
 
 from agent_observatory import load_taxonomy
-from agent_observatory.errors import LabelConflictError, ResponseError
+from agent_observatory.errors import ContractError, LabelConflictError, ResponseError
 from agent_observatory.jev import build_request, import_response, parse_json_document, persist_request
 from agent_observatory.store import ObservatoryStore
 
@@ -104,6 +104,35 @@ class JevResponseTest(unittest.TestCase):
         primary["value"] = primary.pop("choice")
         with self.assertRaises(ResponseError):
             import_response(self.store, broken, request_hash=self.request.request_hash)
+
+    def test_choice_answer_with_unknown_extra_key_is_rejected(self):
+        # A junk key alongside a fully valid answer used to be silently dropped,
+        # then hashed, producing a spurious LabelConflictError on replay.
+        broken = copy.deepcopy(self.valid)
+        broken["answers"]["primary_intent"]["value"] = "junk"
+        with self.assertRaises(ContractError) as caught:
+            import_response(self.store, broken, request_hash=self.request.request_hash)
+        self.assertIn("value", str(caught.exception))
+        self.assertEqual(self.store.classification_count(), 0)
+
+    def test_noul_answer_with_unknown_extra_key_is_rejected(self):
+        broken = copy.deepcopy(self.valid)
+        broken["answers"][self._noul_id()]["degree"] = 0.5
+        with self.assertRaises(ContractError) as caught:
+            import_response(self.store, broken, request_hash=self.request.request_hash)
+        self.assertIn("degree", str(caught.exception))
+        self.assertEqual(self.store.classification_count(), 0)
+
+    def test_unknown_answer_keys_do_not_create_a_label_conflict(self):
+        first = copy.deepcopy(self.valid)
+        first["answers"]["primary_intent"]["junk_one"] = 1
+        second = copy.deepcopy(self.valid)
+        second["answers"]["primary_intent"]["junk_two"] = 2
+        with self.assertRaises(ContractError):
+            import_response(self.store, first, request_hash=self.request.request_hash)
+        with self.assertRaises(ContractError):
+            import_response(self.store, second, request_hash=self.request.request_hash)
+        self.assertEqual(self.store.classification_count(), 0)
 
     def test_probabilities_must_sum_to_one(self):
         broken = copy.deepcopy(self.valid)
