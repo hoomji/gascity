@@ -31,6 +31,8 @@ contrib/agent-observatory/
     canonical.py       canonical JSON, hashing, event/session snapshot identity
     store.py           SQLite schema versioning, transactional import, classifications
     commands.py        conservative, non-executing command categorization
+    changes.py         M5 optimization change registry + conservative screen
+    exposure.py        M5 commit/fingerprint exposure join + optimization ledger
     report.py          deterministic report JSON
     taxonomy.py        versioned question taxonomy loader
     taxonomy/jev_taxonomy_v1.json
@@ -309,6 +311,82 @@ fields are exposed; response bodies are read in bounded chunks on both the 2xx
 and error paths; the circuit breaker persists its state and reserves a single
 half-open probe.
 
+## 7. Optimization change and exposure registry
+
+`changes-sync` imports an explicit, versioned **change bundle** (there is no live
+PR crawler and no network access). Every screened change is retained, whether or
+not it looks like an optimization, so the screening denominator is never
+silently reduced.
+
+- **Screening.** Changes are screened against the versioned optimization
+  categories from `implementation-plan.md` (`package_resolution`,
+  `dependency_footprint`, `test_selection`, `test_fixtures_parallelism`,
+  `lint_typecheck`, `build_cache_bundle`, `ci_runner_cache`,
+  `worktree_lifecycle`, `agent_runtime`, `host_io_network`,
+  `telemetry_overhead`). The screen is deliberately conservative: a category is
+  assigned only with retained path/keyword evidence, and a change with no
+  category and no positive non-optimization evidence stays `unknown`. Both
+  `non_optimization` and `unknown` remain in the denominator; only
+  `optimization` changes become registered interventions. Non-PR intervention
+  kinds (`config`/`model`/`runtime`/`prompt`/`toolchain`/`pack`/`host`) default
+  to their natural category because they are interventions by construction;
+  reviewed `classification`/`category_hint` still overrides.
+- **Immutable records.** A PR is identified by repository and number; a non-PR
+  intervention (config, model, runtime, prompt, toolchain, pack, host) by its
+  immutable `artifact_digest`. Re-importing identical content deduplicates;
+  re-importing the same identity with different content is refused
+  (`RegistryConflictError`) rather than silently overwritten.
+- **Activations.** A change can have several activation records (merge, deploy,
+  config toggle, model/runtime/prompt switch, package/toolchain upgrade, host
+  tuning), each with an optional scope `target`, validity interval, and a
+  fingerprint (`commit_sha`, `artifact_digest`, `config_digest`, `model`,
+  `toolchain`, `package`, `host`). A merged PR without an explicit activation
+  gets an implicit merge activation from its merge commit, so the registry is
+  self-sufficient while still requiring observed evidence.
+
+`exposure` joins registered changes to observed session evidence -- `commit_sha`
+and `model` values from the projection plus explicitly supplied
+`session_fingerprints` -- and emits the deterministic optimization ledger. The
+join never treats a merge as exposure:
+
+- `exposed` requires positive evidence: an exact observed commit, commit
+  ancestry from the change to an observed commit, or an observed
+  artifact/config/model fingerprint inside the activation's validity interval.
+- `unexposed` requires a decision: a known observed commit that provably does
+  not contain the change, or a session that predates activation / follows
+  deactivation, or an observed conflicting fingerprint.
+- anything else is `unknown`. An incomplete commit graph, a session with no
+  commit evidence, and an unobserved fingerprint are all ambiguous, never
+  success. A pre-merge worktree (commit is an ancestor of the merge) is
+  `unexposed`; a delayed deployment (activation still pending) is `unexposed`.
+
+Each ledger entry carries `baseline` and `price` as `present`/`unknown`, and
+`missingness` counts unknown baselines and prices. They are never synthesized;
+effect estimates and cost accounting are M6, not this slice.
+
+Bundle contract (schema version `1.0`):
+
+```json
+{
+  "schema_version": "1.0",
+  "changes": [
+    {"repo": "gascity", "kind": "pr", "pr": 6, "title": "perf: cache the build",
+     "merge_sha": "<sha>", "merged_at": "2026-09-21T10:00:00Z",
+     "changed_paths": ["Makefile"], "baseline": {"metric": "test_s", "value": 12.0, "unit": "s"}}
+  ],
+  "activations": [
+    {"change_ref": {"repo": "gascity", "kind": "pr", "pr": 6}, "mechanism": "deploy",
+     "target": "gateway-llm", "activated_at": "2026-09-22T00:00:00Z",
+     "fingerprint": {"type": "commit_sha", "value": "<sha>"}}
+  ],
+  "commit_graph": {"commits": [{"sha": "<sha>", "parents": ["<parent>"]}]},
+  "session_fingerprints": [
+    {"session": ["city", "host", "codex", "session-1"], "type": "config_digest",
+     "value": "<digest>", "observed_at": "2026-09-22T00:30:00Z"}
+  ]
+}
+```
+
 ## CLI reference
 
 ```
@@ -327,6 +405,8 @@ agent-observatory classify --db DB --state STATE.json
     [--max-requests N] [--max-tokens N] [--max-cost-usd USD]
     [--price-per-million-input-usd USD] [--price-per-million-output-usd USD]
     [--allow-model-drift] [--out FILE]
+agent-observatory changes-sync --db DB --input BUNDLE.json
+agent-observatory exposure --db DB [--out FILE]
 agent-observatory --version
 ```
 

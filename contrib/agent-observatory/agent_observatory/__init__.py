@@ -14,19 +14,36 @@ Beads and events remain the authoritative record; the SQLite file is only a
 derived analytical projection.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
+from .changes import (
+    BUNDLE_SCHEMA_VERSION,
+    OPTIMIZATION_CATEGORIES,
+    build_change_bundle,
+    classify_categories,
+    normalize_change_bundle,
+    normalize_change,
+)
 from .contract import SCHEMA_VERSION, validate_record
 from .errors import (
     ContractError,
     ImportConflictError,
     LabelConflictError,
     ObservatoryError,
+    RegistryConflictError,
+    RegistryError,
     RequestByteCapExceeded,
     RequestError,
     ResponseError,
     SchemaVersionError,
     TaxonomyError,
+)
+from .exposure import (
+    CommitGraph,
+    attach_session_fingerprints,
+    build_ledger,
+    evaluate_change,
+    session_evidence_from_store,
 )
 from .jev import (
     REQUEST_BYTE_CAP,
@@ -43,20 +60,33 @@ from .taxonomy import load_taxonomy
 __all__ = [
     "__version__",
     "SCHEMA_VERSION",
+    "BUNDLE_SCHEMA_VERSION",
     "REQUEST_BYTE_CAP",
+    "OPTIMIZATION_CATEGORIES",
     "ObservatoryStore",
     "JevRequest",
     "ResponseImport",
+    "CommitGraph",
     "build_request",
     "import_response",
     "validate_response",
     "build_report",
     "load_taxonomy",
     "validate_record",
+    "normalize_change",
+    "normalize_change_bundle",
+    "build_change_bundle",
+    "classify_categories",
+    "attach_session_fingerprints",
+    "build_ledger",
+    "evaluate_change",
+    "session_evidence_from_store",
     "ObservatoryError",
     "ContractError",
     "ImportConflictError",
     "LabelConflictError",
+    "RegistryError",
+    "RegistryConflictError",
     "SchemaVersionError",
     "TaxonomyError",
     "RequestError",

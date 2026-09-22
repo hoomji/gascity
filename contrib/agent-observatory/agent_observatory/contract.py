@@ -83,7 +83,11 @@ def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _normalize_timestamp(value: str, source_path: str | None, line_number: int | None) -> str:
+def normalize_timestamp(
+    value: str,
+    source_path: str | None = None,
+    line_number: int | None = None,
+) -> str:
     """Validate an ISO-8601 timestamp and return a canonical UTC string.
 
     Timestamps **must** carry an explicit UTC offset (or ``Z``). A naive
@@ -147,7 +151,7 @@ def validate_record(
     # ``observed_timestamp`` preserves the exact input string as provenance.
     raw_timestamp = normalized["timestamp"]
     normalized["observed_timestamp"] = raw_timestamp
-    normalized["timestamp"] = _normalize_timestamp(raw_timestamp, source_path, line_number)
+    normalized["timestamp"] = normalize_timestamp(raw_timestamp, source_path, line_number)
 
     for field in OPTIONAL_STRING_FIELDS:
         value = raw.get(field)

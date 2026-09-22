@@ -60,3 +60,19 @@ class ResponseError(ObservatoryError):
 
 class LabelConflictError(ObservatoryError):
     """A classification already exists for this subject and would be overwritten."""
+
+
+class RegistryError(ObservatoryError):
+    """A change/exposure registry input is missing or malformed.
+
+    The registry input is an explicit, versioned JSON bundle (see
+    :mod:`agent_observatory.changes`); there is no live PR crawler.
+    """
+
+
+class RegistryConflictError(RegistryError):
+    """An existing immutable change/activation would be silently overwritten.
+
+    Changes and their activation records are append-only evidence: importing the
+    same identity with different content is a conflict, not an update.
+    """
