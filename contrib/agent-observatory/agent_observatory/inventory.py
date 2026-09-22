@@ -89,6 +89,7 @@ def discover_sources(
     roots: Iterable[SourceRoot],
     *,
     unreadable: list[dict[str, Any]] | None = None,
+    ignored: list[str] | None = None,
 ) -> tuple[list[DiscoveredSource], list[dict[str, Any]]]:
     """Return ``(sources, unsupported)`` for the explicit *roots*.
 
@@ -99,6 +100,10 @@ def discover_sources(
     When *unreadable* is supplied, a directory (or root) that cannot be listed
     appends a collector record to it instead of disappearing silently, so the
     manifest can carry the coverage gap and its ``error_reason``.
+
+    When *ignored* is supplied, every file that no adapter recognizes (locks,
+    notes, tool-result sidecars) is appended to it so callers can account for
+    the whole walk instead of losing those files silently.
     """
 
     found: list[DiscoveredSource] = []
@@ -143,6 +148,8 @@ def discover_sources(
                     continue
             provider = root.provider or _provider_for(candidate)
             if provider is None:
+                if ignored is not None:
+                    ignored.append(candidate)
                 continue
             real = os.path.realpath(candidate)
             if real in seen:

@@ -9,12 +9,14 @@ This is a bounded foundation slice. It provides:
 * a Jev ``/v1/systemone`` request builder and saved-response validator
   (:mod:`jev`).
 
-There is no network transport, no live collector, and no home-directory crawling.
+Live transport and collection are explicit and bounded: nothing crawls a home
+directory implicitly, and the collector (:mod:`collector`) reads only the roots it
+is given and stops on its kill switch.
 Beads and events remain the authoritative record; the SQLite file is only a
 derived analytical projection.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from .annotations import GoldEpisode, GoldSet, load_gold_set
 from .changes import (
