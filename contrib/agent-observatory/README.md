@@ -7,8 +7,10 @@ analysis effort.
 
 This is deliberately **not** the whole product and **not** production-ready:
 
-- **No network transport.** The Jev request builder only emits a `/v1/systemone`
-  request body; nothing is sent. Saved responses are validated offline.
+- **Transport is explicit.** The request builder only emits a `/v1/systemone`
+  request body; nothing is sent by `build-request`. The `classify` subcommand
+  performs a live, bounded send (retries, budgets, circuit breaker) and records
+  provenance; saved responses are otherwise validated offline.
 - **No live collector.** Import reads explicit files only. There is no
   home-directory crawling and no provider-transcript scraping.
 - **No paid API calls, real transcript uploads, publishing, or merging.**
@@ -275,6 +277,38 @@ API reference:
   all errors, not defaults. `tests/fixtures/jev_smoke_contract.json` pins a
   synthetic-only real exchange so the wire shape cannot silently regress.
 
+## 6. Live transport credential
+
+`classify` reads the bearer token from the runtime environment only (never from
+argv, the repository, or a config file):
+
+| Source | Precedence | Notes |
+| --- | --- | --- |
+| `TYPESAFE_API_KEY` | 1 (preferred) | Primary variable name. |
+| `JEV_API_KEY` | 2 (alias) | Accepted for backward compatibility. |
+| `JEV_KEY_FILE` | 3 | Path to a key file. |
+
+A key file is decoded as `utf-8-sig` (a UTF-8 BOM is stripped per line) and
+parsed under a strict contract; the first accepted line wins:
+
+- `[export ]NAME=value` or `NAME: value` where `NAME` is `KEY`, `API_KEY`,
+  `APIKEY`, `SECRET`, `TOKEN`, `TYPESAFE_API_KEY`, `JEV_API_KEY`, or any name
+  ending in `KEY`, and `value` is a single `[A-Za-z0-9_.-]{16,}` token after
+  stripping surrounding quotes/backticks;
+- `Bearer <token>`;
+- a single bare token line.
+
+Blank lines and `#` comments are skipped. Prose, labels, note pointers
+(`API key: (see vault)`), and markdown labels are **never** returned as a
+credential: if no accepted line exists, `load_credential` raises a
+`CredentialError` naming every skipped line number.
+
+Other transport rules worth knowing: `timeout_seconds` is capped at 300 s;
+usage is validated before it is charged and only the validated integer token
+fields are exposed; response bodies are read in bounded chunks on both the 2xx
+and error paths; the circuit breaker persists its state and reserves a single
+half-open probe.
+
 ## CLI reference
 
 ```
@@ -285,11 +319,24 @@ agent-observatory build-request --state STATE.json
     [--session '["city","host","provider","session"]' | city|host|provider|session]
     [--event-id ID] [--snapshot-hash HASH] [--taxonomy PATH] [--out FILE]
 agent-observatory import-response --db DB --response RESP.json --request-hash HASH
+agent-observatory classify --db DB --state STATE.json
+    [--subject-kind event|session]
+    [--session '["city","host","provider","session"]' | city|host|provider|session]
+    [--event-id ID] [--snapshot-hash HASH] [--taxonomy PATH]
+    [--config CONFIG.json] [--timeout SECONDS] [--max-attempts N]
+    [--max-requests N] [--max-tokens N] [--max-cost-usd USD]
+    [--price-per-million-input-usd USD] [--price-per-million-output-usd USD]
+    [--allow-model-drift] [--out FILE]
 agent-observatory --version
 ```
 
+When `--snapshot-hash` is supplied together with `--db` and `--session`, the
+explicit value is cross-checked against the projection and a mismatch is refused
+rather than classifying a phantom subject.
+
 A missing or unreadable input/output path is reported on stderr as
-`error: <path>: <reason>` with exit status 1, never a traceback.
+`error: <path>: <reason>` with exit status 1, never a traceback. A local SQLite
+failure (for example `--db /dev/null`) is reported the same way.
 
 ## Tests
 
@@ -324,7 +371,10 @@ classification counts.
   subjects before the 24 KB request cap matters.
 - The byte cap approximates wire size, not model tokens; a tokenizer-aware cap is
   future work.
-- No transport, retry, rate limiting, or cost accounting is implemented.
+- Live transport implements bounded retries, rate limiting via budgets, and cost
+  accounting (see section 6), but there is no provider-side rate-limit discovery
+  beyond `Retry-After`, and the token/dollar ceilings can overshoot by at most
+  one request because usage is only known after a response.
 - Classification is append-only by key; re-labelling with a new taxonomy or
   model version is how labels evolve.
 - Scope docs are maintained separately by the Mayor in

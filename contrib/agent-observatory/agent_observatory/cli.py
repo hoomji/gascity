@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -100,21 +101,44 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _open_store(path: str) -> ObservatoryStore:
+    """Open the projection, surfacing a local sqlite failure as a clean error."""
+    try:
+        return ObservatoryStore(path)
+    except sqlite3.Error as exc:
+        raise ObservatoryError(f"sqlite error: {exc}") from exc
+
+
 def _resolve_snapshot_hash(args: argparse.Namespace) -> str:
-    """Resolve a subject snapshot hash from an explicit value or the projection."""
-    if args.snapshot_hash:
-        return args.snapshot_hash
+    """Resolve a subject snapshot hash from an explicit value or the projection.
+
+    When an explicit ``--snapshot-hash`` is supplied *and* the subject can be
+    resolved from the projection (``--db`` plus ``--session``), the explicit
+    value is cross-checked against the store and refused on mismatch rather than
+    silently classifying a phantom subject.
+    """
+    explicit = args.snapshot_hash
     if not args.db or not args.session:
+        if explicit:
+            return explicit
         raise ObservatoryError(
             "provide --snapshot-hash, or --db and --session so the subject snapshot can be computed"
         )
     session_key = _session_key(args.session)
-    with ObservatoryStore(args.db) as store:
+    with _open_store(args.db) as store:
         if args.subject_kind == "event":
             if not args.event_id:
                 raise ObservatoryError("--event-id is required for --subject-kind event")
-            return store.event_snapshot(session_key, args.event_id)
-        return store.session_snapshot(session_key)
+            computed = store.event_snapshot(session_key, args.event_id)
+        else:
+            computed = store.session_snapshot(session_key)
+    if explicit and explicit != computed:
+        raise ObservatoryError(
+            f"explicit --snapshot-hash {explicit!r} does not match the projection "
+            f"snapshot {computed!r} for the supplied session; refusing to classify "
+            "a phantom subject"
+        )
+    return computed
 
 
 def _cmd_build_request(args: argparse.Namespace) -> int:
@@ -212,7 +236,7 @@ def _cmd_classify(args: argparse.Namespace) -> int:
         subject_kind=args.subject_kind,
     )
     config = _transport_config_from_args(args)
-    with ObservatoryStore(args.db) as store:
+    with _open_store(args.db) as store:
         result = classify(store, request, config=config)
     _write_output(
         json.dumps(result.to_dict(), indent=2, sort_keys=True, ensure_ascii=False),
@@ -347,6 +371,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"error: {exc.filename}: {reason}", file=sys.stderr)
         else:
             print(f"error: {reason}", file=sys.stderr)
+        return 1
+    except sqlite3.Error as exc:
+        # A projection that cannot be opened or written is an operator error, not
+        # a crash: report it as ``error: ...`` and exit 1 with no traceback.
+        print(f"error: sqlite error: {exc}", file=sys.stderr)
         return 1
 
 

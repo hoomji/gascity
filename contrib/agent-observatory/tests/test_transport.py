@@ -8,13 +8,19 @@ directly.
 
 from __future__ import annotations
 
+import argparse
+import contextlib
 import dataclasses
+import email.utils
+import http.client
 import io
 import json
 import logging
 import os
 import socket
+import sqlite3
 import tempfile
+import threading
 import unittest
 import urllib.error
 from unittest import mock
@@ -24,15 +30,17 @@ try:
 except ImportError:  # pragma: no cover
     import support
 
-from agent_observatory import load_taxonomy
+from agent_observatory import cli, load_taxonomy
 from agent_observatory.errors import ObservatoryError
 from agent_observatory.jev import build_request
 from agent_observatory.store import ObservatoryStore
 from agent_observatory.transport import (
     DEFAULT_ENDPOINT,
+    MAX_TIMEOUT_SECONDS,
     PINNED_MODEL,
     Budget,
     CircuitBreaker,
+    CircuitOpenError,
     CredentialError,
     JevTransport,
     ModelDriftError,
@@ -556,6 +564,31 @@ class CircuitBreakerTest(TransportTestBase):
         )
         self.assertFalse(breaker.is_open())
 
+    def test_non_transient_probe_outcome_releases_the_reservation(self):
+        clock = FakeClock()
+        config = TransportConfig(
+            retry=RetryPolicy(max_attempts=1),
+            circuit_failure_threshold=1,
+            circuit_cooldown_seconds=10.0,
+        )
+        first, _ = self._classify(
+            FakeHttp(FakeResponse(500, ""), repeat_last=True), config=config, clock=clock
+        )
+        self.assertEqual(first.failure_class, "http_500")
+
+        clock.advance(11.0)
+        second, _ = self._classify(FakeHttp(FakeResponse(401, "")), config=config, clock=clock)
+        self.assertEqual(second.failure_class, "http_401")
+
+        # The 401 neither reset nor advanced the breaker, but it must not leave
+        # the half-open probe reserved forever: the next call can probe again.
+        third, _ = self._classify(
+            FakeHttp(FakeResponse(200, _valid_response_json(self.request))),
+            config=config,
+            clock=clock,
+        )
+        self.assertEqual(third.outcome, "classified")
+
 
 class ModelDriftTest(TransportTestBase):
     def _drift_request(self):
@@ -735,6 +768,414 @@ class ConfigTest(unittest.TestCase):
             TransportConfig(retry=RetryPolicy(max_attempts=0))
         with self.assertRaises(TransportConfigError):
             Budget(max_requests=-1)
+
+
+class StrictCredentialParserTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, "jev.key")
+
+    def _load(self, text, encoding="utf-8"):
+        with open(self.path, "w", encoding=encoding) as handle:
+            handle.write(text)
+        return load_credential({"JEV_KEY_FILE": self.path})
+
+    def _load_error(self, text):
+        with self.assertRaises(CredentialError) as caught:
+            self._load(text)
+        return str(caught.exception)
+
+    def test_recognized_labelled_lines(self):
+        for name in (
+            "KEY",
+            "API_KEY",
+            "APIKEY",
+            "SECRET",
+            "TOKEN",
+            "TYPESAFE_API_KEY",
+            "JEV_API_KEY",
+            "SOME_PROVIDER_KEY",
+        ):
+            self.assertEqual(self._load(f"{name}=sk-1234567890abcdef\n"), "sk-1234567890abcdef")
+            self.assertEqual(self._load(f"{name}: sk-1234567890abcdef\n"), "sk-1234567890abcdef")
+
+    def test_bare_quoted_export_bearer_and_crlf(self):
+        self.assertEqual(self._load("sk-1234567890abcdef\n"), "sk-1234567890abcdef")
+        self.assertEqual(self._load('API_KEY="sk-1234567890abcdef"\n'), "sk-1234567890abcdef")
+        self.assertEqual(self._load("API_KEY=`sk-1234567890abcdef`\n"), "sk-1234567890abcdef")
+        self.assertEqual(self._load("export TYPESAFE_API_KEY=sk-1234567890abcdef\n"), "sk-1234567890abcdef")
+        self.assertEqual(self._load("Bearer sk-1234567890abcdef\n"), "sk-1234567890abcdef")
+        self.assertEqual(self._load("KEY=sk-1234567890abcdef\r\n"), "sk-1234567890abcdef")
+
+    def test_bom_is_stripped_from_a_bare_key_and_a_comment(self):
+        bom_path = os.path.join(self.tmp.name, "bom.key")
+        with open(bom_path, "wb") as handle:
+            handle.write("\ufeffsk-1234567890abcdef\n".encode("utf-8"))
+        self.assertEqual(load_credential({"JEV_KEY_FILE": bom_path}), "sk-1234567890abcdef")
+
+        comment_path = os.path.join(self.tmp.name, "bom-comment.key")
+        with open(comment_path, "wb") as handle:
+            handle.write("\ufeff# key\nKEY=sk-1234567890abcdef\n".encode("utf-8"))
+        self.assertEqual(load_credential({"JEV_KEY_FILE": comment_path}), "sk-1234567890abcdef")
+
+    def test_prose_label_and_markdown_are_errors_naming_skipped_lines(self):
+        for text in (
+            "The key lives in the vault, see below.\n",
+            "API key: (see vault)\n",
+            "**API key**: `sk-1234567890abcdef`\n",
+            "export FOO=bar\n",
+        ):
+            message = self._load_error(text)
+            self.assertIn("line(s): 1", message, text)
+
+    def test_first_valid_line_wins_over_skipped_lines(self):
+        text = "The key lives in the vault.\n# note\nJEV_API_KEY=sk-1234567890abcdef\n"
+        self.assertEqual(self._load(text), "sk-1234567890abcdef")
+
+    def test_all_comment_file_errors_cleanly(self):
+        message = self._load_error("# only a comment\n\n")
+        self.assertIn("no credential", message)
+
+
+class CredentialEnvAliasTest(unittest.TestCase):
+    def test_typesafe_key_is_preferred_over_alias_and_file(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".key", delete=False) as handle:
+            handle.write("file-secret-12345678\n")
+            path = handle.name
+        self.addCleanup(os.unlink, path)
+        environ = {
+            "TYPESAFE_API_KEY": "typesafe-secret-1",
+            "JEV_API_KEY": "jev-secret-1",
+            "JEV_KEY_FILE": path,
+        }
+        self.assertEqual(load_credential(environ), "typesafe-secret-1")
+
+    def test_jev_api_key_is_the_alias(self):
+        self.assertEqual(load_credential({"JEV_API_KEY": "jev-secret-1"}), "jev-secret-1")
+
+    def test_missing_credential_message_names_both_env_variables(self):
+        with self.assertRaises(CredentialError) as caught:
+            load_credential({})
+        self.assertIn("TYPESAFE_API_KEY", str(caught.exception))
+        self.assertIn("JEV_API_KEY", str(caught.exception))
+
+
+class CircuitBreakerConcurrencyTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = os.path.join(self.tmp.name, "circuit.db")
+        # Create the transport schema once so the threads below only contend on
+        # data writes, not DDL.
+        with ObservatoryStore(self.db) as store:
+            CircuitBreaker(store.conn, key="init", failure_threshold=1)
+
+    def test_concurrent_failures_are_not_lost(self):
+        def hammer():
+            conn = sqlite3.connect(self.db, isolation_level=None, timeout=30.0)
+            try:
+                breaker = CircuitBreaker(
+                    conn, key="k", failure_threshold=10 ** 9, cooldown_seconds=0.0
+                )
+                for _ in range(100):
+                    breaker.record_failure()
+            finally:
+                conn.close()
+
+        threads = [threading.Thread(target=hammer) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        with ObservatoryStore(self.db) as store:
+            failures, _, _ = CircuitBreaker(
+                store.conn, key="k", failure_threshold=10 ** 9
+            ).state()
+        self.assertEqual(failures, 200)
+
+    def test_concurrent_probe_grants_exactly_one(self):
+        clock = FakeClock()
+        with ObservatoryStore(self.db) as store:
+            CircuitBreaker(
+                store.conn, key="k", failure_threshold=1, cooldown_seconds=10.0, clock=clock
+            ).record_failure()
+        clock.advance(11.0)
+
+        granted: list[int] = []
+        denied: list[int] = []
+        lock = threading.Lock()
+        barrier = threading.Barrier(8)
+
+        def probe():
+            conn = sqlite3.connect(self.db, isolation_level=None, timeout=30.0)
+            try:
+                breaker = CircuitBreaker(
+                    conn, key="k", failure_threshold=1, cooldown_seconds=10.0, clock=clock
+                )
+                barrier.wait()
+                try:
+                    breaker.check()
+                    with lock:
+                        granted.append(1)
+                except CircuitOpenError:
+                    with lock:
+                        denied.append(1)
+            finally:
+                conn.close()
+
+        threads = [threading.Thread(target=probe) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(granted), 1)
+        self.assertEqual(len(denied), 7)
+
+
+class BoundedReadTest(TransportTestBase):
+    def test_oversized_error_body_is_bounded_and_not_retried(self):
+        fake = FakeHttp(_http_error(500, b"x" * (3 * 1024 * 1024)), repeat_last=True)
+        config = TransportConfig(
+            max_response_bytes=2 * 1024 * 1024, retry=RetryPolicy(max_attempts=4)
+        )
+        result, sleeper = self._classify(fake, config=config)
+        self.assertEqual(result.outcome, "pending")
+        self.assertEqual(result.failure_class, "response_too_large")
+        self.assertEqual(fake.call_count, 1)
+        self.assertEqual(sleeper.delays, [])
+
+    def test_oversized_2xx_body_is_bounded(self):
+        fake = FakeHttp(FakeResponse(200, b"x" * (3 * 1024 * 1024)))
+        config = TransportConfig(max_response_bytes=2 * 1024 * 1024)
+        result, _ = self._classify(fake, config=config)
+        self.assertEqual(result.outcome, "pending")
+        self.assertEqual(result.failure_class, "response_too_large")
+
+    def test_http_error_body_is_closed(self):
+        error = _http_error(500, b"boom")
+        fake = FakeHttp(error, repeat_last=True)
+        self._classify(fake, config=TransportConfig(retry=RetryPolicy(max_attempts=1)))
+        self.assertTrue(error.fp.closed)
+
+
+class TransportExceptionTest(TransportTestBase):
+    def _assert_connection_failure(self, exc):
+        fake = FakeHttp(exc, repeat_last=True)
+        result, _ = self._classify(fake, config=TransportConfig(retry=RetryPolicy(max_attempts=2)))
+        self.assertEqual(result.outcome, "pending")
+        self.assertEqual(result.failure_class, "connection")
+        rows = iter_provenance(self.store)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["failure_class"], "connection")
+
+    def test_bad_status_line_is_a_connection_failure(self):
+        self._assert_connection_failure(http.client.BadStatusLine("garbage status"))
+
+    def test_incomplete_read_is_a_connection_failure(self):
+        self._assert_connection_failure(http.client.IncompleteRead(b"partial"))
+
+    def test_http_exception_does_not_escape_send(self):
+        transport = JevTransport(
+            CREDENTIAL,
+            TransportConfig(retry=RetryPolicy(max_attempts=1)),
+            urlopen=FakeHttp(http.client.BadStatusLine("x")),
+        )
+        result = transport.send(self.request)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.failure_class, "connection")
+
+
+class BudgetChargingTest(TransportTestBase):
+    def test_float_usage_is_not_charged_and_records_why(self):
+        body = support.valid_response(self.request.body)
+        body["usage"] = {"input_tokens": 5000.0, "output_tokens": 250.0}
+        fake = FakeHttp(FakeResponse(200, json.dumps(body)))
+        config = TransportConfig(
+            retry=RetryPolicy(max_attempts=1), budget=Budget(max_tokens=10, max_requests=5)
+        )
+        result, _ = self._classify(fake, config=config)
+
+        self.assertEqual(result.outcome, "pending")
+        self.assertEqual(result.failure_class, "schema_invalid")
+        self.assertEqual(config.budget.total_tokens, 0)
+        self.assertIsNone(result.usage)
+        self.assertIn("usage", result.error)
+        row = iter_provenance(self.store)[0]
+        self.assertIsNone(row["input_tokens"])
+        self.assertIsNone(row["usage_json"])
+
+    def test_budget_block_of_a_mid_loop_retry_reports_budget_exhausted(self):
+        fake = FakeHttp(TimeoutError("timed out"), repeat_last=True)
+        config = TransportConfig(
+            retry=RetryPolicy(max_attempts=3), budget=Budget(max_requests=1)
+        )
+        result, _ = self._classify(fake, config=config)
+        self.assertEqual(result.failure_class, "budget_exhausted")
+        self.assertEqual(result.attempts, 1)
+        self.assertEqual(fake.call_count, 1)
+
+
+class UsageSurfaceTest(TransportTestBase):
+    def test_usage_extra_keys_never_reach_the_result_or_the_row(self):
+        body = support.valid_response(self.request.body)
+        body["usage"] = {"input_tokens": 12, "output_tokens": 7, "note": CREDENTIAL}
+        fake = FakeHttp(FakeResponse(200, json.dumps(body)))
+        result, _ = self._classify(fake)
+
+        self.assertEqual(result.outcome, "classified")
+        self.assertEqual(result.usage, {"input_tokens": 12, "output_tokens": 7})
+        self.assertNotIn(CREDENTIAL, json.dumps(result.to_dict()))
+        row = iter_provenance(self.store)[0]
+        self.assertNotIn(CREDENTIAL, json.dumps(row))
+        self.assertNotIn("note", row["usage_json"])
+
+
+class BackoffTest(TransportTestBase):
+    def test_jitter_cannot_exceed_max_delay(self):
+        config = TransportConfig(
+            retry=RetryPolicy(
+                max_attempts=3, base_delay_seconds=8.0, max_delay_seconds=8.0, jitter=0.25
+            )
+        )
+        transport = JevTransport(CREDENTIAL, config, random_source=lambda: 1.0)
+        self.assertLessEqual(transport._compute_delay(1, None), 8.0)
+
+    def test_nan_retry_after_falls_back_to_backoff(self):
+        fake = FakeHttp(
+            FakeResponse(429, "", {"Retry-After": "nan"}),
+            FakeResponse(200, _valid_response_json(self.request)),
+        )
+        _, sleeper = self._classify(
+            fake,
+            config=TransportConfig(
+                retry=RetryPolicy(max_attempts=3, base_delay_seconds=0.5)
+            ),
+        )
+        self.assertEqual(sleeper.delays, [0.5])
+
+    def test_http_date_retry_after_uses_the_injected_clock(self):
+        clock = FakeClock(1000.0)
+        when = email.utils.formatdate(1030, usegmt=True)
+        fake = FakeHttp(
+            FakeResponse(429, "", {"Retry-After": when}),
+            FakeResponse(200, _valid_response_json(self.request)),
+        )
+        _, sleeper = self._classify(
+            fake,
+            config=TransportConfig(retry=RetryPolicy(max_attempts=3)),
+            clock=clock,
+        )
+        self.assertAlmostEqual(sleeper.delays[0], 30.0, places=2)
+
+
+class TimeoutBoundTest(unittest.TestCase):
+    def test_timeout_above_the_ceiling_is_refused(self):
+        with self.assertRaises(TransportConfigError):
+            TransportConfig(timeout_seconds=MAX_TIMEOUT_SECONDS + 1)
+        self.assertEqual(
+            TransportConfig(timeout_seconds=MAX_TIMEOUT_SECONDS).timeout_seconds,
+            MAX_TIMEOUT_SECONDS,
+        )
+
+
+class MaskSecretEdgeTest(unittest.TestCase):
+    def test_secrets_of_eight_or_fewer_are_fully_masked(self):
+        self.assertEqual(mask_secret("abcd"), "****")
+        self.assertEqual(mask_secret("12345678"), "********")
+        self.assertEqual(mask_secret("123456789"), "*****6789")
+
+    def test_bytes_are_decoded(self):
+        expected = mask_secret("sk-super-secret-9876")
+        self.assertEqual(mask_secret(b"sk-super-secret-9876"), expected)
+        self.assertEqual(mask_secret(bytearray(b"sk-super-secret-9876")), expected)
+
+    def test_other_types_raise_without_leaking_the_value(self):
+        with self.assertRaises(TypeError) as caught:
+            mask_secret(12345678901234567890)  # type: ignore[arg-type]
+        self.assertNotIn("12345678901234567890", str(caught.exception))
+
+
+class StoreErrorSurfaceTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state = os.path.join(self.tmp.name, "state.json")
+        with open(self.state, "w", encoding="utf-8") as handle:
+            json.dump({"summary": "store error"}, handle)
+
+    def _run_cli(self, args):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            code = cli.main(args)
+        return code, stderr.getvalue()
+
+    def test_unwritable_db_reports_error_without_a_traceback(self):
+        code, stderr = self._run_cli(
+            [
+                "classify",
+                "--db",
+                "/dev/null",
+                "--state",
+                self.state,
+                "--snapshot-hash",
+                "a" * 64,
+            ]
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("error:", stderr)
+        self.assertNotIn("Traceback", stderr)
+
+    def test_sqlite_error_from_use_is_surfaced_with_a_pending_row(self):
+        store = ObservatoryStore(os.path.join(self.tmp.name, "projection.db"))
+        self.addCleanup(store.close)
+        request = build_request(
+            {"summary": "store error"}, load_taxonomy(), snapshot_hash="a" * 64
+        )
+        with mock.patch(
+            "agent_observatory.transport.persist_request",
+            side_effect=sqlite3.OperationalError("disk I/O error"),
+        ):
+            with self.assertRaises(ObservatoryError):
+                classify(store, request, credential=CREDENTIAL)
+        rows = iter_provenance(store)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["outcome"], "pending")
+        self.assertEqual(rows[0]["failure_class"], "store_error")
+
+
+class SnapshotHashCrossCheckTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = os.path.join(self.tmp.name, "projection.db")
+        fixture = support.write_jsonl(
+            os.path.join(self.tmp.name, "events.jsonl"),
+            [support.make_record(event_id="e1")],
+        )
+        with ObservatoryStore(self.db) as store:
+            store.import_jsonl(fixture)
+
+    def _args(self, snapshot_hash):
+        return argparse.Namespace(
+            db=self.db,
+            session="city-a|host-a|codex|session-1",
+            subject_kind="session",
+            event_id=None,
+            snapshot_hash=snapshot_hash,
+        )
+
+    def test_explicit_hash_is_cross_checked_against_the_store(self):
+        real = cli._resolve_snapshot_hash(self._args(None))
+        self.assertEqual(cli._resolve_snapshot_hash(self._args(real)), real)
+        with self.assertRaises(ObservatoryError) as caught:
+            cli._resolve_snapshot_hash(self._args("b" * 64))
+        self.assertIn("does not match", str(caught.exception))
+
+    def test_explicit_hash_without_db_is_used_as_is(self):
+        args = self._args("c" * 64)
+        args.db = None
+        self.assertEqual(cli._resolve_snapshot_hash(args), "c" * 64)
 
 
 if __name__ == "__main__":

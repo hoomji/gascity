@@ -8,24 +8,32 @@ Safety and accounting properties implemented here:
 
 * **Model pin.** The request model must be ``jev-1.13.0``; any other model is
   refused before anything is sent unless model drift is explicitly allowed.
-* **Runtime-only credential.** The bearer token is read from ``JEV_API_KEY`` or
-  a file named by ``JEV_KEY_FILE`` at call time. It is never accepted as an
-  argv value and is redacted to its last four characters on every state, log,
-  and error surface.
+* **Runtime-only credential.** The bearer token is read from
+  ``TYPESAFE_API_KEY`` (preferred) or its alias ``JEV_API_KEY``, or from a file
+  named by ``JEV_KEY_FILE``, at call time. It is never accepted as an argv
+  value and is redacted to its last four characters on every state, log, and
+  error surface. Key-file parsing is strict: only a recognized ``NAME=value``
+  line, a ``Bearer <token>`` line, or a single bare token is accepted, so prose,
+  labels, and note references can never be sent as a bearer token.
 * **Bounded retries with jitter.** ``429``/``529``/transient ``5xx`` (and
   timeout/connection failures) are retried with jittered exponential backoff,
   honouring a bounded ``Retry-After``. Operator-actionable statuses
-  (``400``/``401``/``403``/``422``) surface once and are never retried.
+  (``400``/``401``/``403``/``422``) surface once and are never retried. The
+  delay is capped *after* jitter, and an unparseable ``Retry-After`` falls back
+  to backoff.
 * **Budgets.** A per-run request cap plus token and dollar ceilings. A dollar
   ceiling is only enforceable when both prices are known; unknown prices stay
-  unknown and cannot be charged against the ceiling.
+  unknown and cannot be charged against the ceiling. Usage is validated before
+  it is charged, and only the validated integer token fields are ever exposed.
 * **Circuit breaker.** After N consecutive failures the circuit opens and its
   state is persisted in the SQLite projection, so the refusal survives process
-  restarts.
+  restarts. The read-modify-write is transactional (``BEGIN IMMEDIATE``) and a
+  single half-open probe is reserved atomically.
 * **Validation.** A successful HTTP response is validated by the existing
   response validator and stored as an immutable classification; any failure
   records an ``unknown``/``pending`` provenance row instead of raising past the
-  CLI.
+  CLI. Response bodies are read in bounded chunks on both the 2xx and error
+  paths.
 * **No body logging.** Request and response bodies are never logged.
 
 Transport-owned tables are created lazily through the existing projection
@@ -35,13 +43,18 @@ store schema is untouched.
 
 from __future__ import annotations
 
+import http.client
+import math
 import os
 import random
+import re
 import socket
+import sqlite3
 import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -50,11 +63,21 @@ from typing import Any, Callable, Mapping
 
 from .canonical import canonical_json
 from .errors import ObservatoryError, ResponseError
-from .jev import JevRequest, import_response, parse_json_document, persist_request
+from .jev import (
+    JevRequest,
+    _validate_usage,
+    import_response,
+    parse_json_document,
+    persist_request,
+)
 from .store import ObservatoryStore
 
 DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 PINNED_MODEL = "jev-1.13.0"
+
+# Upper bound on the HTTP timeout. A larger value is an unbounded hang in
+# practice, so the configuration refuses it loudly instead of accepting it.
+MAX_TIMEOUT_SECONDS = 300.0
 
 # Statuses that are worth another attempt. Everything else (notably 400, 401,
 # 403, and 422) is operator-actionable and surfaces after a single attempt.
@@ -126,15 +149,25 @@ class TransportConnectionError(TransportError):
 # ---------------------------------------------------------------------------
 
 
-def mask_secret(secret: str | None) -> str:
+def mask_secret(secret: str | bytes | None) -> str:
     """Return a display form that keeps only the last four secret characters.
 
-    A secret of four characters or fewer is fully masked: revealing a short
-    secret's "last four" would reveal all of it.
+    A secret of eight characters or fewer is fully masked: revealing a short
+    secret's "last four" would reveal most or all of it. ``bytes`` is accepted
+    and decoded so an embedding caller cannot crash the redaction surface; any
+    other type raises a ``TypeError`` that never includes the value itself.
     """
+    if secret is None:
+        return "<unset>"
+    if isinstance(secret, (bytes, bytearray)):
+        secret = bytes(secret).decode("utf-8", "replace")
+    elif not isinstance(secret, str):
+        raise TypeError(
+            f"mask_secret expects str or bytes, got {type(secret).__name__}"
+        )
     if not secret:
         return "<unset>"
-    if len(secret) <= 4:
+    if len(secret) <= 8:
         return "*" * len(secret)
     return "*" * (len(secret) - 4) + secret[-4:]
 
@@ -148,52 +181,116 @@ def redact_text(text: Any, *secrets: str | None) -> str:
     return rendered
 
 
-def _first_key_like_line(text: str) -> str:
-    """Extract a credential from a key file.
+# A credential value must be a single opaque token. Real API keys are long; the
+# lower bound is what keeps prose, note references, and markdown labels from
+# being returned as a bearer token.
+_CREDENTIAL_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.\-]{16,}$")
 
-    Accepts either a bare key (the common case) or a simple ``NAME=value`` /
-    ``NAME: value`` / ``Bearer value`` line. The first non-empty candidate wins;
-    prose lines are skipped rather than returned as the credential.
+# Recognized key-file names. Anything whose normalized name ends in ``KEY`` is
+# also accepted (``SOME_PROVIDER_KEY``, ``JEV_KEY``, ...).
+_CREDENTIAL_NAMES = frozenset(
+    {"KEY", "APIKEY", "API_KEY", "SECRET", "TOKEN", "TYPESAFE_API_KEY", "JEV_API_KEY"}
+)
+
+
+def _is_credential_name(name: str) -> bool:
+    normalized = name.strip().upper()
+    return normalized in _CREDENTIAL_NAMES or normalized.endswith("KEY")
+
+
+def _strip_credential_wrapping(value: str) -> str:
+    return value.strip().strip("'\"`").strip()
+
+
+def _parse_key_file(text: str) -> tuple[str, list[int]]:
+    """Return ``(credential, skipped_line_numbers)`` from a key-file body.
+
+    Strict contract; the first accepted line wins:
+
+    * ``[export ]NAME=value`` or ``NAME: value`` where ``NAME`` is a recognized
+      credential name and ``value`` is a single ``[A-Za-z0-9_.-]{16,}`` token
+      after stripping surrounding quotes/backticks;
+    * ``Bearer <token>``;
+    * a single bare token line.
+
+    Blank lines and ``#`` comments are skipped silently. Every other non-blank
+    line is recorded in *skipped_line_numbers* and is never returned as a token.
     """
-    for line in text.splitlines():
-        candidate = line.strip().strip("'\"")
-        if not candidate or candidate.startswith("#"):
+    skipped: list[int] = []
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.replace("\ufeff", "").strip()
+        if not line or line.startswith("#"):
             continue
-        lowered = candidate.lower()
-        if lowered.startswith("bearer "):
-            candidate = candidate[len("bearer ") :].strip()
-        for separator in ("=", ":"):
-            if separator in candidate:
-                name, _, value = candidate.partition(separator)
-                name = name.strip().lower()
-                if name in {"key", "api_key", "apikey", "token", "secret", "jev_api_key"}:
-                    candidate = value.strip().strip("'\"")
-                    break
-        if candidate:
-            return candidate
-    return ""
+        working = line
+        if working[:7].lower() == "export ":
+            working = working[7:].lstrip()
+        cut = min(
+            (index for index in (working.find("="), working.find(":")) if index != -1),
+            default=-1,
+        )
+        if cut != -1:
+            name, value = working[:cut], working[cut + 1 :]
+            if _is_credential_name(name):
+                token = _strip_credential_wrapping(value)
+                if _CREDENTIAL_TOKEN_RE.match(token):
+                    return token, skipped
+        if line[:7].lower() == "bearer ":
+            token = _strip_credential_wrapping(line[7:])
+            if _CREDENTIAL_TOKEN_RE.match(token):
+                return token, skipped
+        bare = _strip_credential_wrapping(line)
+        if _CREDENTIAL_TOKEN_RE.match(bare):
+            return bare, skipped
+        skipped.append(line_number)
+    return "", skipped
+
+
+def _first_key_like_line(text: str) -> str:
+    """Extract one strict credential from a key file.
+
+    Returns the credential, or raises :class:`CredentialError` naming every
+    non-blank, non-comment line number that was skipped. Prose and labels are
+    never returned.
+    """
+    token, skipped = _parse_key_file(text)
+    if token:
+        return token
+    if skipped:
+        raise CredentialError(
+            "no credential line found; skipped line(s): "
+            + ", ".join(str(number) for number in skipped)
+        )
+    raise CredentialError("no credential line found (file has no non-comment lines)")
 
 
 def load_credential(environ: Mapping[str, str] | None = None) -> str:
     """Load the Jev credential from the runtime environment only.
 
-    Precedence is ``JEV_API_KEY`` then ``JEV_KEY_FILE``. The value is never read
-    from argv, the repository, or a config file.
+    Precedence is ``TYPESAFE_API_KEY`` (preferred) then its alias
+    ``JEV_API_KEY`` then ``JEV_KEY_FILE``. The value is never read from argv,
+    the repository, or a config file. A key file is decoded as ``utf-8-sig``
+    (so a UTF-8 BOM cannot poison the token or turn a comment into one) and is
+    parsed under the strict contract in :func:`_parse_key_file`.
     """
     env = environ if environ is not None else os.environ
-    api_key = (env.get("JEV_API_KEY") or "").strip()
-    if api_key:
-        return api_key
+    for name in ("TYPESAFE_API_KEY", "JEV_API_KEY"):
+        api_key = (env.get(name) or "").strip()
+        if api_key:
+            return api_key
     key_file = (env.get("JEV_KEY_FILE") or "").strip()
     if not key_file:
-        raise CredentialError("no Jev credential: set JEV_API_KEY or JEV_KEY_FILE")
+        raise CredentialError(
+            "no Jev credential: set TYPESAFE_API_KEY (preferred) or "
+            "JEV_API_KEY, or JEV_KEY_FILE"
+        )
     try:
-        raw = Path(key_file).read_text(encoding="utf-8")
+        raw = Path(key_file).read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise CredentialError(f"cannot read JEV_KEY_FILE {key_file!r}: {exc}") from exc
-    secret = _first_key_like_line(raw)
-    if not secret:
-        raise CredentialError(f"JEV_KEY_FILE {key_file!r} contains no credential")
+    try:
+        secret = _first_key_like_line(raw)
+    except CredentialError as exc:
+        raise CredentialError(f"JEV_KEY_FILE {key_file!r}: {exc}") from exc
     return secret
 
 
@@ -249,6 +346,13 @@ class Budget:
     ``max_cost_usd`` is only enforceable when both per-million-token prices are
     known. If a price is unknown the accumulated cost becomes ``None`` (unknown)
     and unknown cost is deliberately *not* charged against the ceiling.
+
+    The token and dollar ceilings are checked before each request, but usage is
+    only known after a response arrives. The cap therefore cannot predict the
+    next response's usage and a run can overshoot ``max_tokens`` /
+    ``max_cost_usd`` by at most one request's usage before the following
+    ``check_before_request`` refuses. This one-request overshoot is inherent to
+    a post-hoc accounting transport and is not a bug.
     """
 
     max_requests: int | None = None
@@ -379,6 +483,12 @@ class TransportConfig:
         _require_number(self.timeout_seconds, "timeout_seconds", minimum=0.0)
         if self.timeout_seconds <= 0:
             raise TransportConfigError("timeout_seconds must be > 0")
+        if self.timeout_seconds > MAX_TIMEOUT_SECONDS:
+            raise TransportConfigError(
+                f"timeout_seconds must be <= {MAX_TIMEOUT_SECONDS:g} "
+                f"(got {self.timeout_seconds!r}); a larger timeout is an "
+                "unbounded hang"
+            )
         if isinstance(self.circuit_failure_threshold, bool) or not isinstance(self.circuit_failure_threshold, int):
             raise TransportConfigError("circuit_failure_threshold must be an integer")
         if self.circuit_failure_threshold < 1:
@@ -493,6 +603,7 @@ _TRANSPORT_SCHEMA = (
         consecutive_failures INTEGER NOT NULL DEFAULT 0,
         opened_at REAL,
         open_until REAL,
+        probe_token TEXT,
         updated_at REAL NOT NULL
     )
     """,
@@ -526,6 +637,16 @@ _TRANSPORT_SCHEMA = (
 def _ensure_transport_schema(conn: Any) -> None:
     for statement in _TRANSPORT_SCHEMA:
         conn.execute(statement)
+    # Older databases created before half-open probe reservation lack the
+    # column; add it lazily rather than requiring a migration step.
+    columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(transport_circuit_state)").fetchall()
+    }
+    if "probe_token" not in columns:
+        conn.execute(
+            "ALTER TABLE transport_circuit_state ADD COLUMN probe_token TEXT"
+        )
 
 
 class CircuitBreaker:
@@ -534,8 +655,17 @@ class CircuitBreaker:
     The breaker opens once ``failure_threshold`` consecutive transport failures
     have been recorded. While open it refuses requests; after
     ``cooldown_seconds`` it allows a single probe, which either resets the
-    breaker (success) or re-opens it (failure).
+    breaker (success) or re-opens it (failure). The reservation of that single
+    probe is itself transactional, so concurrent callers cannot all probe at
+    once. Read-modify-write paths use ``BEGIN IMMEDIATE`` (as the store's own
+    writers do) so concurrent failures are never lost.
     """
+
+    # How long a granted half-open probe holds its reservation when
+    # ``cooldown_seconds`` is shorter. If the prober crashes without recording
+    # an outcome, the reservation expires after this window and a later caller
+    # may probe again.
+    _MIN_PROBE_RESERVATION_SECONDS = 300.0
 
     def __init__(
         self,
@@ -556,6 +686,16 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.cooldown_seconds = float(cooldown_seconds)
         self._clock = clock
+        # Unique to this breaker instance: identifies which caller holds a
+        # half-open probe reservation.
+        self._probe_token = uuid.uuid4().hex
+
+    def _row(self) -> Any:
+        return self._conn.execute(
+            "SELECT consecutive_failures, opened_at, open_until, probe_token FROM "
+            "transport_circuit_state WHERE circuit_key = ?",
+            (self.key,),
+        ).fetchone()
 
     def state(self) -> tuple[int, float | None, float | None]:
         row = self._conn.execute(
@@ -572,34 +712,121 @@ class CircuitBreaker:
         return open_until is not None and self._clock() < float(open_until)
 
     def check(self) -> None:
-        if self.is_open():
-            _, opened_at, open_until = self.state()
-            raise CircuitOpenError(
-                f"circuit {self.key!r} is open until {float(open_until):.3f} "
-                f"(opened at {float(opened_at):.3f}); refusing to send"
+        """Allow the request, or refuse and raise :class:`CircuitOpenError`.
+
+        On a half-open breaker this atomically reserves the single probe for
+        this instance; another caller (process or thread) is refused until the
+        probe records an outcome or its reservation window expires.
+        """
+        now = self._clock()
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._row()
+            if row is None:
+                self._conn.execute("COMMIT")
+                return
+            open_until = row[2]
+            probe_token = row[3]
+            if open_until is None:
+                self._conn.execute("COMMIT")
+                return
+            if probe_token is not None and probe_token == self._probe_token:
+                # This caller already holds the half-open probe; allow its
+                # retries and record path to proceed.
+                self._conn.execute("COMMIT")
+                return
+            if now < float(open_until):
+                opened_at = float(row[1]) if row[1] is not None else now
+                self._conn.execute("COMMIT")
+                raise CircuitOpenError(
+                    f"circuit {self.key!r} is open until {float(open_until):.3f} "
+                    f"(opened at {opened_at:.3f}); refusing to send"
+                )
+            window = max(self.cooldown_seconds, self._MIN_PROBE_RESERVATION_SECONDS)
+            self._conn.execute(
+                "UPDATE transport_circuit_state SET probe_token = ?, opened_at = ?, "
+                "open_until = ?, updated_at = ? WHERE circuit_key = ?",
+                (self._probe_token, now, now + window, now, self.key),
             )
+            self._conn.execute("COMMIT")
+        except CircuitOpenError:
+            raise
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
 
     def record_success(self) -> None:
-        self._write(0, None, None)
+        self._write_locked(0, None, None, None)
+
+    def release_probe(self) -> None:
+        """Release a half-open probe reservation held by this instance.
+
+        Used when a probe completes with an outcome that neither resets nor
+        advances the breaker (for example an operator-actionable 4xx), so the
+        circuit returns to the probe-able state instead of staying reserved for
+        the full reservation window. A no-op when this instance holds no
+        reservation.
+        """
+        now = self._clock()
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute(
+                "UPDATE transport_circuit_state SET probe_token = NULL, "
+                "open_until = MIN(COALESCE(open_until, ?), ?), updated_at = ? "
+                "WHERE circuit_key = ? AND probe_token = ?",
+                (now, now, now, self.key, self._probe_token),
+            )
+            self._conn.execute("COMMIT")
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
 
     def record_failure(self) -> None:
-        failures, _, _ = self.state()
-        failures += 1
-        now = self._clock()
-        if failures >= self.failure_threshold:
-            self._write(failures, now, now + self.cooldown_seconds)
-        else:
-            self._write(failures, None, None)
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._row()
+            failures = (int(row[0]) if row is not None else 0) + 1
+            now = self._clock()
+            if failures >= self.failure_threshold:
+                self._write(failures, now, now + self.cooldown_seconds, None)
+            else:
+                self._write(failures, None, None, None)
+            self._conn.execute("COMMIT")
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
 
-    def _write(self, failures: int, opened_at: float | None, open_until: float | None) -> None:
+    def _write_locked(
+        self,
+        failures: int,
+        opened_at: float | None,
+        open_until: float | None,
+        probe_token: str | None,
+    ) -> None:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._write(failures, opened_at, open_until, probe_token)
+            self._conn.execute("COMMIT")
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+
+    def _write(
+        self,
+        failures: int,
+        opened_at: float | None,
+        open_until: float | None,
+        probe_token: str | None,
+    ) -> None:
         self._conn.execute(
             "INSERT INTO transport_circuit_state(circuit_key, consecutive_failures, opened_at, "
-            "open_until, updated_at) VALUES (?, ?, ?, ?, ?) "
+            "open_until, probe_token, updated_at) VALUES (?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(circuit_key) DO UPDATE SET "
             "consecutive_failures = excluded.consecutive_failures, "
             "opened_at = excluded.opened_at, open_until = excluded.open_until, "
+            "probe_token = excluded.probe_token, "
             "updated_at = excluded.updated_at",
-            (self.key, failures, opened_at, open_until, self._clock()),
+            (self.key, failures, opened_at, open_until, probe_token, self._clock()),
         )
 
 
@@ -706,7 +933,12 @@ def _header(headers: Any, name: str) -> str | None:
 
 
 def _parse_retry_after(value: str | None, *, now: Callable[[], float] = time.time) -> float | None:
-    """Parse a ``Retry-After`` header (delay-seconds or HTTP-date)."""
+    """Parse a ``Retry-After`` header (delay-seconds or HTTP-date).
+
+    A non-finite numeric value such as ``"nan"`` is treated as unparseable so
+    the caller falls back to backoff instead of retrying immediately; HTTP-date
+    values are evaluated against the injected clock.
+    """
     if value is None:
         return None
     text = value.strip()
@@ -722,6 +954,8 @@ def _parse_retry_after(value: str | None, *, now: Callable[[], float] = time.tim
         if target.tzinfo is None:
             target = target.replace(tzinfo=timezone.utc)
         seconds = target.timestamp() - now()
+    if math.isnan(seconds):
+        return None
     return max(0.0, seconds)
 
 
@@ -737,16 +971,36 @@ def _status_of(response: Any) -> int | None:
     return None
 
 
-def _read_body(response: Any) -> bytes:
+def _read_body(response: Any, max_bytes: int) -> bytes:
+    """Read at most ``max_bytes + 1`` bytes from *response*.
+
+    Reading one byte past the cap lets the caller distinguish an over-cap body
+    from an exactly-at-cap one without buffering the whole (possibly unbounded)
+    response in memory. A short read means the reader is exhausted (``urlopen``
+    reads up to the requested amount and returns short only at EOF); a reader
+    that ignores the requested size is still truncated at the cap boundary.
+    """
     reader = getattr(response, "read", None)
     if not callable(reader):
         return b""
-    data = reader()
-    if isinstance(data, str):
-        return data.encode("utf-8")
-    if data is None:
-        return b""
-    return bytes(data)
+    limit = max_bytes + 1
+    chunks: list[bytes] = []
+    total = 0
+    while total < limit:
+        requested = min(65536, limit - total)
+        chunk = reader(requested)
+        if not chunk:
+            break
+        if isinstance(chunk, str):
+            chunk = chunk.encode("utf-8")
+        chunk = bytes(chunk)
+        chunks.append(chunk)
+        total += len(chunk)
+        if len(chunk) < requested:
+            # Short read: the reader has no more data (single-shot readers land
+            # here immediately instead of being polled forever).
+            break
+    return b"".join(chunks)[:limit]
 
 
 def _close(response: Any) -> None:
@@ -797,9 +1051,11 @@ class JevTransport:
             return max(0.0, min(float(retry_after), policy.max_retry_after_seconds))
         base = min(policy.base_delay_seconds * (2 ** (attempt - 1)), policy.max_delay_seconds)
         factor = 1.0 + policy.jitter * (2.0 * float(self._random()) - 1.0)
-        return max(0.0, base * factor)
+        # The jitter is applied before the cap so a positive jitter cannot push
+        # the delay above the configured ceiling.
+        return max(0.0, min(base * factor, policy.max_delay_seconds))
 
-    def _http_post(self, body: bytes) -> HttpResponse:
+    def _http_post(self, body: bytes, max_bytes: int) -> HttpResponse:
         headers = {
             "Authorization": f"Bearer {self.credential}",
             "Content-Type": "application/json",
@@ -812,7 +1068,10 @@ class JevTransport:
         try:
             raw = self._urlopen(request, timeout=self.config.timeout_seconds)
         except urllib.error.HTTPError as exc:
-            response_body = _read_body(exc)
+            try:
+                response_body = _read_body(exc, max_bytes)
+            finally:
+                _close(exc)
             return HttpResponse(
                 status=exc.code,
                 headers=getattr(exc, "headers", None),
@@ -822,6 +1081,13 @@ class JevTransport:
             raise TransportTimeoutError(
                 f"request to {self.config.endpoint} timed out after "
                 f"{self.config.timeout_seconds}s"
+            ) from exc
+        except http.client.HTTPException as exc:
+            # HTTPException (BadStatusLine, IncompleteRead, InvalidURL, ...) is
+            # not an OSError, so without this arm it would escape past the CLI as
+            # a raw traceback with no provenance row.
+            raise TransportConnectionError(
+                self._redact(f"connection to {self.config.endpoint} failed: {exc}")
             ) from exc
         except urllib.error.URLError as exc:
             reason = getattr(exc, "reason", None)
@@ -841,7 +1107,7 @@ class JevTransport:
             return HttpResponse(
                 status=_status_of(raw),
                 headers=getattr(raw, "headers", None),
-                body=_read_body(raw),
+                body=_read_body(raw, max_bytes),
             )
         finally:
             _close(raw)
@@ -888,6 +1154,8 @@ class JevTransport:
             try:
                 budget.check_before_request()
             except BudgetExceededError as exc:
+                if self._circuit is not None:
+                    self._circuit.release_probe()
                 return SendResult(
                     ok=False,
                     attempts=attempt - 1,
@@ -897,12 +1165,16 @@ class JevTransport:
             budget.record_request()
             started = self._clock()
             try:
-                response = self._http_post(body)
+                response = self._http_post(body, config.max_response_bytes)
             except TransportTimeoutError as exc:
                 last_failure = "timeout"
                 last_error = self._redact(exc)
                 last_latency_ms = max(0.0, (self._clock() - started) * 1000.0)
-                if attempt < config.retry.max_attempts and budget.can_attempt_more():
+                if attempt < config.retry.max_attempts:
+                    if not budget.can_attempt_more():
+                        last_failure = "budget_exhausted"
+                        last_error = self._redact("budget exhausted before the next retry")
+                        break
                     self._sleep(self._compute_delay(attempt, None))
                     continue
                 break
@@ -910,7 +1182,11 @@ class JevTransport:
                 last_failure = "connection"
                 last_error = self._redact(exc)
                 last_latency_ms = max(0.0, (self._clock() - started) * 1000.0)
-                if attempt < config.retry.max_attempts and budget.can_attempt_more():
+                if attempt < config.retry.max_attempts:
+                    if not budget.can_attempt_more():
+                        last_failure = "budget_exhausted"
+                        last_error = self._redact("budget exhausted before the next retry")
+                        break
                     self._sleep(self._compute_delay(attempt, None))
                     continue
                 break
@@ -921,34 +1197,58 @@ class JevTransport:
             if status is None:
                 last_failure = "invalid_status"
                 last_error = self._redact("response carried no HTTP status")
-                if attempt < config.retry.max_attempts and budget.can_attempt_more():
+                if attempt < config.retry.max_attempts:
+                    if not budget.can_attempt_more():
+                        last_failure = "budget_exhausted"
+                        last_error = self._redact("budget exhausted before the next retry")
+                        break
                     self._sleep(self._compute_delay(attempt, None))
                     continue
                 break
 
+            # The body is already truncated to cap+1 bytes by ``_read_body``, so
+            # this bound holds for both the 2xx and the error paths and never
+            # buffers an unbounded error body.
+            if len(response.body) > config.max_response_bytes:
+                last_status = status
+                last_failure = "response_too_large"
+                last_error = self._redact(
+                    f"response body is {len(response.body)} bytes, exceeding the "
+                    f"{config.max_response_bytes}-byte cap"
+                )
+                break
+
             if 200 <= status < 300:
-                if len(response.body) > config.max_response_bytes:
-                    last_failure = "response_too_large"
-                    last_error = self._redact(
-                        f"response body is {len(response.body)} bytes, exceeding the "
-                        f"{config.max_response_bytes}-byte cap"
-                    )
-                    break
                 try:
                     text = response.body.decode("utf-8")
                 except UnicodeDecodeError as exc:
+                    last_status = status
                     last_failure = "malformed_json"
                     last_error = self._redact(f"response body is not valid UTF-8: {exc}")
                     break
                 try:
                     parsed = parse_json_document(text, what="response")
                 except ResponseError as exc:
+                    last_status = status
                     last_failure = "malformed_json"
                     last_error = self._redact(exc)
                     break
                 usage = parsed.get("usage") if isinstance(parsed, dict) else None
+                # Validate usage before charging, and expose only the validated
+                # integer token fields. Server-controlled usage is never passed
+                # through verbatim, so an extra key can never leak a credential.
+                validated_usage: dict[str, int] | None = None
                 if isinstance(usage, Mapping):
-                    budget.record_usage(usage)
+                    try:
+                        normalized = _validate_usage(usage)
+                    except ResponseError:
+                        normalized = None
+                    if normalized is not None:
+                        validated_usage = {
+                            "input_tokens": normalized["input_tokens"],
+                            "output_tokens": normalized["output_tokens"],
+                        }
+                        budget.record_usage(validated_usage)
                 if self._circuit is not None:
                     self._circuit.record_success()
                 return SendResult(
@@ -957,11 +1257,13 @@ class JevTransport:
                     http_status=status,
                     attempts=attempt,
                     latency_ms=latency_ms,
-                    usage=dict(usage) if isinstance(usage, Mapping) else None,
+                    usage=validated_usage,
                 )
 
             last_status = status
-            retry_after = _parse_retry_after(_header(response.headers, "Retry-After"))
+            retry_after = _parse_retry_after(
+                _header(response.headers, "Retry-After"), now=self._clock
+            )
             last_retry_after = retry_after
             last_failure = f"http_{status}"
             last_error = self._redact(f"HTTP {status} from {config.endpoint}")
@@ -975,8 +1277,13 @@ class JevTransport:
                 continue
             break
 
-        if self._circuit is not None and last_failure in _CIRCUIT_COUNTED_FAILURES:
-            self._circuit.record_failure()
+        if self._circuit is not None:
+            if last_failure in _CIRCUIT_COUNTED_FAILURES:
+                self._circuit.record_failure()
+            else:
+                # A reachable-but-not-transient outcome (e.g. an operator-
+                # actionable 4xx) must not leave the half-open probe reserved.
+                self._circuit.release_probe()
         return SendResult(
             ok=False,
             http_status=last_status,
@@ -1072,32 +1379,41 @@ def _record_provenance(
     )
 
 
-def classify(
+def _record_store_error(
+    store: ObservatoryStore,
+    request: JevRequest,
+    config: TransportConfig,
+    exc: BaseException,
+    credential: str | None = None,
+) -> None:
+    """Best-effort pending provenance row for a local store failure.
+
+    A broken store may not be writable at all (``--db /dev/null``); the row is
+    therefore attempted, never required.
+    """
+    result = _pending_result(
+        request,
+        config,
+        failure_class="store_error",
+        error=redact_text(f"store error: {exc}", credential),
+    )
+    try:
+        _record_provenance(store, request, config, result, "<unset>")
+    except sqlite3.Error:
+        pass
+
+
+def _classify_impl(
     store: ObservatoryStore,
     request: JevRequest,
     *,
-    credential: str | None = None,
-    config: TransportConfig | None = None,
-    allow_model_drift: bool | None = None,
+    credential: str | None,
+    config: TransportConfig,
     urlopen: Callable[..., Any] | None = None,
     sleeper: Callable[[float], Any] | None = None,
     clock: Callable[[], float] | None = None,
     random_source: Callable[[], float] | None = None,
 ) -> ClassifyResult:
-    """Send one built request and record its outcome.
-
-    The credential is loaded from the runtime environment unless one is passed
-    explicitly (for embedding). Every outcome -- success, invalid response,
-    operator-actionable status, exhausted budget, open circuit, or missing
-    credential -- is recorded as provenance, and a failed classification is
-    stored as ``pending``/unknown rather than raised. Configuration refusals and
-    transport errors never escape as a traceback past the CLI.
-    """
-    if config is None:
-        config = TransportConfig()
-    if allow_model_drift is not None:
-        config = replace(config, allow_model_drift=bool(allow_model_drift))
-
     # A request is persisted before the network call so a failed send still has
     # replayable provenance for a later saved response.
     persist_request(store, request)
@@ -1211,9 +1527,55 @@ def classify(
     return result
 
 
+def classify(
+    store: ObservatoryStore,
+    request: JevRequest,
+    *,
+    credential: str | None = None,
+    config: TransportConfig | None = None,
+    allow_model_drift: bool | None = None,
+    urlopen: Callable[..., Any] | None = None,
+    sleeper: Callable[[float], Any] | None = None,
+    clock: Callable[[], float] | None = None,
+    random_source: Callable[[], float] | None = None,
+) -> ClassifyResult:
+    """Send one built request and record its outcome.
+
+    The credential is loaded from the runtime environment unless one is passed
+    explicitly (for embedding). Every outcome -- success, invalid response,
+    operator-actionable status, exhausted budget, open circuit, or missing
+    credential -- is recorded as provenance, and a failed classification is
+    stored as ``pending``/unknown rather than raised. Configuration refusals and
+    transport errors never escape as a traceback past the CLI.
+
+    A local ``sqlite3`` failure from using the projection is surfaced as an
+    :class:`ObservatoryError` (so the CLI prints ``error: ...`` and exits 1)
+    after a best-effort ``store_error`` pending row when the store is usable.
+    """
+    if config is None:
+        config = TransportConfig()
+    if allow_model_drift is not None:
+        config = replace(config, allow_model_drift=bool(allow_model_drift))
+    try:
+        return _classify_impl(
+            store,
+            request,
+            credential=credential,
+            config=config,
+            urlopen=urlopen,
+            sleeper=sleeper,
+            clock=clock,
+            random_source=random_source,
+        )
+    except sqlite3.Error as exc:
+        _record_store_error(store, request, config, exc, credential)
+        raise ObservatoryError(f"sqlite error: {exc}") from exc
+
+
 __all__ = [
     "DEFAULT_ENDPOINT",
     "PINNED_MODEL",
+    "MAX_TIMEOUT_SECONDS",
     "RETRYABLE_STATUSES",
     "OUTCOME_CLASSIFIED",
     "OUTCOME_PENDING",
