@@ -177,10 +177,22 @@ def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[
     Checks the model string, usage counters, question ids and types, choice
     probability distributions (all criteria options present, finite, in [0,1],
     summing to ~1) with confidence in [0,1], and noul probabilities in [0,1]
-    with no confidence field.
+    with no confidence field. Unknown top-level keys are rejected so a
+    server-injected extra field cannot poison replay deduplication.
     """
     if not isinstance(response, dict):
         raise ResponseError("response must be a JSON object")
+
+    # Reject unknown top-level keys the same way answer keys are rejected. A
+    # server-injected field such as ``request_id`` would otherwise be hashed
+    # into ``response_hash`` and make every replay of the same logical response
+    # look like a different label (a spurious LabelConflictError).
+    allowed_top_level = {"model", "usage", "answers"}
+    unknown_top_level = sorted(set(response) - allowed_top_level)
+    if unknown_top_level:
+        raise ContractError(
+            "response contains unknown key(s): " + ", ".join(unknown_top_level)
+        )
 
     expected_model = request_body.get("model")
     if response.get("model") != expected_model:
@@ -356,7 +368,18 @@ def import_response(
     request_body = parse_json_document(request_record["request_json"], what="stored request")
 
     answers = validate_response(response, request_body)
-    response_hash = canonical_hash(response)
+    # Hash the validated shape (not the raw server payload): unknown top-level
+    # keys and unknown usage keys have already been rejected/dropped, and the
+    # answers are normalized, so the same logical response always produces the
+    # same hash.
+    normalized_usage = _validate_usage(response.get("usage"))
+    response_hash = canonical_hash(
+        {
+            "model": response["model"],
+            "usage": normalized_usage,
+            "answers": answers,
+        }
+    )
 
     classification_id, deduplicated = store.save_classification(
         subject_kind=request_record["subject_kind"],

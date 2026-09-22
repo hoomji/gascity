@@ -39,6 +39,22 @@ class JevResponseTest(unittest.TestCase):
             qid for qid, q in self.request.body["questions"].items() if q["type"] == "noul"
         )
 
+    def test_unknown_top_level_keys_do_not_create_a_label_conflict(self):
+        # A server-injected request_id (or timestamp) must not be hashed into the
+        # response identity: it is an unknown top-level key and is rejected the
+        # same way unknown answer keys are, never a LabelConflictError.
+        first = copy.deepcopy(self.valid)
+        first["request_id"] = "req-aaa"
+        second = copy.deepcopy(self.valid)
+        second["request_id"] = "req-bbb"
+        with self.assertRaises(ContractError) as first_error:
+            import_response(self.store, first, request_hash=self.request.request_hash)
+        self.assertIn("request_id", str(first_error.exception))
+        with self.assertRaises(ContractError) as second_error:
+            import_response(self.store, second, request_hash=self.request.request_hash)
+        self.assertIn("request_id", str(second_error.exception))
+        self.assertEqual(self.store.classification_count(), 0)
+
     def test_valid_response_is_stored_with_all_probabilities(self):
         result = import_response(self.store, self.valid, request_hash=self.request.request_hash)
         self.assertFalse(result.deduplicated)
