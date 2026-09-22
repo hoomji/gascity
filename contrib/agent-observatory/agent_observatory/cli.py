@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -93,6 +94,29 @@ def _session_key(value: str) -> tuple[str, str, str, str]:
     return parts[0], parts[1], parts[2], parts[3]
 
 
+def _validated_generation(value: Any) -> int:
+    """Return a positive integer source generation or raise a clean error.
+
+    ``argparse`` would reject a non-integer with a usage dump; validating here
+    keeps ``--generation`` inside the documented ``error: ...`` exit-1 contract
+    and bounds the value so a negative generation cannot reach fallback ids.
+    """
+
+    if isinstance(value, bool):
+        raise ObservatoryError(f"--generation must be a positive integer, got {value!r}")
+    if isinstance(value, int):
+        generation = value
+    elif isinstance(value, str) and re.fullmatch(r"[+-]?\d+", value.strip()):
+        # A single optional sign only: ``lstrip("+-")`` would accept ``--5`` and
+        # ``+-5`` here and then hand an int() ValueError to the caller.
+        generation = int(value.strip())
+    else:
+        raise ObservatoryError(f"--generation must be a positive integer, got {value!r}")
+    if generation < 1:
+        raise ObservatoryError(f"--generation must be a positive integer, got {value!r}")
+    return generation
+
+
 def _write_output(payload: str, out_path: str | None) -> None:
     if out_path:
         Path(out_path).write_text(payload if payload.endswith("\n") else payload + "\n", encoding="utf-8")
@@ -112,6 +136,8 @@ def _cmd_import_jsonl(args: argparse.Namespace) -> int:
                     "lines_read": result.lines_read,
                     "inserted": result.inserted,
                     "duplicates": result.duplicates,
+                    "skipped_conflicts": result.skipped_conflicts,
+                    "notes": result.notes,
                     "skipped_identical_file": result.skipped_identical_file,
                     "events": store.event_count(),
                     "sessions": store.session_count(),
@@ -341,10 +367,11 @@ def _cmd_export(args: argparse.Namespace) -> int:
     if not inputs:
         raise ObservatoryError("export requires at least one --input or --root")
 
+    generation = _validated_generation(args.generation)
     payloads = []
     summaries = []
     for source in inputs:
-        result = read_source(source, context=context, provider=args.provider, generation=args.generation)
+        result = read_source(source, context=context, provider=args.provider, generation=generation)
         payloads.append(records_to_jsonl(result.records))
         summaries.append(
             {
@@ -651,7 +678,12 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--city", required=True, help="city id for emitted records")
     export_parser.add_argument("--host", required=True, help="host id for emitted records")
     export_parser.add_argument("--repo", default=None, help="optional repository scope")
-    export_parser.add_argument("--generation", type=int, default=1, help="logical source generation for fallback ids")
+    export_parser.add_argument(
+        "--generation",
+        type=str,
+        default="1",
+        help="logical source generation for fallback ids (positive integer; default 1)",
+    )
     export_parser.add_argument("--out", default=None, help="write JSONL to this path instead of stdout")
     export_parser.add_argument("--db", default=None, help="import the exported JSONL into this projection")
     export_parser.set_defaults(func=_cmd_export)

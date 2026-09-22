@@ -109,6 +109,69 @@ class AdapterCliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("error:", stderr)
 
+    def test_export_rejects_invalid_generation_with_a_clean_error(self):
+        for bad in ("0", "-3", "abc", "1.5"):
+            code, _stdout, stderr = self._run(
+                [
+                    "export",
+                    "--provider",
+                    "claude",
+                    "--input",
+                    support.fixture("claude"),
+                    "--city",
+                    "c",
+                    "--host",
+                    "h",
+                    "--generation",
+                    bad,
+                ]
+            )
+            self.assertEqual(code, 1, f"generation={bad!r}")
+            self.assertIn("error:", stderr, f"generation={bad!r}")
+            self.assertIn("--generation", stderr, f"generation={bad!r}")
+
+    def test_export_rejects_multi_sign_generation_with_a_clean_error(self):
+        # F1: ``--5`` and ``+-5`` must not slip through lstrip("+-").isdigit()
+        # and raise a bare ValueError. Use the ``=`` form so argparse passes the
+        # sign-led value through instead of treating it as an option.
+        for bad in ("--5", "+-5", "5+", "++3"):
+            code, _stdout, stderr = self._run(
+                [
+                    "export",
+                    "--provider",
+                    "claude",
+                    "--input",
+                    support.fixture("claude"),
+                    "--city",
+                    "c",
+                    "--host",
+                    "h",
+                    f"--generation={bad}",
+                ]
+            )
+            self.assertEqual(code, 1, f"generation={bad!r}")
+            self.assertIn("error:", stderr, f"generation={bad!r}")
+            self.assertIn("--generation", stderr, f"generation={bad!r}")
+
+    def test_export_accepts_positive_generation(self):
+        code, stdout, _stderr = self._run(
+            [
+                "export",
+                "--provider",
+                "claude",
+                "--input",
+                support.fixture("claude"),
+                "--city",
+                "c",
+                "--host",
+                "h",
+                "--generation",
+                "4",
+            ]
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(stdout.strip())
+
     def test_inventory_missing_root_is_a_clean_error(self):
         code, _stdout, stderr = self._run(
             ["inventory", "--root", "/definitely/not/here", "--city", "c", "--host", "h"]

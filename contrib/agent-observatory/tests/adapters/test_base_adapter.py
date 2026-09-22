@@ -9,9 +9,34 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adapter_support  # noqa: E402,F401  (bootstrap)
 
-from agent_observatory.adapters.base import AdapterError, split_jsonl  # noqa: E402
+from agent_observatory.adapters.base import AdapterError, iso_from_epoch, split_jsonl  # noqa: E402
 
 BOM = b"\xef\xbb\xbf"
+
+
+class EpochTimestampTest(unittest.TestCase):
+    def test_seconds_and_milliseconds_both_land_in_2026(self):
+        # 1_790_000_000 is epoch *seconds*; 1_789_000_000_000 is epoch *ms*.
+        # Dividing the seconds value by 1000 again would land in 1970.
+        from_seconds = iso_from_epoch(1790000000)
+        from_millis = iso_from_epoch(1789000000000)
+        self.assertIsNotNone(from_seconds)
+        self.assertIsNotNone(from_millis)
+        self.assertEqual(from_seconds[:4], "2026", from_seconds)
+        self.assertEqual(from_millis[:4], "2026", from_millis)
+        self.assertTrue(from_seconds.endswith("Z"), from_seconds)
+
+    def test_non_numeric_and_bool_are_rejected(self):
+        for value in (None, "1790000000", True, False, {}, [], object()):
+            self.assertIsNone(iso_from_epoch(value), repr(value))
+
+
+class DeadAliasTest(unittest.TestCase):
+    def test_iso_from_epoch_millis_alias_is_removed(self):
+        # F8: the alias had no callers outside its own definition.
+        import agent_observatory.adapters.base as base
+
+        self.assertFalse(hasattr(base, "iso_from_epoch_millis"))
 
 
 class SplitJsonlTest(unittest.TestCase):

@@ -40,6 +40,128 @@ class ClaudeAdapterTest(unittest.TestCase):
         # One assistant message is split across two records that repeat usage.
         self.assertEqual(coverage["by_kind"]["assistant_message"], 1)
 
+    def _write_records(self, name, records):
+        path = os.path.join(self.tmp.name, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record) + "\n")
+        return path
+
+    def test_numeric_timestamp_is_accepted_not_dropped(self):
+        path = self._write_records(
+            "numeric-ts.jsonl",
+            [
+                {
+                    "type": "user",
+                    "uuid": "u-numeric",
+                    "sessionId": "sess-numeric",
+                    "timestamp": 1789000000000,  # epoch milliseconds
+                    "message": {"role": "user", "content": [{"type": "text", "text": "numeric"}]},
+                }
+            ],
+        )
+        result = self._read(path)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0]["timestamp"][:4], "2026", result.records[0]["timestamp"])
+
+    def test_digit_string_timestamp_is_treated_as_epoch_not_dropped(self):
+        # F7: a bare all-digit string is an epoch, not an ISO timestamp.
+        path = self._write_records(
+            "digit-ts.jsonl",
+            [
+                {
+                    "type": "user",
+                    "uuid": "u-digit",
+                    "sessionId": "sess-digit",
+                    "timestamp": "1758198061",  # epoch seconds as a string
+                    "message": {"role": "user", "content": [{"type": "text", "text": "digit"}]},
+                }
+            ],
+        )
+        result = self._read(path)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0]["timestamp"][:4], "2025", result.records[0]["timestamp"])
+
+    def test_float_usage_values_are_kept(self):
+        path = self._write_records(
+            "float-usage.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "u-float",
+                    "sessionId": "sess-float",
+                    "timestamp": "2026-09-21T10:00:01.000Z",
+                    "message": {
+                        "id": "msg-float",
+                        "role": "assistant",
+                        "model": "claude-test-1",
+                        "content": [{"type": "text", "text": "fractional"}],
+                        "usage": {"input_tokens": 10.5, "output_tokens": 2.25},
+                    },
+                }
+            ],
+        )
+        result = self._read(path)
+        record = next(record for record in result.records if record.get("usage"))
+        self.assertEqual(record["usage"]["input_tokens"], 10.5)
+        self.assertEqual(record["usage"]["output_tokens"], 2.25)
+        self.assertEqual(record["usage"]["total_tokens"], 12.75)
+
+    def test_usage_without_a_record_is_flagged(self):
+        path = self._write_records(
+            "dropped-usage.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "sessionId": "sess-drop",
+                    "timestamp": "2026-09-21T10:00:01.000Z",
+                    "message": {
+                        "id": "msg-drop",
+                        "role": "assistant",
+                        "content": [{"type": "thinking", "thinking": "private"}],
+                        "usage": {"input_tokens": 5, "output_tokens": 1},
+                    },
+                }
+            ],
+        )
+        result = self._read(path)
+        self.assertEqual(result.skipped.get("usage_dropped"), 1)
+        self.assertFalse(any(record.get("usage") for record in result.records))
+
+    def test_repeated_usage_is_explained(self):
+        path = self._write_records(
+            "duplicate-usage.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "u-dup-1",
+                    "sessionId": "sess-dup",
+                    "timestamp": "2026-09-21T10:00:01.000Z",
+                    "message": {
+                        "id": "msg-dup",
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "one"}],
+                        "usage": {"input_tokens": 3, "output_tokens": 1},
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "uuid": "u-dup-2",
+                    "sessionId": "sess-dup",
+                    "timestamp": "2026-09-21T10:00:02.000Z",
+                    "message": {
+                        "id": "msg-dup",
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "two"}],
+                        "usage": {"input_tokens": 3, "output_tokens": 1},
+                    },
+                },
+            ],
+        )
+        result = self._read(path)
+        self.assertEqual(result.skipped.get("usage_duplicate"), 1)
+        self.assertEqual(len([r for r in result.records if r.get("usage")]), 1)
+
     def test_resumed_sessions_are_attributed_per_record(self):
         path = os.path.join(self.tmp.name, "resumed.jsonl")
         records = [

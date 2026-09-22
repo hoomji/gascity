@@ -3,8 +3,9 @@
 The database is a *derived* artifact: beads and events remain the authoritative
 record. Everything here is rebuildable from source JSONL, so the schema is
 versioned and imports are transactional and idempotent. A partial or malformed
-file never commits; a conflicting reuse of an event identity is rejected rather
-than silently overwritten.
+file never commits; a conflicting reuse of an event identity is skipped at the
+record level with a note rather than silently overwritten or allowed to abort
+the whole file.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
 
@@ -32,7 +33,6 @@ from .contract import (
 )
 from .errors import (
     ContractError,
-    ImportConflictError,
     LabelConflictError,
     RegistryConflictError,
     RegistryError,
@@ -304,7 +304,9 @@ class ImportResult:
     lines_read: int = 0
     inserted: int = 0
     duplicates: int = 0
+    skipped_conflicts: int = 0
     skipped_identical_file: bool = False
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -403,6 +405,12 @@ class ObservatoryStore:
         The whole file is parsed and type-checked before anything is written, and
         the writes happen in a single transaction. A malformed line aborts the
         file with its 1-based line number and commits nothing.
+
+        A record that reuses an existing canonical identity with different
+        content is skipped at the record level (counted in
+        ``skipped_conflicts`` and explained in ``notes``); the rest of the file
+        still imports. This keeps one bad native uuid from erasing a whole
+        session's evidence.
         """
         source_path = str(source)
         try:
@@ -439,9 +447,13 @@ class ObservatoryStore:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             for line_number, record in parsed:
-                duplicate = self._insert_record(record, source_path, digest, line_number)
-                if duplicate:
+                status, note = self._insert_record(record, source_path, digest, line_number)
+                if status == "duplicate":
                     result.duplicates += 1
+                elif status == "conflict":
+                    result.skipped_conflicts += 1
+                    if note:
+                        result.notes.append(note)
                 else:
                     result.inserted += 1
             self._conn.execute(
@@ -466,7 +478,15 @@ class ObservatoryStore:
         source_path: str,
         source_sha256: str,
         source_line: int,
-    ) -> bool:
+    ) -> tuple[str, str | None]:
+        """Insert one validated record; return ``(status, note)``.
+
+        Status is ``"inserted"``, ``"duplicate"`` (identical payload already
+        present) or ``"conflict"`` (same identity, different payload). A conflict
+        is a record-level skip with an explanatory note rather than an abort, so
+        a reused native id cannot erase the rest of the file.
+        """
+
         identity = record_identity(record)
         digest = payload_hash(record)
         existing = self._conn.execute(
@@ -476,12 +496,13 @@ class ObservatoryStore:
         ).fetchone()
         if existing is not None:
             if existing["payload_hash"] != digest:
-                raise ImportConflictError(
-                    "refusing to overwrite event "
-                    f"{identity_key(identity)} (existing payload differs); "
-                    f"source {source_path}:{source_line}"
+                note = (
+                    "skipped event "
+                    f"{identity_key(identity)} with reused identity and different "
+                    f"payload; source {source_path}:{source_line}"
                 )
-            return True
+                return "conflict", note
+            return "duplicate", None
 
         self._conn.execute(
             "INSERT OR IGNORE INTO sessions(city_id, host_id, provider, session_id, "
@@ -542,7 +563,7 @@ class ObservatoryStore:
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 identity + tuple(usage.get(field) for field in USAGE_INT_FIELDS),
             )
-        return False
+        return "inserted", None
 
     # -- read helpers ------------------------------------------------------
 

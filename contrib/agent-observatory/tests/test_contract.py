@@ -9,9 +9,18 @@ try:
 except ImportError:  # pragma: no cover - depends on discovery invocation
     import support
 
+from agent_observatory import ImportConflictError
 from agent_observatory.canonical import event_snapshot_hash
 from agent_observatory.contract import payload_hash, record_identity, validate_record
 from agent_observatory.errors import ContractError
+
+
+class RetainedErrorTest(unittest.TestCase):
+    def test_import_conflict_error_is_retained_for_callers(self):
+        # F8: the class stays exported for compatibility even though the
+        # importer no longer raises it.
+        self.assertTrue(issubclass(ImportConflictError, Exception))
+        self.assertIn("Retained for callers", ImportConflictError.__doc__ or "")
 
 
 class ContractTest(unittest.TestCase):
@@ -93,6 +102,22 @@ class ContractTest(unittest.TestCase):
 
     def test_negative_usage_is_rejected(self):
         raw = support.make_record(usage={"input_tokens": -1})
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
+    def test_float_usage_values_are_kept(self):
+        raw = support.make_record(usage={"input_tokens": 10.5, "total_tokens": 10.5})
+        normalized = validate_record(raw)
+        self.assertEqual(normalized["usage"]["input_tokens"], 10.5)
+        self.assertEqual(normalized["usage"]["total_tokens"], 10.5)
+
+    def test_negative_float_usage_is_rejected(self):
+        raw = support.make_record(usage={"input_tokens": -0.5})
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
+    def test_boolean_usage_is_rejected(self):
+        raw = support.make_record(usage={"input_tokens": True})
         with self.assertRaises(ContractError):
             validate_record(raw)
 

@@ -62,6 +62,64 @@ class RedactionTest(unittest.TestCase):
         for token in ("sk-ABCDEFGHIJKLMNOP", "ghp_ABCDEFGHIJKLMNOPQRST", "AKIAIOSFODNN7EXAMPLE"):
             self.assertIn("[REDACTED]", redact_text(f"here is {token} done"))
 
+    def test_email_addresses_are_redacted(self):
+        for address in ("alice@example.com", "bob.smith@corp.co.uk", "a+tag@sub.domain.io"):
+            redacted = redact_text(f"contact {address} now")
+            self.assertNotIn(address, redacted)
+            self.assertIn("[REDACTED]", redacted)
+
+    def test_email_hostname_may_contain_underscore(self):
+        # F5: ``_`` is legal in a hostname, so this is still a personal address.
+        redacted = redact_text("contact alice@host_name.com now")
+        self.assertNotIn("alice@host_name.com", redacted)
+        self.assertIn("[REDACTED]", redacted)
+
+    def test_url_path_segments_are_not_home_directories(self):
+        # F4: a doc URL path is not a user home directory.
+        for value in (
+            "https://docs.example.com/Users/guide",
+            "https://docs.example.com/home/guide",
+            "https://docs.example.com:8443/root/guide",
+        ):
+            self.assertEqual(redact_text(value), value)
+            self.assertNotIn("[REDACTED]", redact_text(value))
+
+    def test_home_paths_at_value_starts_are_still_redacted(self):
+        for value in (
+            "/home/alice/secret",
+            "see /home/alice/secret now",
+            "path=/home/alice/secret",
+            "path:/home/alice/secret",
+            '"/home/alice/secret"',
+        ):
+            self.assertIn("[REDACTED]", redact_text(value), value)
+            self.assertNotIn("alice", redact_text(value), value)
+
+    def test_home_directory_paths_are_redacted(self):
+        for path in ("/home/alice/secret", "/Users/alice/proj", r"C:\Users\alice\secret"):
+            redacted = redact_text(f"see {path} now")
+            self.assertNotIn("alice", redacted)
+            self.assertIn("[REDACTED]", redacted)
+        self.assertNotIn("/root", redact_text("see /root/.ssh/id_rsa now"))
+        # A path that merely starts with the same letters is not a home dir.
+        self.assertEqual(redact_text("/rooted/not-home"), "/rooted/not-home")
+
+    def test_redaction_is_idempotent(self):
+        samples = (
+            "Authorization: Bearer sk-ABCDEFGHIJKLMNOP",
+            "Authorization: Bearer abcdefgh12345",
+            "api_key=supersecretvalue",
+            'refresh_token="abcdef123456"',
+            r'{\"password\": \"hunter2\"}',
+            "contact alice@example.com now",
+            "see /home/alice/secret and /root/.ssh/id_rsa",
+            r"C:\Users\alice\secret",
+            "plain ordinary text with total_tokens=42",
+        )
+        for value in samples:
+            once = redact_text(value)
+            self.assertEqual(redact_text(once), once, value)
+
     def test_ordinary_text_is_untouched(self):
         value = "total_tokens=42 and the api_key_hash is fine"
         self.assertEqual(redact_text(value), value)
