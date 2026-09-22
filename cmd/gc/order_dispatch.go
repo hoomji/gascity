@@ -3156,7 +3156,7 @@ func sweepClosedOrderTrackingRetentionAcrossStoresBudgeted(ctx context.Context, 
 		var err error
 		if storeLimit < 0 {
 			var n int
-			n, err = countClosedOrderTrackingRetentionEligible([]beads.Store{store}, now, policy, onlyOrders)
+			n, err = countClosedOrderTrackingRetentionEligible([]beads.Store{store}, now, policy, onlyOrders) // residency:allow — carries the loop's own store into the pure eligibility counter; enumerates no store the caller did not already hand in
 			res.remaining = n
 		} else {
 			res, err = sweepClosedOrderTrackingRetentionStore(ctx, store, now, policy, onlyOrders, storeLimit)
