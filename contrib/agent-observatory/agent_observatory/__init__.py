@@ -17,6 +17,14 @@ derived analytical projection.
 __version__ = "0.3.0"
 
 from .annotations import GoldEpisode, GoldSet, load_gold_set
+from .changes import (
+    BUNDLE_SCHEMA_VERSION,
+    OPTIMIZATION_CATEGORIES,
+    build_change_bundle,
+    classify_categories,
+    normalize_change_bundle,
+    normalize_change,
+)
 from .contract import SCHEMA_VERSION, validate_record
 from .episodes import Episode, EpisodeConfig, segment_events, segment_store
 from .errors import (
@@ -27,6 +35,8 @@ from .errors import (
     ImportConflictError,
     LabelConflictError,
     ObservatoryError,
+    RegistryConflictError,
+    RegistryError,
     RequestByteCapExceeded,
     RequestError,
     ResponseError,
@@ -43,6 +53,13 @@ from .evaluation import (
     load_predictions,
     report_json,
 )
+from .exposure import (
+    CommitGraph,
+    attach_session_fingerprints,
+    build_ledger,
+    evaluate_change,
+    session_evidence_from_store,
+)
 from .jev import (
     REQUEST_BYTE_CAP,
     JevRequest,
@@ -58,10 +75,13 @@ from .taxonomy import load_taxonomy
 __all__ = [
     "__version__",
     "SCHEMA_VERSION",
+    "BUNDLE_SCHEMA_VERSION",
     "REQUEST_BYTE_CAP",
+    "OPTIMIZATION_CATEGORIES",
     "ObservatoryStore",
     "JevRequest",
     "ResponseImport",
+    "CommitGraph",
     "build_request",
     "import_response",
     "validate_response",
@@ -83,6 +103,14 @@ __all__ = [
     "grouped_temporal_split",
     "load_predictions",
     "report_json",
+    "normalize_change",
+    "normalize_change_bundle",
+    "build_change_bundle",
+    "classify_categories",
+    "attach_session_fingerprints",
+    "build_ledger",
+    "evaluate_change",
+    "session_evidence_from_store",
     "ObservatoryError",
     "AnnotationError",
     "ContractError",
@@ -90,6 +118,8 @@ __all__ = [
     "EvaluationError",
     "ImportConflictError",
     "LabelConflictError",
+    "RegistryError",
+    "RegistryConflictError",
     "SchemaVersionError",
     "TaxonomyError",
     "RequestError",
