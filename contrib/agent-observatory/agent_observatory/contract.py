@@ -207,15 +207,15 @@ def validate_record(
                 source_path,
                 line_number,
             )
-        normalized_usage: dict[str, int | None] = {}
+        normalized_usage: dict[str, int | float | None] = {}
         for field in USAGE_INT_FIELDS:
             value = usage.get(field)
             if value is None:
                 normalized_usage[field] = None
                 continue
-            if not _is_int(value) or value < 0:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
                 raise ContractError(
-                    f"field 'usage.{field}' must be a nonnegative integer or null, "
+                    f"field 'usage.{field}' must be a nonnegative number or null, "
                     f"got {value!r}",
                     source_path,
                     line_number,

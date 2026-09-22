@@ -4,14 +4,16 @@ Native adapters read untrusted provider transcripts. Two rules are enforced
 here before any text reaches the normalized contract:
 
 * anything that looks like a credential (bearer tokens, ``key=value`` secrets,
-  well-known provider token prefixes) is replaced with ``[REDACTED]``;
+  well-known provider token prefixes) is replaced with ``[REDACTED]``, as are
+  personal email addresses and user home-directory paths;
 * raw tool output larger than :data:`MAX_TOOL_OUTPUT_BYTES` is never exported.
   The digest and byte length are recorded instead so the evidence stays
   verifiable without shipping the payload.
 
 Redaction is best-effort pattern matching over text, not a guarantee that no
 secret can ever survive an unusual encoding. It is a defense-in-depth layer on
-top of the rule that raw transcripts are never uploaded wholesale.
+top of the rule that raw transcripts are never uploaded wholesale. Applying it
+twice yields the same text: the replacement marker matches none of the patterns.
 """
 
 from __future__ import annotations
@@ -41,6 +43,13 @@ _ASSIGNMENT_RE = re.compile(
     rf"(?i)({_QUOTE}?\b{_SECRET_KEY}\b{_QUOTE}?\s*[:=]\s*)({_QUOTE}?)({_VALUE})({_QUOTE}?)",
 )
 _BEARER_RE = re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})")
+# A personal email address is identifying regardless of the surrounding key.
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+# Home-directory prefixes named by the OS: the account component is identifying.
+_HOME_PATH_RE = re.compile(
+    r"(?:/home/|/Users/|[A-Za-z]:\\Users\\)[^/\\\s\"',;]+"
+    r"|(?<![\w/])/root(?![A-Za-z0-9_])"
+)
 # Well-known token shapes that are secret regardless of surrounding key names.
 _TOKEN_SHAPE_RE = re.compile(
     r"\b(?:"
@@ -76,6 +85,8 @@ def redact_text(value: str) -> str:
     # only the ``Bearer`` word.
     redacted = _BEARER_RE.sub(lambda m: f"{m.group(1)}{REDACTED}", value)
     redacted = _TOKEN_SHAPE_RE.sub(REDACTED, redacted)
+    redacted = _EMAIL_RE.sub(REDACTED, redacted)
+    redacted = _HOME_PATH_RE.sub(REDACTED, redacted)
     redacted = _ASSIGNMENT_RE.sub(_assignment, redacted)
     return redacted
 

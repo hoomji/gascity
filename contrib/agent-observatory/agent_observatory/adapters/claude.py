@@ -25,6 +25,8 @@ from .base import (
     TitleRevision,
     extract_command,
     fallback_event_id,
+    iso_from_epoch,
+    number_or_none,
     split_jsonl,
 )
 from .redaction import elide_large_text, redact_and_bound, redact_text
@@ -129,7 +131,7 @@ class ClaudeAdapter(SourceAdapter):
                         TitleRevision(
                             title=redact_text(title),
                             position=line_number,
-                            observed_timestamp=obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+                            observed_timestamp=_claude_timestamp(obj.get("timestamp")),
                             source="ai-title",
                         )
                     )
@@ -200,15 +202,22 @@ class ClaudeAdapter(SourceAdapter):
         session_id: str,
         parent_session_id: str | None,
     ) -> None:
-        timestamp = obj.get("timestamp")
-        if not isinstance(timestamp, str) or not timestamp:
+        timestamp = _claude_timestamp(obj.get("timestamp"))
+        if timestamp is None:
             result.note_skip("no_timestamp")
             return
         message = obj.get("message") if isinstance(obj.get("message"), dict) else {}
         model = message.get("model") if isinstance(message.get("model"), str) else None
-        usage = _claude_usage(message.get("usage"))
+        raw_usage = message.get("usage")
+        usage = _claude_usage(raw_usage)
+        if isinstance(raw_usage, dict) and usage is None:
+            result.note_skip("usage_unmapped")
         message_id = message.get("id") if isinstance(message.get("id"), str) else None
         attach_usage = usage is not None and (message_id is None or message_id not in seen_usage)
+        if usage is not None and not attach_usage:
+            # Usage is intentionally suppressed on a repeated split record; say
+            # so, otherwise the emitted tokenless record looks unexplained.
+            result.note_skip("usage_duplicate")
         uuid = obj.get("uuid") if isinstance(obj.get("uuid"), str) else None
         pending: list[tuple[dict[str, Any], int]] = []
 
@@ -277,6 +286,10 @@ class ClaudeAdapter(SourceAdapter):
                     line_number,
                 )
             )
+        elif not pending and attach_usage and not uuid:
+            # Tokens are present but the record has no uuid to anchor a synthetic
+            # assistant_message, so they cannot be attached to anything.
+            result.note_skip("usage_dropped")
 
         if pending:
             if attach_usage and usage is not None:
@@ -296,8 +309,8 @@ class ClaudeAdapter(SourceAdapter):
         session_id: str,
         parent_session_id: str | None,
     ) -> None:
-        timestamp = obj.get("timestamp")
-        if not isinstance(timestamp, str) or not timestamp:
+        timestamp = _claude_timestamp(obj.get("timestamp"))
+        if timestamp is None:
             result.note_skip("no_timestamp")
             return
         message = obj.get("message") if isinstance(obj.get("message"), dict) else {}
@@ -382,8 +395,8 @@ class ClaudeAdapter(SourceAdapter):
         session_id: str,
         parent_session_id: str | None,
     ) -> None:
-        timestamp = obj.get("timestamp")
-        if not isinstance(timestamp, str) or not timestamp:
+        timestamp = _claude_timestamp(obj.get("timestamp"))
+        if timestamp is None:
             result.note_skip("no_timestamp")
             return
         text = _flatten_text(obj.get("content"))
@@ -417,6 +430,19 @@ def _session_identity(obj: dict[str, Any], stem: str) -> tuple[str, str | None]:
     snake = obj.get("session_id")
     parent_session_id = snake if isinstance(snake, str) and snake and snake != session_id else None
     return session_id, parent_session_id
+
+
+def _claude_timestamp(value: Any) -> str | None:
+    """Return an ISO-8601 timestamp for a Claude record, or ``None``.
+
+    Claude normally writes ISO strings, but some records carry a numeric epoch
+    value instead; dropping those silently loses the record. Numeric values are
+    unit-detected the same way dsh timestamps are.
+    """
+
+    if isinstance(value, str) and value:
+        return value
+    return iso_from_epoch(value)
 
 
 def _claude_event_id(
@@ -470,13 +496,13 @@ def _json_text(value: Any) -> str:
         return str(value)
 
 
-def _claude_usage(usage: Any) -> dict[str, int | None] | None:
+def _claude_usage(usage: Any) -> dict[str, int | float | None] | None:
     if not isinstance(usage, dict):
         return None
-    input_tokens = _int_or_none(usage.get("input_tokens"))
-    output_tokens = _int_or_none(usage.get("output_tokens"))
-    cache_read = _int_or_none(usage.get("cache_read_input_tokens"))
-    cache_write = _int_or_none(usage.get("cache_creation_input_tokens"))
+    input_tokens = number_or_none(usage.get("input_tokens"))
+    output_tokens = number_or_none(usage.get("output_tokens"))
+    cache_read = number_or_none(usage.get("cache_read_input_tokens"))
+    cache_write = number_or_none(usage.get("cache_creation_input_tokens"))
     components = [value for value in (input_tokens, output_tokens, cache_read, cache_write) if value is not None]
     if not components:
         return None

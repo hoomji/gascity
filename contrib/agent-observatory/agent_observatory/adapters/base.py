@@ -216,20 +216,54 @@ def fallback_event_id(
     return f"{provider}-g{generation}-p{position}-{kind}-{digest}"
 
 
-def iso_from_epoch_millis(value: Any) -> str | None:
-    """Convert epoch milliseconds to a UTC ISO-8601 string, or ``None``.
+# Numeric epoch values at or above this magnitude are milliseconds; anything
+# below it is seconds. Modern second stamps are ~1.7e9 and millisecond stamps
+# ~1.7e12, so 1e11 cleanly separates the two (1e11 seconds is year 5138).
+_EPOCH_MILLIS_MIN = 100_000_000_000
 
-    Returns ``None`` for missing/non-numeric input rather than inventing a time.
+
+def is_number(value: Any) -> bool:
+    """Return whether *value* is a real number (``bool`` is never a number)."""
+
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def iso_from_epoch(value: Any) -> str | None:
+    """Convert an epoch seconds/milliseconds value to UTC ISO-8601, or ``None``.
+
+    The unit is detected from magnitude: values at or above
+    :data:`_EPOCH_MILLIS_MIN` are milliseconds, otherwise seconds. This keeps a
+    provider that reports whole seconds (for example dsh) from being divided by
+    1000 again and landing in 1970. Returns ``None`` for missing/non-numeric
+    input rather than inventing a time.
     """
 
     from datetime import datetime, timezone
 
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
+    if not is_number(value):
         return None
+    seconds = value / 1000.0 if abs(value) >= _EPOCH_MILLIS_MIN else float(value)
     try:
-        return datetime.fromtimestamp(value / 1000.0, tz=timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+        return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     except (OverflowError, OSError, ValueError):
         return None
+
+
+# Retained for callers that only deal in milliseconds; it is magnitude-aware too.
+iso_from_epoch_millis = iso_from_epoch
+
+
+def number_or_none(value: Any) -> int | float | None:
+    """Return *value* when it is a non-``bool`` number, else ``None``.
+
+    Unlike the per-adapter integer coercers this preserves floats, because
+    provider usage counters are occasionally fractional and dropping them would
+    discard evidence the manifest is supposed to explain.
+    """
+
+    if not is_number(value):
+        return None
+    return value
 
 
 def extract_command(tool_name: str | None, arguments: Any) -> str | None:

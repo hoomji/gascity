@@ -87,8 +87,13 @@ def read_source(
 
     *generation* is the logical source generation (1 for a first read). It is
     only used for events that lack a provider-native id and for manifest
-    supersession, not for events with stable native identity.
+    supersession, not for events with stable native identity. It must be a
+    positive integer; an invalid value is refused rather than embedded in
+    fallback event ids.
     """
+
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
+        raise AdapterError(f"generation must be a positive integer, got {generation!r}")
 
     adapter, data, digest = load_source_data(source_path, provider=provider)
     result = adapter.parse(

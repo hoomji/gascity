@@ -98,7 +98,8 @@ Each non-empty line is one JSON object. `schema_version` is `"1.0"`.
 | `usage` | no | object/null | Nullable token counts. |
 
 `usage` accepts `input_tokens`, `output_tokens`, `cache_read_tokens`,
-`cache_write_tokens`, `total_tokens`; each is a nonnegative integer or null.
+`cache_write_tokens`, `total_tokens`; each is a nonnegative number (integer or
+float, so a provider's fractional counter is not discarded) or null.
 **Missing is distinct from zero**: absent usage stays NULL, and
 `{"input_tokens": 0}` stores `0`.
 
@@ -149,8 +150,10 @@ the tool executed, and does not prove success. Only a result event with an
   appending to a file imports only new events. Repeated files never duplicate
   events or usage.
 - A **conflicting reuse of a canonical event identity** (same identity,
-  different payload) raises `ImportConflictError` and rolls back rather than
-  silently overwriting.
+  different payload) is a **record-level skip**: the conflicting record is not
+  written, `skipped_conflicts` is incremented, and a note naming the identity and
+  source line is returned. The rest of the file still imports, so one reused
+  native id cannot erase a whole session's evidence.
 - Each `sessions` row records `first_timestamp` as the **minimum** observed
   timestamp; importing an earlier event later lowers it.
 - Tables: `events`, `event_usage`, `sessions`, `imported_files`, `jev_requests`,
@@ -522,13 +525,14 @@ python3 -m unittest discover -s contrib/agent-observatory/tests -v
 ```
 
 The suite covers duplicate replay, same-session different providers/hosts and
-delimiter-colliding identities, conflict rollback, truncated input and LF-only
-line numbering (including records whose text contains U+2028/U+2029/U+0085),
-sessions `first_timestamp` as a running minimum, the classification UNIQUE race,
-nonzero vs unknown exit codes, invocation/result pairing (including that a
-result call id can never pair with an invocation's fallback event id), orphan
-and duplicate and conflicting results, request-only vs directly observed
-outcomes, unnamed-tool invocations counted under `unknown`, tokens missing
+delimiter-colliding identities, record-level conflict skips, truncated input and
+LF-only line numbering (including records whose text contains
+U+2028/U+2029/U+0085), sessions `first_timestamp` as a running minimum, the
+classification UNIQUE race, nonzero vs unknown exit codes, invocation/result
+pairing (including that a result call id can never pair with an invocation's
+fallback event id), orphan and duplicate and conflicting results, request-only
+vs directly observed outcomes, unnamed-tool invocations counted under `unknown`,
+tokens missing
 vs zero, timezone-aware timestamp normalization and chronological ordering across
 offsets and fractional precision, the request byte cap, the real lowercase
 Jev question/answer wire shape and unknown-answer-key rejection, the
