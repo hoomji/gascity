@@ -8,15 +8,24 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// formulaRetry is the inline retry table a step may carry. It matters for
+// teardown work: max_attempts > 1 turns one refusal into repeated deletion
+// attempts and a hard_fail.
+type formulaRetry struct {
+	MaxAttempts int    `toml:"max_attempts"`
+	OnExhausted string `toml:"on_exhausted"`
+}
+
 // formulaFile is the subset of a formula TOML these tests inspect. Steps carry
 // the agent-facing instructions, so asserting on a step description is how the
 // pack pins behavior that lives in prompt text rather than in Go.
 type formulaFile struct {
 	Formula string `toml:"formula"`
 	Steps   []struct {
-		ID          string `toml:"id"`
-		Title       string `toml:"title"`
-		Description string `toml:"description"`
+		ID          string        `toml:"id"`
+		Title       string        `toml:"title"`
+		Description string        `toml:"description"`
+		Retry       *formulaRetry `toml:"retry"`
 	} `toml:"steps"`
 }
 
@@ -356,5 +365,96 @@ func TestMolScopedWorkResolvesRepoBeforeRemovingWorktree(t *testing.T) {
 	removeAt := strings.Index(step, `rm -rf "$WORKTREE"`)
 	if guardAt > removeAt {
 		t.Error("cleanup-worktree runs rm -rf before the linked-worktree check; the check must gate the delete, not follow it")
+	}
+}
+
+// TestMolScopedWorkCleanupWorktreeNoOpAndSalvage pins the teardown hardening
+// that stops cleanup/teardown lanes from flooding the mayor with BLOCKED mail.
+//
+// A work bead with no work_dir is the normal outcome when a molecule never
+// created a worktree. The old snippet skipped its removal block silently, so
+// the lane went looking for another work_dir, found the cleanup bead's own
+// gc.work_dir -- the rig root, i.e. the shared main checkout -- and escalated
+// rather than closing. The step must instead state that this is a successful
+// no-op, must never consult its own gc.work_dir, and must not retry a refusal
+// into a hard_fail. It also has to salvage untracked *-report.md review
+// artifacts before removal; git worktree remove --force otherwise destroys the
+// only copy (see memory walled-lanes-strand-uncommitted-work).
+func TestMolScopedWorkCleanupWorktreeNoOpAndSalvage(t *testing.T) {
+	f := readFormula(t, "mol-scoped-work.toml")
+	step := formulaStep(t, f, "cleanup-worktree")
+
+	// An empty work_dir is an explicit success, not a refusal a lane can
+	// escalate into a BLOCKED mail.
+	if !strings.Contains(step, "successful no-op") && !strings.Contains(step, "SUCCESSFUL NO-OP") {
+		t.Error("cleanup-worktree must state that an empty work_dir on the work bead is a successful no-op")
+	}
+	if !strings.Contains(step, "nothing to remove") {
+		t.Error("cleanup-worktree must say there is nothing to remove on the no-op path")
+	}
+
+	// The fallback that caused the escalation: reading the cleanup bead's own
+	// gc.work_dir resolves to the rig root (the shared main checkout). The step
+	// must document that it never does this, and name what the fallback would
+	// resolve to.
+	if !strings.Contains(step, "fall back") {
+		t.Error("cleanup-worktree must document that it never falls back to its own gc.work_dir")
+	}
+	if !strings.Contains(step, "rig root") {
+		t.Error("cleanup-worktree must name the rig root as the path a fallback to its own gc.work_dir would resolve to")
+	}
+	if !strings.Contains(step, "shared main checkout") {
+		t.Error("cleanup-worktree must name the shared main checkout as what the own-work_dir fallback resolves to")
+	}
+
+	// A path this molecule did not create must never be force-deleted: only a
+	// linked worktree's .git is a file.
+	if !strings.Contains(step, `[ ! -f "$WORKTREE/.git" ]`) {
+		t.Error("cleanup-worktree must refuse a path that is not a linked worktree before any removal")
+	}
+
+	// Review artifacts live only in the worktree; removal must copy them out
+	// and name the destination.
+	if !strings.Contains(step, "*-report.md") {
+		t.Error("cleanup-worktree must salvage untracked *-report.md files before removing a worktree")
+	}
+	if !strings.Contains(step, "backups") {
+		t.Error("cleanup-worktree must copy salvaged reports to the city backups directory")
+	}
+	if !strings.Contains(step, "SALVAGED") {
+		t.Error("cleanup-worktree must report where salvaged reports went so the close reason can name the destination")
+	}
+	if !strings.Contains(step, "SALVAGE_FAILED") {
+		t.Error("cleanup-worktree must preserve the worktree when a report cannot be salvaged, instead of deleting the only copy")
+	}
+
+	// A FAILED body must not get a destructive removal: branch on the root
+	// outcome stamped by workflow-finalize and preserve the tree.
+	if !strings.Contains(step, "FAILED body") {
+		t.Error("cleanup-worktree must not fire a destructive removal on a FAILED body")
+	}
+	if !strings.Contains(step, "ROOT_OUTCOME") || !strings.Contains(step, "canceled") {
+		t.Error("cleanup-worktree must branch on the workflow root outcome (fail/canceled) before removing")
+	}
+
+	// A failed body leaves uncommitted work that exists only in the worktree;
+	// cleanup must preserve it rather than remove the tree.
+	if !strings.Contains(step, "uncommitted work") {
+		t.Error("cleanup-worktree must refuse to remove a worktree that still holds uncommitted work from a failed body")
+	}
+
+	// No retry after a refusal: max_attempts 3 turns one refusal into three
+	// deletion attempts and a hard_fail.
+	var cleanupRetry *formulaRetry
+	for _, s := range f.Steps {
+		if s.ID == "cleanup-worktree" {
+			cleanupRetry = s.Retry
+		}
+	}
+	if cleanupRetry == nil {
+		t.Fatal("cleanup-worktree must declare a retry spec")
+	}
+	if cleanupRetry.MaxAttempts != 1 {
+		t.Errorf("cleanup-worktree max_attempts = %d, want 1 (do not retry after a refusal)", cleanupRetry.MaxAttempts)
 	}
 }
