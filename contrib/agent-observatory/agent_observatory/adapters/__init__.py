@@ -99,19 +99,31 @@ def read_source(
         source_sha256=digest,
     )
     result.source_size_bytes = len(data)
-    result.records = validated_records(result.records, source_path)
+    result.records = validated_records(result.records, source_path, result)
     return result
 
 
-def validated_records(records: list[dict], source_path: str) -> list[dict]:
+def validated_records(records: list[dict], source_path: str, result: AdapterResult | None = None) -> list[dict]:
     """Return contract-validated copies of adapter-produced *records*.
 
-    Raises :class:`AdapterError` when the adapter produced a record that violates
-    the normalized contract, so a malformed adapter is a hard failure rather than
-    silently writing bad JSONL.
+    A record that violates the normalized contract is isolated: it is counted
+    as ``invalid_record`` on *result* (with the underlying reason recorded in
+    its errors) and skipped, so one provider quirk cannot erase a whole
+    session's evidence. The remaining records are returned.
     """
 
-    return [_validated(record, source_path) for record in records]
+    validated: list[dict] = []
+    for record in records:
+        try:
+            validated.append(_validated(record, source_path))
+        except AdapterError as exc:
+            if result is not None:
+                # Prefer the underlying ContractError reason; ``_validated`` only
+                # wraps it so a caller that wants a hard failure still can.
+                reason = str(exc.__cause__) if exc.__cause__ is not None else str(exc)
+                result.note_skip("invalid_record", reason)
+            continue
+    return validated
 
 
 def _validated(record: dict, source_path: str) -> dict:

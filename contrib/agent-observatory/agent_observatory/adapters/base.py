@@ -77,8 +77,10 @@ class AdapterResult:
     line_count: int = 0
     skipped: dict[str, int] = field(default_factory=dict)
 
-    def note_skip(self, reason: str) -> None:
+    def note_skip(self, reason: str, detail: str | None = None) -> None:
         self.skipped[reason] = self.skipped.get(reason, 0) + 1
+        if detail:
+            self.errors.append(detail)
 
     def coverage(self) -> dict[str, Any]:
         """Return deterministic, transcript-free coverage for this source."""
@@ -148,23 +150,30 @@ def split_jsonl(data: bytes, source_path: str) -> tuple[list[tuple[int, Any]], b
     :class:`AdapterError`; a malformed final line with no trailing newline is a
     *partial trailing line* -- it is reported in *errors* and skipped rather
     than silently dropped or allowed to abort the whole file.
+
+    A missing final newline is **not** itself partial: an unterminated final
+    line that parses cleanly is a complete record, so ``partial_trailing_line``
+    is only set when that final line actually fails to parse. A UTF-8 BOM at
+    the start of the file is tolerated (stripped) so it cannot abort the whole
+    source or masquerade as a partial line.
     """
 
     try:
-        text = data.decode("utf-8")
+        text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise AdapterError(f"source is not valid UTF-8: {exc}", source_path) from exc
 
     raw_lines = text.split("\n")
-    partial = bool(raw_lines) and raw_lines[-1] != ""
-    if partial:
-        # The final element is an unterminated line; keep it for reporting. A
-        # fully terminated file ends with an empty element that we drop.
-        last_index = len(raw_lines) - 1
-    else:
+    if raw_lines and raw_lines[-1] == "":
+        # A fully terminated file ends with an empty element that we drop.
         raw_lines = raw_lines[:-1]
         last_index = -1
+    else:
+        # The final element is an unterminated line; keep it so a parse failure
+        # can be reported as partial instead of aborting the whole file.
+        last_index = len(raw_lines) - 1
 
+    partial = False
     records: list[tuple[int, Any]] = []
     errors: list[str] = []
     for index, line in enumerate(raw_lines):
@@ -178,6 +187,7 @@ def split_jsonl(data: bytes, source_path: str) -> tuple[list[tuple[int, Any]], b
         except (json.JSONDecodeError, ValueError) as exc:
             if index == last_index:
                 errors.append(f"{source_path}:{line_number}: partial trailing line not parsed: {exc}")
+                partial = True
                 continue
             raise AdapterError(f"invalid JSON: {exc}", source_path, line_number) from exc
         records.append((line_number, decoded))

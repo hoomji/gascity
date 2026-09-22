@@ -160,6 +160,66 @@ class InventoryTest(unittest.TestCase):
         self.assertTrue(entry["error_reason"])
         self.assertGreaterEqual(manifest["totals"]["unreadable_sources"], 1)
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "chmod 000 is not enforced for root")
+    def test_unreadable_subdirectory_is_reported_with_an_error_reason(self):
+        locked = os.path.join(self.root, "locked-tree")
+        support.claude_source(locked)
+        os.chmod(locked, 0)
+        self.addCleanup(os.chmod, locked, 0o700)
+
+        manifest = self._manifest()
+        entry = next(item for item in manifest["sources"] if item["realpath"] == os.path.realpath(locked))
+        self.assertEqual(entry["discovery_status"], "unreadable")
+        self.assertTrue(entry["error_reason"])
+        self.assertIsNone(entry["coverage"])
+        self.assertGreaterEqual(manifest["totals"]["unreadable_sources"], 1)
+        # The readable transcript outside the locked tree is still covered.
+        self.assertGreaterEqual(manifest["totals"]["events"], 1)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "chmod 000 is not enforced for root")
+    def test_unreadable_root_is_reported_with_an_error_reason(self):
+        locked_root = os.path.join(self.tmp.name, "locked-root")
+        support.claude_source(locked_root)
+        os.chmod(locked_root, 0)
+        self.addCleanup(os.chmod, locked_root, 0o700)
+
+        manifest = build_manifest([SourceRoot(locked_root)], city_id="city-a", host_id="host-a")
+        self.assertEqual(len(manifest["sources"]), 1)
+        entry = manifest["sources"][0]
+        self.assertEqual(entry["realpath"], os.path.realpath(locked_root))
+        self.assertEqual(entry["discovery_status"], "unreadable")
+        self.assertTrue(entry["error_reason"])
+        self.assertEqual(manifest["totals"]["unreadable_sources"], 1)
+
+    def test_invalid_record_is_isolated_not_fatal(self):
+        naive = os.path.join(self.root, ".claude", "projects", "-tmp-naive", "naive.jsonl")
+        os.makedirs(os.path.dirname(naive), exist_ok=True)
+        good = {
+            "type": "user",
+            "uuid": "u-good",
+            "sessionId": "naive-sess",
+            "timestamp": "2026-09-21T10:00:00.000Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "good"}]},
+        }
+        naive_timestamp = {
+            "type": "user",
+            "uuid": "u-naive",
+            "sessionId": "naive-sess",
+            "timestamp": "2026-09-22 02:00:00",
+            "message": {"role": "user", "content": [{"type": "text", "text": "bad"}]},
+        }
+        with open(naive, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(good) + "\n")
+            handle.write(json.dumps(naive_timestamp) + "\n")
+
+        manifest = self._manifest()
+        entry = next(item for item in manifest["sources"] if item["path"].endswith("naive.jsonl"))
+        self.assertEqual(entry["discovery_status"], "new")
+        self.assertIsNone(entry["error_reason"])
+        self.assertEqual(entry["checkpoint"]["records"], 1)
+        self.assertEqual(entry["coverage"]["records_emitted"], 1)
+        self.assertEqual(entry["coverage"]["skipped"].get("invalid_record"), 1)
+
     def test_explicit_unsupported_provider_root_is_manifested(self):
         manifest = build_manifest([SourceRoot(self.root, provider="opencode")], city_id="c", host_id="h")
         self.assertEqual(manifest["sources"], [])

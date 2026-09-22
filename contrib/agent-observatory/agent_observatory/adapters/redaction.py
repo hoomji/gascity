@@ -27,13 +27,18 @@ MAX_TOOL_OUTPUT_BYTES = 2048
 REDACTED = "[REDACTED]"
 
 # ``key=value`` / ``key: value`` assignments for secret-looking keys. Values may
-# be quoted; only the value is replaced.
+# be quoted; only the value is replaced. A JSON string is commonly observed with
+# its quotes escaped (``\"password\": \"hunter2\"``), so an optional backslash is
+# accepted before every quote; the value pattern stops at the next (escaped)
+# quote or separator so the secret is dropped without eating the delimiters.
+_QUOTE = r"""(?:\\?["'])"""
+_VALUE = r"""(?!Bearer\b)[^\\\s"',;]+"""
 _SECRET_KEY = (
     r"(?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|refresh[_-]?token|"
     r"secret|client[_-]?secret|password|passwd|private[_-]?key|authorization|token)"
 )
 _ASSIGNMENT_RE = re.compile(
-    rf"(?i)(\b{_SECRET_KEY}\b\s*[:=]\s*)([\"']?)([^\s\"',;]+)",
+    rf"(?i)({_QUOTE}?\b{_SECRET_KEY}\b{_QUOTE}?\s*[:=]\s*)({_QUOTE}?)({_VALUE})({_QUOTE}?)",
 )
 _BEARER_RE = re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})")
 # Well-known token shapes that are secret regardless of surrounding key names.
@@ -63,8 +68,8 @@ def redact_text(value: str) -> str:
         return value
 
     def _assignment(match: re.Match[str]) -> str:
-        prefix, quote, _secret = match.group(1), match.group(2), match.group(3)
-        return f"{prefix}{quote}{REDACTED}"
+        prefix, quote, _secret, closing = match.group(1), match.group(2), match.group(3), match.group(4)
+        return f"{prefix}{quote}{REDACTED}{closing}"
 
     # Bearer/token shapes run first so an ``Authorization: Bearer <secret>``
     # header cannot leave the secret behind when the assignment rule consumes

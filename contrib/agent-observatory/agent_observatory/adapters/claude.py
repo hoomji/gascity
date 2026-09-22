@@ -81,17 +81,28 @@ class ClaudeAdapter(SourceAdapter):
             line_count=len(decoded),
         )
 
-        # Resolve session identity from the first records that carry it.
+        # File-level identity is the first session the records declare (falling
+        # back to the file stem). Individual records are attributed to the
+        # ``sessionId`` carried on the record itself, so a resumed file that
+        # switches sessions mid-stream never mislabels the later session.
+        stem = Path(source_path).stem or "unknown"
+        primary_session: str | None = None
         for _line, obj in decoded:
             if not isinstance(obj, dict):
                 continue
             camel = obj.get("sessionId")
-            if result.parent_session_id is None:
-                snake = obj.get("session_id")
-                if isinstance(camel, str) and isinstance(snake, str) and snake and snake != camel:
-                    result.parent_session_id = snake
-            if result.session_id == Path(source_path).stem and isinstance(camel, str) and camel:
+            if primary_session is None and isinstance(camel, str) and camel:
+                primary_session = camel
                 result.session_id = camel
+            if result.parent_session_id is None:
+                candidate = camel if isinstance(camel, str) and camel else stem
+                snake = obj.get("session_id")
+                if isinstance(snake, str) and snake and snake != candidate:
+                    result.parent_session_id = snake
+        if result.parent_session_id == result.session_id:
+            # A resume chain whose origin is the file's own primary session must
+            # never surface as a self-parent.
+            result.parent_session_id = None
 
         # Claude emits one JSONL record per content block while repeating the
         # same ``message.id`` and usage block, so usage is attached at most once
@@ -101,13 +112,16 @@ class ClaudeAdapter(SourceAdapter):
             if not isinstance(obj, dict):
                 result.note_skip("non_object")
                 continue
+            session_id, parent_session_id = _session_identity(obj, stem)
             kind = obj.get("type")
             if kind == "assistant":
-                self._parse_assistant(obj, line_number, context, generation, seen_usage, result)
+                self._parse_assistant(
+                    obj, line_number, context, generation, seen_usage, result, session_id, parent_session_id
+                )
             elif kind == "user":
-                self._parse_user(obj, line_number, context, generation, result)
+                self._parse_user(obj, line_number, context, generation, result, session_id, parent_session_id)
             elif kind == "system":
-                self._parse_system(obj, line_number, context, generation, result)
+                self._parse_system(obj, line_number, context, generation, result, session_id, parent_session_id)
             elif kind == "ai-title":
                 title = obj.get("aiTitle")
                 if isinstance(title, str) and title.strip():
@@ -183,6 +197,8 @@ class ClaudeAdapter(SourceAdapter):
         generation: int,
         seen_usage: set[str],
         result: AdapterResult,
+        session_id: str,
+        parent_session_id: str | None,
     ) -> None:
         timestamp = obj.get("timestamp")
         if not isinstance(timestamp, str) or not timestamp:
@@ -206,8 +222,8 @@ class ClaudeAdapter(SourceAdapter):
                         (
                             self._record(
                                 context,
-                                result.session_id,
-                                result.parent_session_id,
+                                session_id,
+                                parent_session_id,
                                 event_id=_claude_event_id(uuid, f"text:{index}", self.provider, generation, line_number, "message", block),
                                 timestamp=timestamp,
                                 kind="message",
@@ -227,8 +243,8 @@ class ClaudeAdapter(SourceAdapter):
                     (
                         self._record(
                             context,
-                            result.session_id,
-                            result.parent_session_id,
+                            session_id,
+                            parent_session_id,
                             event_id=tool_id or _claude_event_id(uuid, f"tool_use:{index}", self.provider, generation, line_number, "tool_call", block),
                             timestamp=timestamp,
                             kind="tool_call",
@@ -251,8 +267,8 @@ class ClaudeAdapter(SourceAdapter):
                 (
                     self._record(
                         context,
-                        result.session_id,
-                        result.parent_session_id,
+                        session_id,
+                        parent_session_id,
                         event_id=_claude_event_id(uuid, "message", self.provider, generation, line_number, "assistant_message", obj),
                         timestamp=timestamp,
                         kind="assistant_message",
@@ -277,6 +293,8 @@ class ClaudeAdapter(SourceAdapter):
         context: AdapterContext,
         generation: int,
         result: AdapterResult,
+        session_id: str,
+        parent_session_id: str | None,
     ) -> None:
         timestamp = obj.get("timestamp")
         if not isinstance(timestamp, str) or not timestamp:
@@ -301,8 +319,8 @@ class ClaudeAdapter(SourceAdapter):
                 pending.append(
                     self._record(
                         context,
-                        result.session_id,
-                        result.parent_session_id,
+                        session_id,
+                        parent_session_id,
                         event_id=_claude_event_id(uuid, f"tool_result:{index}", self.provider, generation, line_number, "tool_result", block),
                         timestamp=timestamp,
                         kind="tool_result",
@@ -319,8 +337,8 @@ class ClaudeAdapter(SourceAdapter):
                     pending.append(
                         self._record(
                             context,
-                            result.session_id,
-                            result.parent_session_id,
+                            session_id,
+                            parent_session_id,
                             event_id=_claude_event_id(uuid, f"text:{index}", self.provider, generation, line_number, "message", block),
                             timestamp=timestamp,
                             kind="message",
@@ -335,8 +353,8 @@ class ClaudeAdapter(SourceAdapter):
                 pending.append(
                     self._record(
                         context,
-                        result.session_id,
-                        result.parent_session_id,
+                        session_id,
+                        parent_session_id,
                         event_id=tool_id or _claude_event_id(uuid, f"tool_use:{index}", self.provider, generation, line_number, "tool_call", block),
                         timestamp=timestamp,
                         kind="tool_call",
@@ -361,6 +379,8 @@ class ClaudeAdapter(SourceAdapter):
         context: AdapterContext,
         generation: int,
         result: AdapterResult,
+        session_id: str,
+        parent_session_id: str | None,
     ) -> None:
         timestamp = obj.get("timestamp")
         if not isinstance(timestamp, str) or not timestamp:
@@ -373,14 +393,30 @@ class ClaudeAdapter(SourceAdapter):
         uuid = obj.get("uuid") if isinstance(obj.get("uuid"), str) else None
         raw = self._record(
             context,
-            result.session_id,
-            result.parent_session_id,
+            session_id,
+            parent_session_id,
             event_id=_claude_event_id(uuid, "system", self.provider, generation, line_number, "system", obj),
             timestamp=timestamp,
             kind="system",
             text=redact_and_bound(text),
         )
         self._finalize(raw, result)
+
+
+def _session_identity(obj: dict[str, Any], stem: str) -> tuple[str, str | None]:
+    """Return the ``(session_id, parent_session_id)`` for one Claude record.
+
+    The ``sessionId`` on the record itself names that record's session; the
+    snake-case ``session_id`` names the session it was resumed from. A record
+    never gets itself as a parent, and a record without a ``sessionId`` falls
+    back to the file stem.
+    """
+
+    camel = obj.get("sessionId")
+    session_id = camel if isinstance(camel, str) and camel else stem
+    snake = obj.get("session_id")
+    parent_session_id = snake if isinstance(snake, str) and snake and snake != session_id else None
+    return session_id, parent_session_id
 
 
 def _claude_event_id(

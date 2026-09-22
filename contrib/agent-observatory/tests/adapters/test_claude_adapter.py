@@ -40,6 +40,66 @@ class ClaudeAdapterTest(unittest.TestCase):
         # One assistant message is split across two records that repeat usage.
         self.assertEqual(coverage["by_kind"]["assistant_message"], 1)
 
+    def test_resumed_sessions_are_attributed_per_record(self):
+        path = os.path.join(self.tmp.name, "resumed.jsonl")
+        records = [
+            {
+                "type": "user",
+                "uuid": "u-old",
+                "sessionId": "sess-old",
+                "timestamp": "2026-09-21T10:00:00.000Z",
+                "message": {"role": "user", "content": [{"type": "text", "text": "before resume"}]},
+            },
+            {
+                "type": "user",
+                "uuid": "u-new",
+                "sessionId": "sess-new",
+                "session_id": "sess-old",
+                "timestamp": "2026-09-21T10:00:01.000Z",
+                "message": {"role": "user", "content": [{"type": "text", "text": "after resume"}]},
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record) + "\n")
+
+        result = self._read(path)
+        self.assertEqual(result.session_id, "sess-old")
+        self.assertIsNone(result.parent_session_id)
+        first, second = result.records
+        self.assertEqual(first["session_id"], "sess-old")
+        self.assertIsNone(first["parent_session_id"])
+        self.assertEqual(second["session_id"], "sess-new")
+        self.assertEqual(second["parent_session_id"], "sess-old")
+        self.assertNotEqual(second["session_id"], second["parent_session_id"])
+
+    def test_invalid_record_is_skipped_not_fatal(self):
+        path = os.path.join(self.tmp.name, "naive.jsonl")
+        records = [
+            {
+                "type": "user",
+                "uuid": "u-good",
+                "sessionId": "naive-sess",
+                "timestamp": "2026-09-21T10:00:00.000Z",
+                "message": {"role": "user", "content": [{"type": "text", "text": "good"}]},
+            },
+            {
+                "type": "user",
+                "uuid": "u-naive",
+                "sessionId": "naive-sess",
+                "timestamp": "2026-09-22 02:00:00",
+                "message": {"role": "user", "content": [{"type": "text", "text": "bad"}]},
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record) + "\n")
+
+        result = self._read(path)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0]["text"], "good")
+        self.assertEqual(result.skipped.get("invalid_record"), 1)
+
     def test_reasoning_is_never_exported(self):
         result = self._read()
         for record in result.records:

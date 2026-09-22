@@ -87,12 +87,18 @@ class DiscoveredSource:
 
 def discover_sources(
     roots: Iterable[SourceRoot],
+    *,
+    unreadable: list[dict[str, Any]] | None = None,
 ) -> tuple[list[DiscoveredSource], list[dict[str, Any]]]:
     """Return ``(sources, unsupported)`` for the explicit *roots*.
 
     Directories are walked without following symlinked directories; each file's
     realpath deduplicates physical sources. Roots that do not exist raise
     :class:`ObservatoryError`.
+
+    When *unreadable* is supplied, a directory (or root) that cannot be listed
+    appends a collector record to it instead of disappearing silently, so the
+    manifest can carry the coverage gap and its ``error_reason``.
     """
 
     found: list[DiscoveredSource] = []
@@ -110,7 +116,22 @@ def discover_sources(
             candidates = [root_real]
         else:
             candidates = []
-            for dirpath, _dirnames, filenames in os.walk(root_real, followlinks=False):
+
+            def _on_walk_error(error: OSError, _root=root, _root_real=root_real) -> None:
+                if unreadable is None:
+                    return
+                failed_path = error.filename or _root_real
+                unreadable.append(
+                    {
+                        "root": _root.path,
+                        "path": failed_path,
+                        "realpath": os.path.realpath(failed_path),
+                        "provider": _root.provider,
+                        "error": str(error),
+                    }
+                )
+
+            for dirpath, _dirnames, filenames in os.walk(root_real, followlinks=False, onerror=_on_walk_error):
                 for name in sorted(filenames):
                     candidates.append(os.path.join(dirpath, name))
 
@@ -146,9 +167,18 @@ def build_manifest(
     if not city_id or not host_id:
         raise ObservatoryError("city_id and host_id are required for a source manifest")
     context = AdapterContext(city_id=city_id, host_id=host_id, repo=repo)
-    sources, detected_unsupported = discover_sources(roots)
+    unreadable_record: list[dict[str, Any]] = []
+    sources, detected_unsupported = discover_sources(roots, unreadable=unreadable_record)
     previous_index = _previous_index(previous)
     entries = [_build_entry(source, context, previous_index.get(source.realpath)) for source in sources]
+    seen_unreadable: set[str] = set()
+    for record in unreadable_record:
+        realpath = str(record.get("realpath") or "")
+        if realpath in seen_unreadable:
+            continue
+        seen_unreadable.add(realpath)
+        entries.append(_unreadable_directory_entry(record, context))
+    entries.sort(key=lambda entry: str(entry.get("realpath") or ""))
     unsupported = _merge_unsupported(detected_unsupported)
     return {
         "manifest_version": MANIFEST_VERSION,
@@ -264,7 +294,17 @@ def _build_entry(
         stat = os.stat(source.realpath)
         adapter, data, digest = load_source_data(source.path, provider=source.provider)
     except (AdapterError, OSError) as exc:
-        return _unreadable_entry(source, adapter_version, exc)
+        return _unreadable_entry(
+            provider=source.provider,
+            root=source.root,
+            path=source.path,
+            realpath=source.realpath,
+            adapter_version=f"{source.provider}/{adapter_version}",
+            error_reason=str(exc),
+            city_id=None,
+            host_id=None,
+            repo=None,
+        )
 
     generation, status, supersedes = _decide_generation(previous, data, digest)
     try:
@@ -275,7 +315,7 @@ def _build_entry(
             source_path=source.path,
             source_sha256=digest,
         )
-        result.records = validated_records(result.records, source.path)
+        result.records = validated_records(result.records, source.path, result)
     except AdapterError as exc:
         return _errored_entry(source, context, adapter_version, data, digest, generation, status, supersedes, stat, exc)
 
@@ -347,23 +387,34 @@ def _errored_entry(
     }
 
 
-def _unreadable_entry(source: DiscoveredSource, adapter_version: str, exc: Exception) -> dict[str, Any]:
+def _unreadable_entry(
+    *,
+    provider: str | None,
+    root: str,
+    path: str,
+    realpath: str,
+    adapter_version: str | None,
+    error_reason: str,
+    city_id: str | None,
+    host_id: str | None,
+    repo: str | None,
+) -> dict[str, Any]:
     try:
-        stat = os.stat(source.realpath)
+        stat = os.stat(realpath)
         size: int | None = stat.st_size
         mtime: str | None = _iso_mtime(stat.st_mtime)
     except OSError:
         size = None
         mtime = None
     return {
-        "source_id": sha256_text(source.realpath)[:32],
-        "city_id": None,
-        "host_id": None,
-        "provider": source.provider,
-        "root": source.root,
-        "path": source.path,
-        "realpath": source.realpath,
-        "repo": None,
+        "source_id": sha256_text(realpath)[:32],
+        "city_id": city_id,
+        "host_id": host_id,
+        "provider": provider,
+        "root": root,
+        "path": path,
+        "realpath": realpath,
+        "repo": repo,
         "scope": "local",
         "size_bytes": size,
         "raw_size_bytes": size,
@@ -371,13 +422,31 @@ def _unreadable_entry(source: DiscoveredSource, adapter_version: str, exc: Excep
         "content_generation": None,
         "generation": None,
         "discovery_status": "unreadable",
-        "adapter_version": f"{source.provider}/{adapter_version}",
+        "adapter_version": adapter_version,
         "checkpoint": None,
-        "error_reason": str(exc),
+        "error_reason": error_reason,
         "coverage": None,
         "partial_trailing_line": None,
         "supersedes": None,
     }
+
+
+def _unreadable_directory_entry(record: dict[str, Any], context: AdapterContext) -> dict[str, Any]:
+    """Build an ``unreadable`` source entry for a directory the walk could not list."""
+
+    provider = record.get("provider")
+    adapter_version = f"{provider}/{ADAPTERS[provider].adapter_version}" if provider in ADAPTERS else None
+    return _unreadable_entry(
+        provider=provider,
+        root=record["root"],
+        path=record["path"],
+        realpath=record["realpath"],
+        adapter_version=adapter_version,
+        error_reason=record["error"],
+        city_id=context.city_id,
+        host_id=context.host_id,
+        repo=context.repo,
+    )
 
 
 def _decide_generation(

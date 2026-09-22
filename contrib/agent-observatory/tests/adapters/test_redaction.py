@@ -37,6 +37,27 @@ class RedactionTest(unittest.TestCase):
         redacted = redact_text("Authorization: Bearer abcdefgh12345")
         self.assertNotIn("abcdefgh12345", redacted)
 
+    def test_escaped_json_assignment_is_redacted(self):
+        escaped = r'{\"password\": \"hunter2\"}'
+        redacted = redact_text(escaped)
+        self.assertNotIn("hunter2", redacted)
+        self.assertIn("[REDACTED]", redacted)
+
+    def test_plain_assignment_stays_redacted(self):
+        redacted = redact_text("password=hunter2")
+        self.assertNotIn("hunter2", redacted)
+        self.assertIn("[REDACTED]", redacted)
+
+    def test_token_shaped_assignment_value_redacts_once(self):
+        redacted = redact_text("api_key=sk-ABCDEFGHIJKLMNOP")
+        self.assertNotIn("sk-ABCDEFGHIJKLMNOP", redacted)
+        self.assertEqual(redacted.count("[REDACTED]"), 1)
+
+    def test_bearer_header_redacts_once(self):
+        redacted = redact_text("Authorization: Bearer sk-ABCDEFGHIJKLMNOP")
+        self.assertNotIn("sk-ABCDEFGHIJKLMNOP", redacted)
+        self.assertEqual(redacted.count("[REDACTED]"), 1)
+
     def test_known_token_shapes_are_redacted(self):
         for token in ("sk-ABCDEFGHIJKLMNOP", "ghp_ABCDEFGHIJKLMNOPQRST", "AKIAIOSFODNN7EXAMPLE"):
             self.assertIn("[REDACTED]", redact_text(f"here is {token} done"))
