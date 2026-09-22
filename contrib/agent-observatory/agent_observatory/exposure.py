@@ -312,6 +312,24 @@ def _evaluate_session(
     for activation, fingerprint in fingerprint_targets:
         window = _activation_window_verdict(activation, session)
         target_meta = {"mechanism": activation["mechanism"], "activation_id": activation["activation_id"]}
+        matching = [
+            item
+            for item in observed_fingerprints
+            if item["type"] == fingerprint["type"] and item["value"] == fingerprint["value"]
+        ]
+        # Precedence (F4): a matching fingerprint is direct evidence that the
+        # change was actually in use. When the window says ``pending`` or
+        # ``before``, the window and the evidence contradict each other, so the
+        # evidence cannot decide: report ``unknown`` instead of silently
+        # declaring ``unexposed`` and under-counting real exposure. Absent a
+        # match the window still stands (a mismatch agrees with non-use).
+        if matching and window in ("pending", "before"):
+            unknown.append(
+                _evidence(
+                    "evidence_conflicts_window", target_meta, fingerprint["value"], fingerprint["type"]
+                )
+            )
+            continue
         if window == "pending":
             unexposed.append(_evidence("pending_activation", target_meta, fingerprint["value"]))
             continue
@@ -321,11 +339,6 @@ def _evaluate_session(
         if window == "after":
             unexposed.append(_evidence("after_deactivation", target_meta, fingerprint["value"]))
             continue
-        matching = [
-            item
-            for item in observed_fingerprints
-            if item["type"] == fingerprint["type"] and item["value"] == fingerprint["value"]
-        ]
         if matching:
             exposed.append(
                 _evidence("fingerprint_match", target_meta, fingerprint["value"], fingerprint["type"])

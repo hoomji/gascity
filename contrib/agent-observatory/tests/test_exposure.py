@@ -308,6 +308,113 @@ class ExposureJoinTest(unittest.TestCase):
             sessions=[_session(repo="gateway-llm")],
         )
         self.assertEqual(rollup["status"], "unexposed")
+        self.assertEqual(rollup["rows"][0]["reason"], "pending_activation")
+
+    def test_matching_fingerprint_conflicts_with_pending_activation(self):
+        # F4: a pending activation whose fingerprint the session actually
+        # observed is contradictory direct evidence. The evidence cannot decide,
+        # so the verdict is unknown, not a silent unexposed.
+        bundle = _bundle(
+            [{"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}],
+            activations=[
+                {
+                    "change_id": normalize_change(
+                        {"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}
+                    )["change_id"],
+                    "mechanism": "deploy",
+                    "target": "gateway-llm",
+                    "pending": True,
+                    "fingerprint": {"type": "config_digest", "value": "cfg-2"},
+                }
+            ],
+        )
+        rollup = evaluate_change(
+            bundle["changes"][0],
+            bundle["activations"],
+            graph=CommitGraph(),
+            sessions=[
+                _session(
+                    repo="gateway-llm",
+                    fingerprints=[
+                        {"type": "config_digest", "value": "cfg-2", "observed_at": "2026-09-22T00:30:00Z"}
+                    ],
+                )
+            ],
+        )
+        self.assertEqual(rollup["status"], "unknown")
+        self.assertEqual(rollup["rows"][0]["reason"], "evidence_conflicts_window")
+        self.assertEqual(rollup["counts"]["unexposed"], 0)
+
+    def test_matching_fingerprint_conflicts_with_before_window(self):
+        # The same precedence applies when the session predates activated_at:
+        # the change was not yet activated, yet the matching fingerprint was
+        # observed, so the two pieces of evidence contradict each other.
+        bundle = _bundle(
+            [{"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}],
+            activations=[
+                {
+                    "change_id": normalize_change(
+                        {"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}
+                    )["change_id"],
+                    "mechanism": "config_toggle",
+                    "target": "gateway-llm",
+                    "activated_at": "2026-09-23T00:00:00Z",
+                    "fingerprint": {"type": "config_digest", "value": "cfg-2"},
+                }
+            ],
+        )
+        rollup = evaluate_change(
+            bundle["changes"][0],
+            bundle["activations"],
+            graph=CommitGraph(),
+            sessions=[
+                _session(
+                    repo="gateway-llm",
+                    first="2026-09-22T00:00:00Z",
+                    last="2026-09-22T01:00:00Z",
+                    fingerprints=[
+                        {"type": "config_digest", "value": "cfg-2", "observed_at": "2026-09-22T00:30:00Z"}
+                    ],
+                )
+            ],
+        )
+        self.assertEqual(rollup["status"], "unknown")
+        self.assertEqual(rollup["rows"][0]["reason"], "evidence_conflicts_window")
+
+    def test_mismatched_fingerprint_before_activation_stays_unexposed(self):
+        # A conflicting fingerprint value agrees with the before window, so the
+        # window verdict still decides: unexposed, never unknown.
+        bundle = _bundle(
+            [{"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}],
+            activations=[
+                {
+                    "change_id": normalize_change(
+                        {"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}
+                    )["change_id"],
+                    "mechanism": "config_toggle",
+                    "target": "gateway-llm",
+                    "activated_at": "2026-09-23T00:00:00Z",
+                    "fingerprint": {"type": "config_digest", "value": "cfg-2"},
+                }
+            ],
+        )
+        rollup = evaluate_change(
+            bundle["changes"][0],
+            bundle["activations"],
+            graph=CommitGraph(),
+            sessions=[
+                _session(
+                    repo="gateway-llm",
+                    first="2026-09-22T00:00:00Z",
+                    last="2026-09-22T01:00:00Z",
+                    fingerprints=[
+                        {"type": "config_digest", "value": "cfg-1", "observed_at": "2026-09-22T00:30:00Z"}
+                    ],
+                )
+            ],
+        )
+        self.assertEqual(rollup["status"], "unexposed")
+        self.assertEqual(rollup["rows"][0]["reason"], "before_activation")
 
     def test_config_fingerprint_inside_validity_is_exposed(self):
         bundle = _bundle(
@@ -639,10 +746,19 @@ class FixtureScenarioTest(unittest.TestCase):
         self.assertEqual(by_pr[103]["classification"], "non_optimization")
         self.assertNotIn("exposure", by_pr[103])
 
-        # Delayed deployment: a matching config fingerprint is still unexposed
-        # because the deploy activation is pending.
+        # Delayed deployment with direct fingerprint evidence: the pending
+        # activation says the config is not live, but the session observed the
+        # matching cfg-2 fingerprint. The window and the evidence disagree, so
+        # the evidence cannot decide and exposure is unknown -- never a silent
+        # unexposed that would under-count real use (F4).
         config = [entry for entry in ledger["changes"] if entry["kind"] == "config"][0]
-        self.assertEqual(config["exposure"]["status"], "unexposed")
+        self.assertEqual(config["exposure"]["status"], "unknown")
+        config_rows = {row["session"][-1]: row for row in config["exposure"]["rows"]}
+        self.assertEqual(config_rows["config-session"]["reason"], "evidence_conflicts_window")
+        # A session with no config fingerprint at all offers no positive
+        # evidence, so the pending window still stands as unexposed.
+        self.assertEqual(config_rows["model-session"]["status"], "unexposed")
+        self.assertEqual(config_rows["model-session"]["reason"], "pending_activation")
 
         # Model switch exposed by the observed model, with a second session unknown.
         model = [entry for entry in ledger["changes"] if entry["kind"] == "model"][0]
