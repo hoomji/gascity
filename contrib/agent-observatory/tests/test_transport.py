@@ -47,6 +47,7 @@ from agent_observatory.transport import (
     RetryPolicy,
     TransportConfig,
     TransportConfigError,
+    TransportError,
     classify,
     iter_provenance,
     load_credential,
@@ -588,6 +589,90 @@ class CircuitBreakerTest(TransportTestBase):
             clock=clock,
         )
         self.assertEqual(third.outcome, "classified")
+
+
+class CorruptedCircuitStateTest(TransportTestBase):
+    """A corrupted persisted circuit row must surface as ``TransportError``.
+
+    SQLite's INTEGER/REAL affinity still stores non-numeric TEXT, so a row
+    written by an older binary or a manual repair can hold junk in
+    ``consecutive_failures``/``opened_at``/``open_until``. Every reader must name
+    the circuit key and the offending column instead of leaking a raw
+    ``ValueError`` past the CLI's documented no-traceback boundary.
+    """
+
+    KEY = "default"
+
+    def _seed(
+        self,
+        *,
+        consecutive_failures=0,
+        opened_at=None,
+        open_until=None,
+        probe_token=None,
+    ):
+        # Construct once so the transport schema exists, then replace the row
+        # with the corrupted projection under test.
+        self._breaker()
+        self.store.conn.execute(
+            "DELETE FROM transport_circuit_state WHERE circuit_key = ?", (self.KEY,)
+        )
+        self.store.conn.execute(
+            "INSERT INTO transport_circuit_state(circuit_key, consecutive_failures, "
+            "opened_at, open_until, probe_token, updated_at) VALUES (?, ?, ?, ?, ?, 0)",
+            (self.KEY, consecutive_failures, opened_at, open_until, probe_token),
+        )
+        self.store.conn.commit()
+
+    def _breaker(self, clock=None):
+        return CircuitBreaker(
+            self.store.conn,
+            key=self.KEY,
+            failure_threshold=5,
+            cooldown_seconds=60.0,
+            clock=clock if clock is not None else FakeClock(),
+        )
+
+    def _assert_rejected(self, call, column):
+        with self.assertRaises(TransportError) as caught:
+            call()
+        message = str(caught.exception)
+        self.assertIn(self.KEY, message)
+        self.assertIn(column, message)
+
+    def test_state_rejects_corrupted_consecutive_failures(self):
+        self._seed(consecutive_failures="abc")
+        self._assert_rejected(self._breaker().state, "consecutive_failures")
+
+    def test_state_rejects_corrupted_opened_at(self):
+        self._seed(opened_at="x")
+        self._assert_rejected(self._breaker().state, "opened_at")
+
+    def test_state_rejects_corrupted_open_until(self):
+        self._seed(open_until="not-a-float")
+        self._assert_rejected(self._breaker().state, "open_until")
+
+    def test_is_open_rejects_corrupted_open_until(self):
+        self._seed(open_until="not-a-float")
+        self._assert_rejected(self._breaker().is_open, "open_until")
+
+    def test_is_open_rejects_corrupted_consecutive_failures(self):
+        self._seed(consecutive_failures="abc")
+        self._assert_rejected(self._breaker().is_open, "consecutive_failures")
+
+    def test_check_rejects_corrupted_open_until(self):
+        self._seed(open_until="not-a-float")
+        self._assert_rejected(self._breaker().check, "open_until")
+
+    def test_check_rejects_corrupted_opened_at(self):
+        # A valid future ``open_until`` drives the error path through the
+        # opened-at column of the open-circuit message.
+        self._seed(opened_at="x", open_until=10 ** 12)
+        self._assert_rejected(self._breaker().check, "opened_at")
+
+    def test_record_failure_rejects_corrupted_consecutive_failures(self):
+        self._seed(consecutive_failures="abc")
+        self._assert_rejected(self._breaker().record_failure, "consecutive_failures")
 
 
 class ModelDriftTest(TransportTestBase):
@@ -1142,6 +1227,59 @@ class StoreErrorSurfaceTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["outcome"], "pending")
         self.assertEqual(rows[0]["failure_class"], "store_error")
+
+
+class CorruptedCircuitCliTest(unittest.TestCase):
+    """End-to-end: a corrupted circuit row is a clean CLI error, not a crash.
+
+    The named input is a ``transport_circuit_state`` row holding non-numeric
+    TEXT in its numeric columns. Before the fix a raw ``ValueError`` escaped
+    ``main()`` as a traceback and left no provenance row.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = os.path.join(self.tmp.name, "projection.db")
+        self.state = os.path.join(self.tmp.name, "state.json")
+        with open(self.state, "w", encoding="utf-8") as handle:
+            json.dump({"summary": "corrupted circuit"}, handle)
+        with ObservatoryStore(self.db) as store:
+            CircuitBreaker(store.conn, key="default", failure_threshold=5)
+            store.conn.execute(
+                "INSERT INTO transport_circuit_state(circuit_key, consecutive_failures, "
+                "opened_at, open_until, probe_token, updated_at) "
+                "VALUES ('default', 'abc', 'x', 'not-a-float', NULL, 0)"
+            )
+            store.conn.commit()
+
+    def test_corrupted_circuit_reports_error_and_records_pending(self):
+        stderr = io.StringIO()
+        stdout = io.StringIO()
+        env = {"TYPESAFE_API_KEY": CREDENTIAL, "JEV_API_KEY": CREDENTIAL}
+        with mock.patch.dict(os.environ, env):
+            with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
+                code = cli.main(
+                    [
+                        "classify",
+                        "--db",
+                        self.db,
+                        "--state",
+                        self.state,
+                        "--snapshot-hash",
+                        "a" * 64,
+                    ]
+                )
+        self.assertEqual(code, 1)
+        self.assertTrue(stderr.getvalue().startswith("error:"), stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+        self.assertIn("default", stderr.getvalue())
+        self.assertIn("open_until", stderr.getvalue())
+        with ObservatoryStore(self.db) as store:
+            rows = store.conn.execute(
+                "SELECT outcome, failure_class FROM transport_provenance"
+            ).fetchall()
+        self.assertEqual([tuple(row) for row in rows], [("pending", "transport_error")])
 
 
 class SnapshotHashCrossCheckTest(unittest.TestCase):

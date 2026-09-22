@@ -697,6 +697,31 @@ class CircuitBreaker:
             (self.key,),
         ).fetchone()
 
+    def _corrupt(self, column: str, value: Any) -> TransportError:
+        """Return the error for a stored circuit value that will not coerce.
+
+        SQLite's INTEGER/REAL affinity still stores non-numeric TEXT, so a row
+        written by an older binary or a manual repair can hold junk in these
+        columns. The breaker must refuse such a projection instead of leaking a
+        raw ``ValueError`` past the CLI's no-traceback boundary.
+        """
+        return TransportError(
+            f"circuit {self.key!r} has a corrupted {column} value {value!r}; "
+            "cannot read the persisted circuit state"
+        )
+
+    def _coerce_failures(self, value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise self._corrupt("consecutive_failures", value) from exc
+
+    def _coerce_timestamp(self, value: Any, column: str) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError) as exc:
+            raise self._corrupt(column, value) from exc
+
     def state(self) -> tuple[int, float | None, float | None]:
         row = self._conn.execute(
             "SELECT consecutive_failures, opened_at, open_until FROM "
@@ -705,7 +730,14 @@ class CircuitBreaker:
         ).fetchone()
         if row is None:
             return 0, None, None
-        return int(row[0]), row[1], row[2]
+        failures = self._coerce_failures(row[0])
+        opened_at = (
+            self._coerce_timestamp(row[1], "opened_at") if row[1] is not None else None
+        )
+        open_until = (
+            self._coerce_timestamp(row[2], "open_until") if row[2] is not None else None
+        )
+        return failures, opened_at, open_until
 
     def is_open(self) -> bool:
         _, _, open_until = self.state()
@@ -735,11 +767,16 @@ class CircuitBreaker:
                 # retries and record path to proceed.
                 self._conn.execute("COMMIT")
                 return
-            if now < float(open_until):
-                opened_at = float(row[1]) if row[1] is not None else now
+            open_until_value = self._coerce_timestamp(open_until, "open_until")
+            if now < open_until_value:
+                opened_at = (
+                    self._coerce_timestamp(row[1], "opened_at")
+                    if row[1] is not None
+                    else now
+                )
                 self._conn.execute("COMMIT")
                 raise CircuitOpenError(
-                    f"circuit {self.key!r} is open until {float(open_until):.3f} "
+                    f"circuit {self.key!r} is open until {open_until_value:.3f} "
                     f"(opened at {opened_at:.3f}); refusing to send"
                 )
             window = max(self.cooldown_seconds, self._MIN_PROBE_RESERVATION_SECONDS)
@@ -785,7 +822,9 @@ class CircuitBreaker:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             row = self._row()
-            failures = (int(row[0]) if row is not None else 0) + 1
+            failures = (
+                self._coerce_failures(row[0]) if row is not None else 0
+            ) + 1
             now = self._clock()
             if failures >= self.failure_threshold:
                 self._write(failures, now, now + self.cooldown_seconds, None)
@@ -1462,6 +1501,10 @@ def _classify_impl(
         _record_provenance(store, request, config, result, masked)
         return result
     except TransportError as exc:
+        # Best-effort pending provenance first (so a corrupted projection still
+        # leaves a replayable row), then surface the failure to the CLI. The
+        # CLI renders ``error: ...`` and exits 1 without a traceback; swallowing
+        # it here would hide an operator-actionable data-integrity fault.
         result = _pending_result(
             request,
             config,
@@ -1470,7 +1513,7 @@ def _classify_impl(
             credential_masked=masked,
         )
         _record_provenance(store, request, config, result, masked)
-        return result
+        raise
 
     if send.ok:
         try:
@@ -1544,9 +1587,12 @@ def classify(
     The credential is loaded from the runtime environment unless one is passed
     explicitly (for embedding). Every outcome -- success, invalid response,
     operator-actionable status, exhausted budget, open circuit, or missing
-    credential -- is recorded as provenance, and a failed classification is
-    stored as ``pending``/unknown rather than raised. Configuration refusals and
-    transport errors never escape as a traceback past the CLI.
+    credential -- is recorded as provenance, and a failed *send* is stored as
+    ``pending``/unknown rather than raised. A transport-layer exception (for
+    example a corrupted persisted circuit row) is still recorded as a
+    ``transport_error`` pending row, then re-raised so the CLI renders
+    ``error: ...`` and exits 1. Configuration refusals and transport errors never
+    escape as a traceback past the CLI.
 
     A local ``sqlite3`` failure from using the projection is surfaced as an
     :class:`ObservatoryError` (so the CLI prints ``error: ...`` and exits 1)
