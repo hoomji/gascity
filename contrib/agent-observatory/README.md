@@ -555,11 +555,28 @@ ceiling:
   each time. After `--max-item-attempts` failures the item moves to `unknown`
   and keeps its last failure. Nothing is fabricated.
 
-The drain sends **metadata-only state**: event-kind counts, tool invocation
-counts, command-category counts, models, duration, and bead/formula/parent
-flags. No text, titles or command lines leave the host. Sending transcript
-content to the classifier is a separate data-scope decision this slice does not
-make.
+The drain sends **metadata-only state** by default: event-kind counts, tool
+invocation counts, command-category counts, models, duration, and
+bead/formula/parent flags. No text, titles or command lines leave the host.
+
+`queue-drain --text-state` is the explicit opt-in data scope for sending
+transcript text. It reuses the same bounded transport and requires
+`--max-requests`:
+
+- Every excerpt is run through the adapter credential redactor again (key
+  assignments, bearer tokens, well-known token shapes, email addresses and
+  home-directory paths), so re-sending already-redacted projection text cannot
+  resurrect a secret.
+- Each event's text is excerpted deterministically from the head at
+  `DEFAULT_TEXT_EXCERPT_BYTES` (1536) UTF-8 bytes, with the dropped tail
+  summarized by byte length and digest. The whole request is then fitted to the
+  transport's 24 KB `REQUEST_BYTE_CAP` by dropping trailing excerpts.
+- The stored request metadata records what happened under `text_mode`:
+  `excerpt_bytes`, `excerpted_events`, `excerpt_strategy` and
+  `request_dropped_excerpts`.
+- The subject snapshot is namespaced for text mode, so a text classification can
+  never collide with the metadata classification of the same session. Metadata
+  mode keeps the raw session snapshot, leaving existing classifications valid.
 
 `collect-status` reports coverage (`current / scoped`), per-provider status
 counts, lagging sources with their lag and reason, queue counts, the oldest
@@ -600,7 +617,7 @@ agent-observatory collect --db DB --root DIR [--root DIR ...] --city CITY --host
 agent-observatory collect-status --db DB [--kill-switch PATH] [--out FILE]
 agent-observatory collector-switch --db DB on|off [--kill-switch PATH]
 agent-observatory queue-drain --db DB --max-requests N [--max-items N]
-    [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
+    [--text-state] [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
     [transport options as for classify] [--out FILE]
 agent-observatory --version
 ```

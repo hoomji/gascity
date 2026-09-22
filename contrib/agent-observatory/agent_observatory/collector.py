@@ -39,8 +39,9 @@ Guarantees:
 
 The default classification state is **metadata only** (event kinds, tool names,
 command categories, models, duration). No transcript text, titles or command
-lines are sent: a text-bearing state is a separate, explicit data-scope
-decision.
+lines are sent. Text is a separate, explicit data scope: ``queue-drain
+--text-state`` opts in, and the text state is redacted, excerpted to the
+transport byte cap, and stored under a text-namespaced subject snapshot.
 """
 
 from __future__ import annotations
@@ -63,7 +64,8 @@ from .adapters import (
     load_source_data,
     validated_records,
 )
-from .canonical import identity_key, sha256_text
+from .adapters.redaction import redact_text
+from .canonical import canonical_hash, identity_key, sha256_text
 from .commands import categorize_command
 from .errors import ContractError, ObservatoryError, RequestByteCapExceeded, RequestError
 from .inventory import SourceRoot, _decide_generation, discover_sources, records_to_jsonl
@@ -102,6 +104,24 @@ SOURCE_STATUSES = (
     "missing",
 )
 QUEUE_STATUSES = ("pending", "done", "unknown", "superseded")
+
+# Classification data scopes. ``metadata`` is the default and sends no text;
+# ``text`` is an explicit opt-in that adds redacted transcript text.
+STATE_MODE_METADATA = "metadata"
+STATE_MODE_TEXT = "text"
+STATE_MODES = (STATE_MODE_METADATA, STATE_MODE_TEXT)
+# Per-event excerpt ceiling in text mode. A single event's text is excerpted to
+# this many UTF-8 bytes, deterministically from the head, with the dropped tail
+# summarized by byte length and digest. The per-request total is then fitted to
+# ``REQUEST_BYTE_CAP`` by dropping trailing excerpts; both facts are recorded in
+# the request's ``text_mode`` metadata.
+DEFAULT_TEXT_EXCERPT_BYTES = 1536
+# Namespace mixed into a text-mode subject snapshot so a text classification can
+# never collide with the metadata classification of the same session.
+_TEXT_SNAPSHOT_NAMESPACE = "session-text"
+# Event kinds that carry user/assistant prose; other kinds only contribute their
+# already-structured metadata. Command lines ride on ``tool_call``/``command``.
+_TEXT_EVENT_KINDS = frozenset({"message", "tool_result", "note"})
 
 # Failure classes that say nothing about the subject: the drain stops and the
 # item stays pending with no attempt charged. A rejected key (401/403) and a
@@ -912,14 +932,9 @@ def enqueue_sessions(
     return enqueued, superseded
 
 
-def metadata_state(store: ObservatoryStore, session_key: Sequence[str]) -> dict[str, Any]:
-    """Return a transcript-free classification state for one session.
+def _session_shape(events: Sequence[dict[str, Any]], session_key: Sequence[str]) -> dict[str, Any]:
+    """Return the metadata fields shared by every classification state."""
 
-    Only counts and identifiers already present as structured metadata are
-    included. Titles, text and command lines are deliberately excluded.
-    """
-
-    events = store.session_events(session_key)
     kinds: dict[str, int] = {}
     tools: dict[str, int] = {}
     categories: dict[str, int] = {}
@@ -940,8 +955,6 @@ def metadata_state(store: ObservatoryStore, session_key: Sequence[str]) -> dict[
         duration = round((_parse_iso(timestamps[-1]) - _parse_iso(timestamps[0])), 3)
     top_tools = dict(sorted(tools.items(), key=lambda item: (-item[1], item[0]))[:20])
     return {
-        "state_kind": "session_metadata",
-        "state_version": COLLECTOR_STATE_VERSION,
         "provider": session_key[2],
         "events": len(events),
         "event_kinds": dict(sorted(kinds.items())),
@@ -952,6 +965,86 @@ def metadata_state(store: ObservatoryStore, session_key: Sequence[str]) -> dict[
         "has_bead": any(event.get("bead_id") for event in events),
         "has_formula": any(event.get("formula_id") for event in events),
         "has_parent_session": any(event.get("parent_session_id") for event in events),
+    }
+
+
+def metadata_state(store: ObservatoryStore, session_key: Sequence[str]) -> dict[str, Any]:
+    """Return a transcript-free classification state for one session.
+
+    Only counts and identifiers already present as structured metadata are
+    included. Titles, text and command lines are deliberately excluded.
+    """
+
+    events = store.session_events(session_key)
+    return {
+        "state_kind": "session_metadata",
+        "state_version": COLLECTOR_STATE_VERSION,
+        **_session_shape(events, session_key),
+    }
+
+
+def _excerpt_text(value: Any, *, limit: int) -> tuple[str, bool]:
+    """Redact *value* and excerpt its head to *limit* UTF-8 bytes.
+
+    Returns ``(text, excerpted)``. The tail is summarized by its removed byte
+    length and the digest of the full redacted value, so the excerpt stays
+    deterministic and the dropped evidence remains verifiable. Redaction runs
+    first (and is idempotent), so a secret can never survive into the excerpt.
+    """
+
+    redacted = redact_text(value if isinstance(value, str) else str(value))
+    data = redacted.encode("utf-8")
+    if len(data) <= limit:
+        return redacted, False
+    head = data[:limit].decode("utf-8", errors="ignore")
+    return f"{head}\n[truncated: {len(data)} bytes sha256={sha256_text(redacted)}]", True
+
+
+def text_state(
+    store: ObservatoryStore,
+    session_key: Sequence[str],
+    *,
+    excerpt_bytes: int = DEFAULT_TEXT_EXCERPT_BYTES,
+) -> dict[str, Any]:
+    """Return an opt-in classification state carrying redacted transcript text.
+
+    This is the explicit text data scope: every excerpt is redacted before it
+    leaves the projection, and each event's text is excerpted deterministically
+    from the head when it exceeds *excerpt_bytes*. The metadata fields shared
+    with :func:`metadata_state` are preserved so classification keeps its
+    context. The per-request total is fitted to the transport byte cap by the
+    caller (see :func:`_fit_text_state`); the result records what was done under
+    ``text_mode``.
+    """
+
+    if excerpt_bytes < 1:
+        raise ObservatoryError("text excerpt bytes must be >= 1")
+    events = store.session_events(session_key)
+    excerpts: list[dict[str, Any]] = []
+    excerpted = 0
+    for event in events:
+        kind = event.get("kind") or "unknown"
+        if kind in {"tool_call", "command"}:
+            text, was_cut = _excerpt_text(event.get("command") or "", limit=excerpt_bytes)
+        elif kind in _TEXT_EVENT_KINDS:
+            text, was_cut = _excerpt_text(event.get("text") or event.get("title") or "", limit=excerpt_bytes)
+        else:
+            continue
+        excerpted += int(was_cut)
+        excerpts.append({"event_id": event["event_id"], "kind": kind, "text": text})
+    return {
+        "state_kind": "session_transcript",
+        "state_version": COLLECTOR_STATE_VERSION,
+        "text_mode": {
+            "enabled": True,
+            "redacted": True,
+            "excerpt_bytes": excerpt_bytes,
+            "excerpted_events": excerpted,
+            "excerpt_strategy": "head_truncate" if excerpted else "none",
+            "request_dropped_excerpts": 0,
+        },
+        "excerpts": excerpts,
+        **_session_shape(events, session_key),
     }
 
 
@@ -983,6 +1076,45 @@ class DrainResult:
         }
 
 
+def _text_snapshot_hash(snapshot_hash: str) -> str:
+    """Namespace a session snapshot as a text-mode subject.
+
+    Metadata mode keeps the raw session snapshot so already-stored metadata
+    classifications stay valid; text mode gets a distinct subject hash so the
+    two data scopes can never collide in ``classifications``.
+    """
+
+    return canonical_hash([_TEXT_SNAPSHOT_NAMESPACE, snapshot_hash])
+
+
+def _fit_text_state(text: dict[str, Any], taxonomy: Taxonomy, snapshot_hash: str) -> tuple[dict[str, Any], Any]:
+    """Fit a text state to ``REQUEST_BYTE_CAP`` by dropping trailing excerpts.
+
+    Deterministic: the earliest excerpts in canonical (timestamp, event_id)
+    order are kept, the tail is dropped, and ``request_dropped_excerpts`` records
+    the count. Raises the transport's :class:`RequestByteCapExceeded` when even
+    the empty-excerpt skeleton cannot fit.
+    """
+
+    kept = list(text.get("excerpts") or [])
+    dropped = 0
+    while True:
+        candidate = dict(text)
+        candidate["excerpts"] = kept
+        mode = dict(candidate.get("text_mode") or {})
+        mode["request_dropped_excerpts"] = dropped
+        if dropped:
+            mode["request_excerpt_strategy"] = "drop_trailing_excerpts"
+        candidate["text_mode"] = mode
+        try:
+            return candidate, build_request(candidate, taxonomy, snapshot_hash=snapshot_hash, subject_kind="session")
+        except RequestByteCapExceeded:
+            if not kept:
+                raise
+            kept.pop()
+            dropped += 1
+
+
 def drain_queue(
     store: ObservatoryStore,
     taxonomy: Taxonomy,
@@ -992,15 +1124,27 @@ def drain_queue(
     max_attempts: int = 3,
     retry_backoff_seconds: float = 300.0,
     kill_switch_path: str | None = None,
-    state_builder: Callable[[ObservatoryStore, Sequence[str]], dict[str, Any]] = metadata_state,
+    state_mode: str = STATE_MODE_METADATA,
+    text_excerpt_bytes: int = DEFAULT_TEXT_EXCERPT_BYTES,
+    state_builder: Callable[[ObservatoryStore, Sequence[str]], dict[str, Any]] | None = None,
     classify_fn: Callable[..., ClassifyResult] = classify,
     clock: Callable[[], float] = time.time,
     environ: dict[str, str] | None = None,
 ) -> DrainResult:
-    """Classify up to *max_items* due pending sessions within the transport budget."""
+    """Classify up to *max_items* due pending sessions within the transport budget.
+
+    ``state_mode`` selects the data scope: ``metadata`` (default) never sends
+    transcript text, while ``text`` is the explicit opt-in that adds redacted,
+    byte-capped text excerpts. The stored subject snapshot is namespaced in text
+    mode so the two scopes produce distinct classifications.
+    """
 
     if max_items < 0 or max_attempts < 1 or retry_backoff_seconds < 0:
         raise ObservatoryError("max_items >= 0, max_attempts >= 1 and retry_backoff_seconds >= 0 are required")
+    if state_mode not in STATE_MODES:
+        raise ObservatoryError(f"state_mode must be one of {STATE_MODES}, got {state_mode!r}")
+    if text_excerpt_bytes < 1:
+        raise ObservatoryError("text_excerpt_bytes must be >= 1")
     ensure_collector_schema(store.conn)
     budget = transport_config.budget
     disabled = kill_switch_engaged(kill_switch_path, environ)
@@ -1035,15 +1179,36 @@ def drain_queue(
                 result.status, result.reason = "stopped", budget.exhaustion_reason()
                 break
 
-            item = {"session": identity_key(key), "snapshot_hash": current}
+            if state_mode == STATE_MODE_TEXT:
+                request_snapshot = _text_snapshot_hash(current)
+            else:
+                request_snapshot = current
+            item = {
+                "session": identity_key(key),
+                "snapshot_hash": current,
+                "state_mode": state_mode,
+                "request_snapshot_hash": request_snapshot,
+            }
             # ``build_request`` runs inside the try: a RequestError (including a
             # byte-cap violation) is about this subject, so charge it and move on
             # instead of aborting the whole drain and failing the same head item
-            # again next run.
+            # again next run. Text mode builds the request inside
+            # ``_fit_text_state``, which drops trailing excerpts to fit the byte
+            # cap and raises ``RequestByteCapExceeded`` only when even the
+            # empty-excerpt skeleton cannot fit.
             try:
-                request = build_request(
-                    state_builder(store, key), taxonomy, snapshot_hash=current, subject_kind="session"
-                )
+                if state_mode == STATE_MODE_TEXT:
+                    state, request = _fit_text_state(
+                        text_state(store, key, excerpt_bytes=text_excerpt_bytes),
+                        taxonomy,
+                        request_snapshot,
+                    )
+                    item["text_mode"] = dict(state.get("text_mode") or {})
+                else:
+                    state = (state_builder or metadata_state)(store, key)
+                    request = build_request(
+                        state, taxonomy, snapshot_hash=request_snapshot, subject_kind="session"
+                    )
             except RequestError as exc:
                 failure_class = (
                     "request_byte_cap" if isinstance(exc, RequestByteCapExceeded) else "request_error"
@@ -1270,9 +1435,13 @@ def _parse_iso(value: str) -> float:
 __all__ = [
     "COLLECTOR_STATE_VERSION",
     "DEFAULT_MAX_SOURCE_BYTES",
+    "DEFAULT_TEXT_EXCERPT_BYTES",
     "KILL_SWITCH_ENV",
     "QUEUE_STATUSES",
     "SOURCE_STATUSES",
+    "STATE_MODES",
+    "STATE_MODE_METADATA",
+    "STATE_MODE_TEXT",
     "CollectRun",
     "CollectorConfig",
     "DrainResult",
@@ -1286,4 +1455,5 @@ __all__ = [
     "kill_switch_engaged",
     "metadata_state",
     "set_kill_switch",
+    "text_state",
 ]

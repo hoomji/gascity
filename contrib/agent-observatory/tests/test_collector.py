@@ -30,9 +30,11 @@ from agent_observatory.collector import (
     ensure_collector_schema,
     metadata_state,
     set_kill_switch,
+    text_state,
 )
 from agent_observatory.errors import ObservatoryError
 from agent_observatory.inventory import SourceRoot
+from agent_observatory.jev import REQUEST_BYTE_CAP
 from agent_observatory.store import ObservatoryStore
 from agent_observatory.taxonomy import load_taxonomy
 from agent_observatory.transport import Budget, ClassifyResult, TransportConfig, TransportError
@@ -692,6 +694,83 @@ class QueueTests(CollectorTestCase):
         _, calls = self.drain([("classified", None)])
         self.assertNotIn("Please fix the bug", json.dumps(calls[0].body))
 
+    def test_metadata_mode_keeps_raw_snapshot_identity(self):
+        key = self.store.session_keys()[0]
+        raw = self.store.session_snapshot(key)
+        result, calls = self.drain([("classified", None)])
+        self.assertEqual(result.items[0]["state_mode"], "metadata")
+        self.assertEqual(calls[0].snapshot_hash, raw)
+        self.assertEqual(result.items[0]["request_snapshot_hash"], raw)
+
+    def test_text_state_carries_redacted_transcript_text(self):
+        key = self.store.session_keys()[0]
+        state = text_state(self.store, key)
+        self.assertEqual(state["state_kind"], "session_transcript")
+        self.assertTrue(state["text_mode"]["enabled"])
+        self.assertTrue(state["text_mode"]["redacted"])
+        encoded = json.dumps(state)
+        self.assertIn("Please fix the bug", encoded)
+        self.assertIn("[REDACTED]", encoded)
+        self.assertNotIn("supersecretvalue", encoded)
+
+    def test_text_drain_sends_redacted_text_and_distinct_snapshot(self):
+        key = self.store.session_keys()[0]
+        raw = self.store.session_snapshot(key)
+        result, calls = self.drain([("classified", None)], state_mode="text")
+        self.assertEqual(result.attempted, 1)
+        request = calls[0]
+        body = json.dumps(request.body)
+        self.assertIn("Please fix the bug", body)
+        self.assertNotIn("supersecretvalue", body)
+        self.assertIn("[REDACTED]", body)
+        self.assertEqual(request.body["state"]["state_kind"], "session_transcript")
+        # Text mode is a distinct data scope: it must not share the metadata
+        # subject snapshot (which would collide in ``classifications``).
+        self.assertNotEqual(request.snapshot_hash, raw)
+        self.assertEqual(result.items[0]["state_mode"], "text")
+        self.assertEqual(result.items[0]["snapshot_hash"], raw)
+        self.assertEqual(result.items[0]["request_snapshot_hash"], request.snapshot_hash)
+
+    def test_text_mode_respects_the_request_byte_cap(self):
+        path = os.path.join(self.claude_dir, "big.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            for index in range(40):
+                handle.write(
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "uuid": f"u-big-{index}",
+                            "sessionId": "claude-sess-1",
+                            "session_id": "claude-parent-0",
+                            "timestamp": f"2026-09-21T11:00:{index:02d}.000Z",
+                            "message": {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": f"line-{index} api_key=supersecret{index} " + "x" * 4000,
+                                    }
+                                ],
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+        self.collect(self.store)
+        result, calls = self.drain([("classified", None)], state_mode="text")
+        self.assertEqual(result.attempted, 1)
+        request = calls[0]
+        self.assertLessEqual(request.byte_length, REQUEST_BYTE_CAP)
+        state = request.body["state"]
+        self.assertGreaterEqual(state["text_mode"]["request_dropped_excerpts"], 1)
+        self.assertLessEqual(len(state["excerpts"]), state["events"])
+        self.assertTrue(any("line-" in excerpt["text"] for excerpt in state["excerpts"]))
+        self.assertNotIn("supersecret", json.dumps(state))
+
+    def test_drain_rejects_unknown_state_mode(self):
+        with self.assertRaises(ObservatoryError):
+            self.drain([("classified", None)], state_mode="bogus")
+
     def test_enqueue_ignores_unknown_session(self):
         self.assertEqual(enqueue_sessions(self.store, [("c", "h", "p", "nope")]), (0, 0))
 
@@ -769,6 +848,18 @@ class StatusAndCliTests(CollectorTestCase):
         with ObservatoryStore(self.db) as store:
             row = store.conn.execute("SELECT status, attempts FROM collector_queue").fetchone()
         self.assertEqual((row["status"], row["attempts"]), ("pending", 0))
+
+    def test_cli_queue_drain_text_state_flag_opts_in(self):
+        self.claude_source()
+        common = ["--db", self.db, "--kill-switch", self.kill]
+        self.run_cli("collect", *common, "--root", self.root, "--city", "c", "--host", "h", "--debounce-seconds", "0")
+        saved = {name: os.environ.pop(name) for name in ("TYPESAFE_API_KEY", "JEV_API_KEY", "JEV_KEY_FILE") if name in os.environ}
+        self.addCleanup(os.environ.update, saved)
+        code, out, _ = self.run_cli("queue-drain", *common, "--max-requests", "1", "--text-state")
+        self.assertEqual(code, 1)  # no credential: execution outcome, not a crash
+        item = json.loads(out)["items"][0]
+        self.assertEqual(item["state_mode"], "text")
+        self.assertTrue(item["text_mode"]["enabled"])
 
 
 if __name__ == "__main__":
