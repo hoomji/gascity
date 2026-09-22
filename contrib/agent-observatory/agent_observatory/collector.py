@@ -22,9 +22,9 @@ Guarantees:
   entirely, visible as ``deferred``.
 * **Debounce.** A file modified within ``debounce_seconds`` is still being
   written; it is ``debounced`` and picked up on a later run. A file that never
-  goes quiet is read anyway once ``max_debounce_seconds`` have passed since
-  its last import (or first sighting); the adapters hold back a partial
-  trailing line, so a live transcript is collected incrementally.
+  goes quiet is read anyway once ``max_debounce_seconds`` have passed since its
+  pending change was first seen; the adapters hold back a partial trailing line,
+  so a live transcript is collected incrementally.
 * **Kill switch.** When the switch file exists (or the environment variable
   :data:`KILL_SWITCH_ENV` is ``1``) collection and draining stop without
   touching the city.
@@ -51,10 +51,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Sequence
 
-from .adapters import AdapterContext, AdapterError, load_source_data, validated_records
+from .adapters import (
+    AdapterContext,
+    AdapterError,
+    SourceSizeExceeded,
+    load_source_data,
+    validated_records,
+)
 from .canonical import identity_key, sha256_text
 from .commands import categorize_command
-from .errors import ContractError, ObservatoryError
+from .errors import ContractError, ObservatoryError, RequestByteCapExceeded, RequestError
 from .inventory import SourceRoot, _decide_generation, discover_sources, records_to_jsonl
 from .jev import build_request
 from .store import ObservatoryStore
@@ -74,6 +80,11 @@ except ImportError:  # pragma: no cover - non-POSIX
 
 COLLECTOR_STATE_VERSION = "1.0"
 KILL_SWITCH_ENV = "OBSERVATORY_COLLECTOR_DISABLED"
+
+# The per-source cap is on by default: the adapters parse a whole (possibly
+# decompressed) source in memory and peak RSS runs several times the file size.
+# See the README's 305 MB Codex transcript peaking at 2.5 GB.
+DEFAULT_MAX_SOURCE_BYTES = 256 * 1024 * 1024
 
 SOURCE_STATUSES = (
     "imported",
@@ -106,6 +117,9 @@ _STOP_FAILURES = frozenset(
 # Failed sources are retried only when their stat changes, so a file that
 # cannot parse does not take a per-run slot on every pass.
 _STAT_SKIP_STATUSES = frozenset({"imported", "unchanged", "error", "unreadable"})
+# A pending change keeps its first-seen clock across passes in these statuses;
+# any other status means the next observed change starts a fresh clock.
+_PENDING_CHANGE_STATUSES = frozenset({"debounced", "deferred"})
 
 _COLLECTOR_SCHEMA = (
     """
@@ -128,7 +142,8 @@ _COLLECTOR_SCHEMA = (
         adapter_errors INTEGER,
         first_seen_at REAL NOT NULL,
         last_seen_at REAL NOT NULL,
-        last_imported_at REAL
+        last_imported_at REAL,
+        pending_since REAL
     )
     """,
     """
@@ -168,6 +183,11 @@ def ensure_collector_schema(conn: Any) -> None:
 
     for statement in _COLLECTOR_SCHEMA:
         conn.execute(statement)
+    # ``pending_since`` was added after the first M4 release; add it in place for
+    # databases created by the earlier schema rather than rebuilding the table.
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(collector_sources)")}
+    if "pending_since" not in columns:
+        conn.execute("ALTER TABLE collector_sources ADD COLUMN pending_since REAL")
 
 
 # -- configuration ---------------------------------------------------------
@@ -185,7 +205,7 @@ class CollectorConfig:
     max_debounce_seconds: float = 600.0
     max_sources_per_run: int | None = None
     max_bytes_per_run: int | None = None
-    max_source_bytes: int | None = None
+    max_source_bytes: int | None = DEFAULT_MAX_SOURCE_BYTES
     max_db_bytes: int | None = None
     kill_switch_path: str | None = None
     spool_dir: str | None = None
@@ -276,14 +296,24 @@ class CollectRun:
         }
 
 
+def _lock_path(db_path: str, kind: str) -> str:
+    """Return the advisory lock path beside *db_path*, keyed on its real path.
+
+    Resolving the real path keeps a symlink and its target (two spellings of the
+    same database) from taking two different locks.
+    """
+
+    return f"{os.path.realpath(db_path)}.{kind}.lock"
+
+
 @contextlib.contextmanager
-def _collector_lock(db_path: str) -> Iterator[bool]:
-    """Hold a non-blocking exclusive lock beside the projection; yield acquired."""
+def _advisory_lock(db_path: str, kind: str) -> Iterator[bool]:
+    """Hold a non-blocking exclusive *kind* lock; yield whether it was acquired."""
 
     if db_path == ":memory:" or fcntl is None:
         yield True
         return
-    lock_path = f"{db_path}.collector.lock"
+    lock_path = _lock_path(db_path, kind)
     Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
     handle = open(lock_path, "a+", encoding="utf-8")
     try:
@@ -298,6 +328,18 @@ def _collector_lock(db_path: str) -> Iterator[bool]:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     finally:
         handle.close()
+
+
+def _collector_lock(db_path: str) -> contextlib.AbstractContextManager[bool]:
+    """The collector pass lock; two collectors must not interleave."""
+
+    return _advisory_lock(db_path, "collector")
+
+
+def _drain_lock(db_path: str) -> contextlib.AbstractContextManager[bool]:
+    """The queue-drain lock; two overlapping drains must not pay twice."""
+
+    return _advisory_lock(db_path, "drain")
 
 
 def collect_once(
@@ -365,11 +407,14 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
                 continue
             # Record the observed stat so lag is measurable while the file waits.
             # A waiting status is never ``unchanged``-eligible, and generation
-            # decisions use the last imported content hash, not this stat.
-            row.update(raw_size=stat.st_size, mtime=stat.st_mtime)
+            # decisions use the last imported content hash, not this stat. The
+            # starvation clock runs from when this pending change was first
+            # observed, not from the last import, so a file that was quiet for
+            # longer than max_debounce is not read the instant it is written.
+            pending_since = _pending_change_since(prev, now)
+            row.update(raw_size=stat.st_size, mtime=stat.st_mtime, pending_since=pending_since)
             quiet_for = now - stat.st_mtime
-            waiting_since = (prev.get("last_imported_at") or prev.get("first_seen_at")) if prev else now
-            starved = now - waiting_since >= config.max_debounce_seconds
+            starved = now - pending_since >= config.max_debounce_seconds
             if quiet_for < config.debounce_seconds and not starved:
                 _save_source(
                     store,
@@ -386,7 +431,19 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
 
             processed += 1
             run.bytes_read += stat.st_size
-            _import_source(store, context, source, prev, row, stat, spool_dir, run, touched, config.enqueue)
+            _import_source(
+                store,
+                context,
+                source,
+                prev,
+                row,
+                stat,
+                spool_dir,
+                run,
+                touched,
+                config.enqueue,
+                config.max_source_bytes,
+            )
 
         for record in unreadable:
             realpath = str(record.get("realpath") or record.get("path"))
@@ -454,9 +511,17 @@ def _import_source(
     run: CollectRun,
     touched: set[tuple[str, str, str, str]],
     enqueue: bool = True,
+    max_source_bytes: int | None = None,
 ) -> None:
     try:
-        adapter, data, digest = load_source_data(source.path, provider=source.provider)
+        adapter, data, digest = load_source_data(
+            source.path, provider=source.provider, max_bytes=max_source_bytes
+        )
+    except SourceSizeExceeded as exc:
+        # A compressed source can expand past the cap even when its st_size is
+        # small. It is deferred, not failed, so it stays visible and unread.
+        _save_source(store, row, "deferred", str(exc), run)
+        return
     except AdapterError as exc:
         _save_source(store, row, "unreadable", str(exc), run)
         return
@@ -527,6 +592,7 @@ def _import_source(
         partial_trailing_line=1 if result.partial_trailing_line else 0,
         adapter_errors=len(result.errors),
         last_imported_at=row["last_seen_at"],
+        pending_since=None,
     )
     reason = f"{change} generation {generation}: {imported.inserted} new, {imported.duplicates} duplicate events"
     if imported.skipped_conflicts:
@@ -543,6 +609,24 @@ def _stat_unchanged(prev: dict[str, Any] | None, stat: os.stat_result) -> bool:
         and prev.get("raw_size") == stat.st_size
         and prev.get("mtime") == stat.st_mtime
     )
+
+
+def _pending_change_since(prev: dict[str, Any] | None, now: float) -> float:
+    """Return when the change currently on disk was first observed.
+
+    A change is pending from the first pass that sees it until it is imported.
+    The starvation clock must run from that moment, not from ``first_seen_at``
+    or ``last_imported_at``: a file that has been quiet for a long time would
+    otherwise look starved the instant it was written again and be read
+    mid-write. A pass that already held the same pending change keeps the
+    original clock; any other status starts a fresh one.
+    """
+
+    if prev is not None and prev.get("status") in _PENDING_CHANGE_STATUSES:
+        pending_since = prev.get("pending_since")
+        if pending_since is not None:
+            return pending_since
+    return now
 
 
 def _base_row(
@@ -567,6 +651,7 @@ def _base_row(
         "partial_trailing_line": None,
         "adapter_errors": None,
         "last_imported_at": None,
+        "pending_since": None,
     }
     row.update(provider=provider, root=root, path=path, last_seen_at=now)
     return row
@@ -592,6 +677,7 @@ _SOURCE_COLUMNS = (
     "first_seen_at",
     "last_seen_at",
     "last_imported_at",
+    "pending_since",
 )
 
 
@@ -792,85 +878,153 @@ def drain_queue(
         return DrainResult(status="disabled", reason=disabled, budget=budget.to_state())
 
     now = clock()
-    rows = store.conn.execute(
-        "SELECT * FROM collector_queue WHERE status = 'pending' AND next_attempt_at <= ? "
-        "ORDER BY enqueued_at, queue_id LIMIT ?",
-        (now, max_items),
-    ).fetchall()
-    result = DrainResult(status="ok")
-    for row in rows:
-        key = (row["city_id"], row["host_id"], row["provider"], row["session_id"])
-        try:
-            current = store.session_snapshot(key)
-        except ContractError:
-            current = None
-        if current != row["snapshot_hash"]:
-            _update_queue(store, row["queue_id"], clock(), status="superseded")
-            result.superseded += 1
-            continue
-        if not budget.can_attempt_more():
-            result.status, result.reason = "stopped", budget.exhaustion_reason()
-            break
+    with _drain_lock(store.path) as acquired:
+        if not acquired:
+            return DrainResult(
+                status="locked",
+                reason="another drain holds the projection lock",
+                budget=budget.to_state(),
+            )
+        rows = store.conn.execute(
+            "SELECT * FROM collector_queue WHERE status = 'pending' AND next_attempt_at <= ? "
+            "ORDER BY enqueued_at, queue_id LIMIT ?",
+            (now, max_items),
+        ).fetchall()
+        result = DrainResult(status="ok")
+        for row in rows:
+            key = (row["city_id"], row["host_id"], row["provider"], row["session_id"])
+            try:
+                current = store.session_snapshot(key)
+            except ContractError:
+                current = None
+            if current != row["snapshot_hash"]:
+                _update_queue(store, row["queue_id"], clock(), status="superseded")
+                result.superseded += 1
+                continue
+            if not budget.can_attempt_more():
+                result.status, result.reason = "stopped", budget.exhaustion_reason()
+                break
 
-        request = build_request(state_builder(store, key), taxonomy, snapshot_hash=current, subject_kind="session")
-        item = {"session": identity_key(key), "snapshot_hash": current}
-        result.attempted += 1
-        try:
-            outcome = classify_fn(store, request, config=transport_config)
-        except TransportError as exc:
-            _update_queue(store, row["queue_id"], clock(), last_failure_class="transport_error", last_error=str(exc))
-            item.update(outcome="pending", failure_class="transport_error")
+            item = {"session": identity_key(key), "snapshot_hash": current}
+            # ``build_request`` runs inside the try: a RequestError (including a
+            # byte-cap violation) is about this subject, so charge it and move on
+            # instead of aborting the whole drain and failing the same head item
+            # again next run.
+            try:
+                request = build_request(
+                    state_builder(store, key), taxonomy, snapshot_hash=current, subject_kind="session"
+                )
+            except RequestError as exc:
+                failure_class = (
+                    "request_byte_cap" if isinstance(exc, RequestByteCapExceeded) else "request_error"
+                )
+                item.update(outcome="pending", failure_class=failure_class)
+                result.items.append(item)
+                _charge_attempt(
+                    store,
+                    row,
+                    clock(),
+                    failure_class,
+                    str(exc),
+                    max_attempts=max_attempts,
+                    retry_backoff_seconds=retry_backoff_seconds,
+                    result=result,
+                )
+                continue
+            result.attempted += 1
+            try:
+                outcome = classify_fn(store, request, config=transport_config)
+            except TransportError as exc:
+                item.update(outcome="pending", failure_class="transport_error")
+                result.items.append(item)
+                # A transport error is not evidence about the subject, but it is
+                # still bounded: charge the attempt so a permanently broken
+                # transport parks the item instead of replaying it forever.
+                _charge_attempt(
+                    store,
+                    row,
+                    clock(),
+                    "transport_error",
+                    str(exc),
+                    max_attempts=max_attempts,
+                    retry_backoff_seconds=retry_backoff_seconds,
+                    result=result,
+                )
+                result.status, result.reason = "stopped", f"transport error: {exc}"
+                break
+
+            item.update(outcome=outcome.outcome, failure_class=outcome.failure_class)
             result.items.append(item)
-            result.status, result.reason = "stopped", f"transport error: {exc}"
-            break
+            if outcome.outcome == OUTCOME_CLASSIFIED:
+                _update_queue(
+                    store,
+                    row["queue_id"],
+                    clock(),
+                    status="done",
+                    attempts=row["attempts"] + 1,
+                    classification_id=outcome.classification_id,
+                    last_failure_class=None,
+                    last_error=None,
+                )
+                result.classified += 1
+                continue
+            if outcome.failure_class in _STOP_FAILURES:
+                _update_queue(
+                    store, row["queue_id"], clock(), last_failure_class=outcome.failure_class, last_error=outcome.error
+                )
+                result.status = "stopped"
+                result.reason = f"{outcome.failure_class}: {outcome.error or 'no detail'}"
+                break
+            _charge_attempt(
+                store,
+                row,
+                clock(),
+                outcome.failure_class,
+                outcome.error,
+                max_attempts=max_attempts,
+                retry_backoff_seconds=retry_backoff_seconds,
+                result=result,
+            )
+        result.budget = budget.to_state()
+        return result
 
-        item.update(outcome=outcome.outcome, failure_class=outcome.failure_class)
-        result.items.append(item)
-        if outcome.outcome == OUTCOME_CLASSIFIED:
-            _update_queue(
-                store,
-                row["queue_id"],
-                clock(),
-                status="done",
-                attempts=row["attempts"] + 1,
-                classification_id=outcome.classification_id,
-                last_failure_class=None,
-                last_error=None,
-            )
-            result.classified += 1
-            continue
-        if outcome.failure_class in _STOP_FAILURES:
-            _update_queue(
-                store, row["queue_id"], clock(), last_failure_class=outcome.failure_class, last_error=outcome.error
-            )
-            result.status = "stopped"
-            result.reason = f"{outcome.failure_class}: {outcome.error or 'no detail'}"
-            break
-        attempts = row["attempts"] + 1
-        if attempts >= max_attempts:
-            _update_queue(
-                store,
-                row["queue_id"],
-                clock(),
-                status="unknown",
-                attempts=attempts,
-                last_failure_class=outcome.failure_class,
-                last_error=outcome.error,
-            )
-            result.unknown += 1
-        else:
-            _update_queue(
-                store,
-                row["queue_id"],
-                clock(),
-                attempts=attempts,
-                next_attempt_at=clock() + retry_backoff_seconds * (2 ** (attempts - 1)),
-                last_failure_class=outcome.failure_class,
-                last_error=outcome.error,
-            )
-            result.retry_scheduled += 1
-    result.budget = budget.to_state()
-    return result
+
+def _charge_attempt(
+    store: ObservatoryStore,
+    row: Any,
+    now: float,
+    failure_class: str | None,
+    error: str | None,
+    *,
+    max_attempts: int,
+    retry_backoff_seconds: float,
+    result: DrainResult,
+) -> None:
+    """Charge one attempt to a failed item, parking it after *max_attempts*."""
+
+    attempts = row["attempts"] + 1
+    if attempts >= max_attempts:
+        _update_queue(
+            store,
+            row["queue_id"],
+            now,
+            status="unknown",
+            attempts=attempts,
+            last_failure_class=failure_class,
+            last_error=error,
+        )
+        result.unknown += 1
+    else:
+        _update_queue(
+            store,
+            row["queue_id"],
+            now,
+            attempts=attempts,
+            next_attempt_at=now + retry_backoff_seconds * (2 ** (attempts - 1)),
+            last_failure_class=failure_class,
+            last_error=error,
+        )
+        result.retry_scheduled += 1
 
 
 def _update_queue(store: ObservatoryStore, queue_id: int, now: float, **fields: Any) -> None:
@@ -985,6 +1139,7 @@ def _parse_iso(value: str) -> float:
 
 __all__ = [
     "COLLECTOR_STATE_VERSION",
+    "DEFAULT_MAX_SOURCE_BYTES",
     "KILL_SWITCH_ENV",
     "QUEUE_STATUSES",
     "SOURCE_STATUSES",

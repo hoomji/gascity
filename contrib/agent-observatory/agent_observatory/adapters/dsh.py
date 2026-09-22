@@ -13,10 +13,12 @@ example ``deepseek/deepseek-flash``), not the provider field.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ from .base import (
     AdapterError,
     AdapterResult,
     SourceAdapter,
+    SourceSizeExceeded,
     TitleRevision,
     extract_command,
     fallback_event_id,
@@ -103,6 +106,71 @@ def _looks_like_dsh_transcript(path: Path) -> bool:
     return False
 
 
+def _decompress_zstd_binary(binary: str, raw: bytes, source_path: str, max_bytes: int | None) -> bytes:
+    """Decompress *raw* with the ``zstd`` binary, bounded by *max_bytes*.
+
+    The child's stdout is read in chunks and the process is killed the moment the
+    logical output passes the cap, so a small compressed stream cannot expand
+    into unbounded memory. A helper thread drains stdin so neither pipe can
+    deadlock the other.
+    """
+
+    process = subprocess.Popen(
+        [binary, "-dc"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    def feed() -> None:
+        try:
+            if process.stdin is not None:
+                process.stdin.write(raw)
+        except (BrokenPipeError, OSError):
+            pass
+        finally:
+            if process.stdin is not None:
+                with contextlib.suppress(OSError):
+                    process.stdin.close()
+
+    writer = threading.Thread(target=feed, daemon=True)
+    writer.start()
+    limit = None if max_bytes is None else max_bytes + 1
+    chunks: list[bytes] = []
+    total = 0
+    exceeded = False
+    try:
+        if process.stdout is not None:
+            while True:
+                chunk = process.stdout.read(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+                if limit is not None and total >= limit:
+                    exceeded = total > max_bytes
+                    break
+        if exceeded:
+            process.kill()
+    finally:
+        writer.join(timeout=5)
+        process.wait()
+    stderr = b""
+    if process.stderr is not None:
+        with contextlib.suppress(OSError):
+            stderr = process.stderr.read()
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            with contextlib.suppress(OSError):
+                stream.close()
+    if exceeded:
+        raise SourceSizeExceeded(source_path, max_bytes)
+    if process.returncode != 0:
+        reason = stderr.decode("utf-8", "replace").strip().splitlines()
+        raise AdapterError(f"zstd decompression failed: {reason[0] if reason else 'unknown error'}", source_path)
+    return b"".join(chunks)
+
+
 class DshAdapter(SourceAdapter):
     """Read-only adapter for compressed dsh session transcripts."""
 
@@ -125,11 +193,11 @@ class DshAdapter(SourceAdapter):
             return False
         return _looks_like_dsh_transcript(path)
 
-    def decompress(self, raw: bytes, source_path: str) -> bytes:
+    def decompress(self, raw: bytes, source_path: str, max_bytes: int | None = None) -> bytes:
         if not Path(source_path).name.endswith(".zstd"):
             # An uncompressed session file is already logical content; the base
             # contract is identity here. Only ``*.zstd`` names carry a stream.
-            return raw
+            return super().decompress(raw, source_path, max_bytes)
         try:
             import zstandard  # type: ignore[import-not-found]
         except ImportError:
@@ -137,9 +205,14 @@ class DshAdapter(SourceAdapter):
         if zstandard is not None:
             try:
                 reader = zstandard.ZstdDecompressor().stream_reader(io.BytesIO(raw))
-                return reader.read()
+                if max_bytes is None:
+                    return reader.read()
+                data = reader.read(max_bytes + 1)
             except Exception as exc:  # pragma: no cover - depends on optional module
                 raise AdapterError(f"zstd decompression failed: {exc}", source_path) from exc
+            if len(data) > max_bytes:
+                raise SourceSizeExceeded(source_path, max_bytes)
+            return data
 
         binary = shutil.which("zstd")
         if not binary:
@@ -147,17 +220,7 @@ class DshAdapter(SourceAdapter):
                 "zstd decompression requires the python 'zstandard' module or the 'zstd' binary",
                 source_path,
             )
-        process = subprocess.run(
-            [binary, "-dc"],
-            input=raw,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        if process.returncode != 0:
-            reason = process.stderr.decode("utf-8", "replace").strip().splitlines()
-            raise AdapterError(f"zstd decompression failed: {reason[0] if reason else 'unknown error'}", source_path)
-        return process.stdout
+        return _decompress_zstd_binary(binary, raw, source_path, max_bytes)
 
     def parse(
         self,

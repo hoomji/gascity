@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adapter_support as support  # noqa: E402
 
 import agent_observatory.adapters.dsh as dsh_module  # noqa: E402
-from agent_observatory.adapters import AdapterError, adapter_for_path, read_source  # noqa: E402
+from agent_observatory.adapters import AdapterError, SourceSizeExceeded, adapter_for_path, read_source  # noqa: E402
 from agent_observatory.adapters.dsh import DshAdapter  # noqa: E402
 from agent_observatory.canonical import sha256_bytes  # noqa: E402
 from agent_observatory.store import ObservatoryStore  # noqa: E402
@@ -331,6 +331,14 @@ class DshAdapterTest(unittest.TestCase):
         self.assertEqual(len(result.records), len(plaintext.records))
         self.assertEqual(result.session_id, "session-dsh-1")
         self.assertEqual(result.source_sha256, sha256_bytes(self.data))
+
+    @unittest.skipUnless(support.zstd_available(), "zstd binary is not available")
+    def test_decompression_is_bounded_by_max_bytes(self):
+        compressed = support.dsh_source(self.tmp.name)
+        with self.assertRaises(SourceSizeExceeded):
+            read_source(compressed, provider="dsh", context=support.CONTEXT, max_bytes=16)
+        result = read_source(compressed, provider="dsh", context=support.CONTEXT, max_bytes=10_000_000)
+        self.assertGreater(len(result.records), 0)
 
     @unittest.skipUnless(support.zstd_available(), "zstd binary is not available")
     def test_compressed_replay_is_idempotent(self):

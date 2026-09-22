@@ -492,7 +492,7 @@ reason:
 | --- | --- |
 | `imported` | Read this pass; the reason names `new`/`appended`/`rewritten`, the generation and new/duplicate event counts. |
 | `unchanged` | Size and mtime match the checkpoint; not re-read. |
-| `debounced` | Modified within `--debounce-seconds`; read on a later pass. A file that never goes quiet is read anyway after `--max-debounce-seconds` since its last import. |
+| `debounced` | Modified within `--debounce-seconds`; read on a later pass. A file that never goes quiet is read anyway after `--max-debounce-seconds` since the pending change was first seen. |
 | `deferred` | A per-run source/byte cap, the per-source cap or the projection storage cap was reached. The work waits; it is not dropped. |
 | `error` | The adapter or import refused the source; the reason carries `path:line`. |
 | `unreadable` | The file or directory could not be read or listed. |
@@ -507,15 +507,20 @@ generation and rewrite increments it (the M1 rules). Imports are idempotent, so
 if a crash lands between the import and the checkpoint write, the next pass
 re-imports as duplicates and the counts stay the same. A failed import writes no
 checkpoint and the source is retried. A per-projection advisory lock
-(`DB.collector.lock`) keeps two collectors from interleaving.
+(`<realpath(DB)>.collector.lock`) keeps two collectors from interleaving, and
+`queue-drain` takes its own `<realpath(DB)>.drain.lock` so two overlapping drains
+cannot select and pay for the same pending rows. Both locks are keyed on the
+database real path, so a symlink and its target share one lock.
 
 Bounds:
 
 - `--max-sources` / `--max-bytes` cap the work per pass. The first changed
   source always proceeds, so a byte cap cannot wedge the backlog.
-- `--max-source-bytes` defers any single file above the cap. The adapters parse
-  a whole file in memory, and peak RSS runs several times the file size (a
-  305 MB Codex transcript peaked at 2.5 GB).
+- `--max-source-bytes` defers any single file above the cap (default 256 MiB).
+  The adapters parse a whole file in memory, and peak RSS runs several times the
+  file size (a 305 MB Codex transcript peaked at 2.5 GB). For a `*.zstd` source
+  the cap bounds the **decompressed** size: the reader stops at the cap instead
+  of expanding a small compressed stream into unbounded memory.
 - `--max-db-bytes` defers imports once the projection reaches the cap.
 - Normalized JSONL is spooled to `DB.collector-spool/<source_id>.jsonl` and
   deleted right after each import. Imported events therefore carry the spool
@@ -537,9 +542,15 @@ bounded M3 transport and **requires `--max-requests`** as the per-run spend
 ceiling:
 
 - `classified` → `done`, with the classification id.
-- `budget_exhausted`, `circuit_open`, `credential_error`, `model_drift` or a
-  transport error → the drain stops and the item stays `pending` with no
-  attempt charged. These say nothing about the subject.
+- `budget_exhausted`, `circuit_open`, `credential_error` or `model_drift` → the
+  drain stops and the item stays `pending` with no attempt charged. These say
+  nothing about the subject.
+- A request that cannot be built (a `RequestError`, including a byte-cap
+  violation) → that item is charged an attempt and the drain continues with the
+  next due item, so one unbuildable subject cannot wedge the queue.
+- A transport error → the drain stops and the item is charged an attempt. A
+  permanently broken transport therefore parks the item after
+  `--max-item-attempts` instead of replaying it forever.
 - Any other failure → it is retried after `--retry-backoff` seconds, doubling
   each time. After `--max-item-attempts` failures the item moves to `unknown`
   and keeps its last failure. Nothing is fabricated.

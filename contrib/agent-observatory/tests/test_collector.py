@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import unittest
@@ -15,9 +16,11 @@ import support  # noqa: F401  (puts the package root on sys.path)
 
 from agent_observatory.cli import main
 from agent_observatory.collector import (
+    DEFAULT_MAX_SOURCE_BYTES,
     KILL_SWITCH_ENV,
     CollectorConfig,
     _collector_lock,
+    _drain_lock,
     collect_once,
     collect_watch,
     collector_status,
@@ -47,6 +50,21 @@ NO_ENV: dict[str, str] = {}
 
 def _later(seconds: float = 3600.0):
     return lambda: time.time() + seconds
+
+
+def _compress_zstd(source: str, target: str) -> None:
+    """Compress *source* to *target* with the ``zstd`` binary, or skip."""
+
+    binary = shutil.which("zstd")
+    if binary is None:
+        raise unittest.SkipTest("zstd binary is not available")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(source, "rb") as reader, open(target, "wb") as writer:
+        process = subprocess.run(
+            [binary, "-q", "-c"], stdin=reader, stdout=writer, stderr=subprocess.PIPE, check=False
+        )
+    if process.returncode != 0:
+        raise RuntimeError(process.stderr.decode("utf-8", "replace"))
 
 
 class CollectorTestCase(unittest.TestCase):
@@ -210,6 +228,26 @@ class CollectTests(CollectorTestCase):
             run = self.collect(store, clock=lambda: start + 101, max_debounce_seconds=60)
         self.assertEqual(run.by_status, {"imported": 1})
 
+    def test_debounce_clock_starts_when_the_change_was_first_seen(self):
+        # A file quiet for longer than max_debounce, then written once, must be
+        # debounced: the starvation clock runs from the first sighting of the
+        # pending change, not from the last import.
+        path = self.claude_source()
+        start = 1_000_000.0
+        with ObservatoryStore(self.db) as store:
+            os.utime(path, (start, start))
+            run = self.collect(store, clock=lambda: start, debounce_seconds=0)
+            self.assertEqual(run.by_status, {"imported": 1})
+            events = store.event_count()
+            os.utime(path, (start + 10_000, start + 10_000))
+            run = self.collect(
+                store, clock=lambda: start + 10_000, debounce_seconds=30, max_debounce_seconds=600
+            )
+            self.assertEqual(store.event_count(), events)
+            reason = self.statuses(store)["sess.jsonl"][1]
+        self.assertEqual(run.by_status, {"debounced": 1})
+        self.assertIn("waits for", reason)
+
     def test_source_cap_defers_but_first_source_always_progresses(self):
         self.claude_source("a.jsonl")
         self.claude_source("b.jsonl")
@@ -254,6 +292,31 @@ class CollectTests(CollectorTestCase):
         self.assertEqual(run.by_status, {"deferred": 1})
         self.assertIn("per-source cap", reason)
 
+    def test_max_source_bytes_default_is_a_real_cap(self):
+        self.assertIsNotNone(self.config().max_source_bytes)
+        self.assertEqual(self.config().max_source_bytes, DEFAULT_MAX_SOURCE_BYTES)
+
+    def test_compressed_source_deferred_when_decompressed_exceeds_cap(self):
+        # The compressed st_size is tiny, but the .zstd stream expands well past
+        # the cap. The bounded reader must defer it without materializing it.
+        session_dir = os.path.join(self.root, ".dsh", "sessions", "--tmp--", "session-big")
+        os.makedirs(session_dir)
+        plain = os.path.join(self.tmp, "big.jsonl")
+        with open(plain, "w", encoding="utf-8") as handle:
+            handle.write(
+                '{"type":"user/message","seq":1,"time":1790000000,"data":{"content":'
+                '[{"type":"text","text":"' + "x" * 200_000 + '"}]}}\n'
+            )
+        target = os.path.join(session_dir, "session.v3.jsonl.zstd")
+        _compress_zstd(plain, target)
+        self.assertLess(os.path.getsize(target), 5_000)
+        with ObservatoryStore(self.db) as store:
+            run = self.collect(store, max_source_bytes=1_000)
+            reason = self.statuses(store)["session.v3.jsonl.zstd"][1]
+            self.assertEqual(store.event_count(), 0)
+        self.assertEqual(run.by_status, {"deferred": 1})
+        self.assertIn("per-source cap", reason)
+
     def test_kill_switch_file_and_env_stop_collection(self):
         self.claude_source()
         with ObservatoryStore(self.db) as store:
@@ -289,6 +352,14 @@ class CollectTests(CollectorTestCase):
                 self.assertTrue(acquired)
                 run = self.collect(store)
         self.assertEqual(run.status, "locked")
+
+    def test_advisory_lock_keys_on_realpath_not_the_symlink_spelling(self):
+        link = os.path.join(self.tmp, "obs-link.db")
+        os.symlink(self.db, link)
+        with _collector_lock(link) as first:
+            self.assertTrue(first)
+            with _collector_lock(self.db) as second:
+                self.assertFalse(second)
 
     def test_config_validation(self):
         with self.assertRaises(ObservatoryError):
@@ -413,6 +484,41 @@ class QueueTests(CollectorTestCase):
         self.assertEqual(result.status, "stopped")
         self.assertEqual(self.queue()[0]["last_failure_class"], "transport_error")
 
+    def test_transport_error_charges_an_attempt_and_parks_after_max(self):
+        result, _ = self.drain([("raise", None)], max_attempts=1, retry_backoff_seconds=0)
+        self.assertEqual(result.status, "stopped")
+        item = self.queue()[0]
+        self.assertEqual(item["status"], "unknown")
+        self.assertEqual(item["attempts"], 1)
+        self.assertEqual(item["last_failure_class"], "transport_error")
+
+    def test_overlapping_drain_is_locked_out(self):
+        with _drain_lock(self.db) as acquired:
+            self.assertTrue(acquired)
+            result, calls = self.drain([("classified", None)])
+        self.assertEqual(result.status, "locked")
+        self.assertEqual(calls, [])
+        self.assertEqual(self.queue()[0]["status"], "pending")
+
+    def test_drain_request_byte_cap_is_charged_not_raised(self):
+        from agent_observatory.jev import REQUEST_BYTE_CAP
+
+        def oversized(store, key):
+            return {"state_kind": "session_metadata", "padding": "x" * (REQUEST_BYTE_CAP + 1)}
+
+        result, calls = self.drain(
+            [("classified", None)],
+            state_builder=oversized,
+            max_attempts=2,
+            retry_backoff_seconds=10,
+        )
+        self.assertEqual(calls, [])
+        item = self.queue()[0]
+        self.assertEqual(item["status"], "pending")
+        self.assertEqual(item["attempts"], 1)
+        self.assertEqual(item["last_failure_class"], "request_byte_cap")
+        self.assertEqual(result.retry_scheduled, 1)
+
     def test_changed_session_supersedes_stale_item(self):
         path = os.path.join(self.claude_dir, "sess.jsonl")
         with open(path, "a", encoding="utf-8") as handle:
@@ -485,6 +591,14 @@ class StatusAndCliTests(CollectorTestCase):
         code, out, _ = self.run_cli(*base, "--watch", "--interval", "0.01", "--iterations", "2")
         self.assertEqual(code, 0)
         self.assertEqual(out.count('"status": "ok"'), 2)
+
+    def test_cli_collect_defaults_max_source_bytes(self):
+        from agent_observatory.cli import build_parser
+
+        args = build_parser().parse_args(
+            ["collect", "--db", self.db, "--root", self.root, "--city", "c", "--host", "h"]
+        )
+        self.assertEqual(args.max_source_bytes, DEFAULT_MAX_SOURCE_BYTES)
 
     def test_cli_queue_drain_requires_request_ceiling(self):
         code, _, err = self.run_cli("queue-drain", "--db", self.db)
