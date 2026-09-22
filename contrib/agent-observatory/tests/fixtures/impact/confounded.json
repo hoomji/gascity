@@ -1,0 +1,2129 @@
+{
+  "evidence": {
+    "design": "observational"
+  },
+  "generated_by": "fixture/confounded",
+  "schema_version": "1.0",
+  "work_items": [
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:41Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-01-1",
+          "ended_at": "2026-09-10T00:00:41Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-01",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:42Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-02-1",
+          "ended_at": "2026-09-10T00:00:42Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-02",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:40Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-03-1",
+          "ended_at": "2026-09-10T00:00:40Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-03",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:41Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-04-1",
+          "ended_at": "2026-09-10T00:00:41Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-04",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:42Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-05-1",
+          "ended_at": "2026-09-10T00:00:42Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-05",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:40Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-06-1",
+          "ended_at": "2026-09-10T00:00:40Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-06",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:41Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-07-1",
+          "ended_at": "2026-09-10T00:00:41Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-07",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:42Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-08-1",
+          "ended_at": "2026-09-10T00:00:42Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-08",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:40Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-09-1",
+          "ended_at": "2026-09-10T00:00:40Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-09",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:41Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-10-1",
+          "ended_at": "2026-09-10T00:00:41Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-10",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:42Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-11-1",
+          "ended_at": "2026-09-10T00:00:42Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-11",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:40Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-12-1",
+          "ended_at": "2026-09-10T00:00:40Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-12",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:41Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-13-1",
+          "ended_at": "2026-09-10T00:00:41Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-13",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:42Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-14-1",
+          "ended_at": "2026-09-10T00:00:42Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-14",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:40Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-15-1",
+          "ended_at": "2026-09-10T00:00:40Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-15",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:41Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-16-1",
+          "ended_at": "2026-09-10T00:00:41Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-16",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:42Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-17-1",
+          "ended_at": "2026-09-10T00:00:42Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-17",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:40Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-18-1",
+          "ended_at": "2026-09-10T00:00:40Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-18",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:41Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-19-1",
+          "ended_at": "2026-09-10T00:00:41Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-19",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:00:42Z",
+      "attempts": [
+        {
+          "attempt_id": "a-treatment-20-1",
+          "ended_at": "2026-09-10T00:00:42Z",
+          "first_pass": true,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 1000.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 0,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "low",
+      "cache_state": "warm",
+      "cohort": "treatment",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": true,
+        "regression": false,
+        "reopened": false,
+        "reverted": false,
+        "review_rounds": 0,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "small",
+      "task_class": "bugfix",
+      "work_item_id": "treatment-20",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:59Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-101-1",
+          "ended_at": "2026-09-10T00:01:59Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-101",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:02:00Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-102-1",
+          "ended_at": "2026-09-10T00:02:00Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-102",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:58Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-103-1",
+          "ended_at": "2026-09-10T00:01:58Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-103",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:59Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-104-1",
+          "ended_at": "2026-09-10T00:01:59Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-104",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:02:00Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-105-1",
+          "ended_at": "2026-09-10T00:02:00Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-105",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:58Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-106-1",
+          "ended_at": "2026-09-10T00:01:58Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-106",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:59Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-107-1",
+          "ended_at": "2026-09-10T00:01:59Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-107",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:02:00Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-108-1",
+          "ended_at": "2026-09-10T00:02:00Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-108",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:58Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-109-1",
+          "ended_at": "2026-09-10T00:01:58Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-109",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:59Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-110-1",
+          "ended_at": "2026-09-10T00:01:59Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-110",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:02:00Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-111-1",
+          "ended_at": "2026-09-10T00:02:00Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-111",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:58Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-112-1",
+          "ended_at": "2026-09-10T00:01:58Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-112",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:59Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-113-1",
+          "ended_at": "2026-09-10T00:01:59Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-113",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:02:00Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-114-1",
+          "ended_at": "2026-09-10T00:02:00Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-114",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:58Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-115-1",
+          "ended_at": "2026-09-10T00:01:58Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-115",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:59Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-116-1",
+          "ended_at": "2026-09-10T00:01:59Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-116",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:02:00Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-117-1",
+          "ended_at": "2026-09-10T00:02:00Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-117",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:58Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-118-1",
+          "ended_at": "2026-09-10T00:01:58Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-118",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:01:59Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-119-1",
+          "ended_at": "2026-09-10T00:01:59Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-119",
+      "workload": "unit"
+    },
+    {
+      "acceptance_kind": "merge",
+      "accepted_at": "2026-09-10T00:02:00Z",
+      "attempts": [
+        {
+          "attempt_id": "a-control-120-1",
+          "ended_at": "2026-09-10T00:02:00Z",
+          "first_pass": false,
+          "kind": "execute",
+          "phase": "active",
+          "price": {
+            "input_per_million_usd": 2500.0,
+            "output_per_million_usd": 100.0
+          },
+          "review_rounds": 1,
+          "started_at": "2026-09-10T00:00:00Z",
+          "tests_executed": 12,
+          "tests_skipped": 0,
+          "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "verification_scope": "unit"
+        }
+      ],
+      "baseline_complexity": "high",
+      "cache_state": "cold",
+      "cohort": "control",
+      "concurrency": "1",
+      "effort": "high",
+      "harness": "fleet",
+      "host": "ryzen",
+      "intervention_id": "change-1",
+      "model": "deepseek-flash",
+      "outcome": "accepted",
+      "provider": "dsh",
+      "quality": {
+        "first_pass_verified": false,
+        "regression": true,
+        "reopened": true,
+        "reverted": false,
+        "review_rounds": 1,
+        "tests_executed": 12,
+        "tests_skipped": 0,
+        "verification_scope": "unit"
+      },
+      "ready_at": "2026-09-10T00:00:00Z",
+      "repo": "gas",
+      "scope": "large",
+      "task_class": "feature",
+      "work_item_id": "control-120",
+      "workload": "unit"
+    }
+  ]
+}

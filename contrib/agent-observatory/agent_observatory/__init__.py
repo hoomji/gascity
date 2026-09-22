@@ -16,7 +16,7 @@ Beads and events remain the authoritative record; the SQLite file is only a
 derived analytical projection.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from .annotations import GoldEpisode, GoldSet, load_gold_set
 from .changes import (
@@ -34,6 +34,7 @@ from .errors import (
     ContractError,
     EpisodeError,
     EvaluationError,
+    ImpactError,
     ImportConflictError,
     LabelConflictError,
     ObservatoryError,
@@ -61,6 +62,16 @@ from .exposure import (
     build_ledger,
     evaluate_change,
     session_evidence_from_store,
+)
+from .impact import (
+    ATTRIBUTION_GRADES,
+    IMPACT_BUNDLE_VERSION,
+    ImpactConfig,
+    ImpactDataset,
+    build_impact_report,
+    load_impact_bundle,
+    normalize_impact_bundle,
+    observed_evidence_from_store,
 )
 from .jev import (
     REQUEST_BYTE_CAP,
@@ -113,11 +124,20 @@ __all__ = [
     "build_ledger",
     "evaluate_change",
     "session_evidence_from_store",
+    "ATTRIBUTION_GRADES",
+    "IMPACT_BUNDLE_VERSION",
+    "ImpactConfig",
+    "ImpactDataset",
+    "build_impact_report",
+    "load_impact_bundle",
+    "normalize_impact_bundle",
+    "observed_evidence_from_store",
     "ObservatoryError",
     "AnnotationError",
     "ContractError",
     "EpisodeError",
     "EvaluationError",
+    "ImpactError",
     "ImportConflictError",
     "LabelConflictError",
     "RegistryError",

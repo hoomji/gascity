@@ -55,6 +55,15 @@ from .inventory import (
     manifest_json,
     records_to_jsonl,
 )
+from .impact import (
+    DEFAULT_MATCH_ON,
+    ImpactConfig,
+    ImpactDataset,
+    build_impact_report,
+    file_sha256,
+    load_impact_bundle,
+    observed_evidence_from_store,
+)
 from .jev import REQUEST_BYTE_CAP, build_request, import_response, persist_request
 from .report import build_report
 from .store import ObservatoryStore
@@ -567,6 +576,63 @@ def _cmd_exposure(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_impact(args: argparse.Namespace) -> int:
+    """Build an accepted-task impact report from an explicit bundle and/or a projection.
+
+    ``--input`` supplies the work items, cohort assignment and classifier
+    overhead. ``--db`` adds descriptive real-projection evidence and never
+    fabricates acceptance or cohort evidence the projection does not carry.
+    """
+    if not args.input and not args.db:
+        raise ObservatoryError("impact requires --input BUNDLE.json and/or --db DB")
+
+    if args.input:
+        dataset = load_impact_bundle(args.input)
+    else:
+        dataset = ImpactDataset(
+            work_items=(),
+            classifier_overhead=(),
+            evidence={},
+            match_on=DEFAULT_MATCH_ON,
+            bundle_schema_version=None,
+            generated_by=f"agent-observatory/{__version__}",
+        )
+
+    observed = None
+    if args.db:
+        with _open_store(args.db) as store:
+            observed = observed_evidence_from_store(
+                store,
+                source_label=Path(args.db).name,
+                source_hash=file_sha256(args.db),
+            )
+
+    config = ImpactConfig(
+        primary_outcome=args.primary_outcome,
+        bootstrap_resamples=args.bootstrap_resamples,
+    )
+    report = build_impact_report(dataset, config, observed_evidence=observed)
+    _write_output(report_json(report), args.out)
+    attribution = report["attribution"]
+    print(
+        json.dumps(
+            {
+                "eligible": report["accepted_tasks"]["eligible"],
+                "accepted": report["accepted_tasks"]["accepted"],
+                "censored": report["accepted_tasks"]["censored"],
+                "attribution_grade": attribution["grade"],
+                "conclusion": attribution["conclusion"],
+                "confounded": attribution["confounded"],
+                "report_hash": report["report_hash"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _cmd_evaluate(args: argparse.Namespace) -> int:
     taxonomy = load_taxonomy(args.taxonomy)
     gold_set = load_gold_set(args.gold, taxonomy)
@@ -872,6 +938,27 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument("--calibration-bins", type=int, default=5, help="reliability bin count")
     evaluate_parser.add_argument("--out", default=None, help="write the evaluation report to this path")
     evaluate_parser.set_defaults(func=_cmd_evaluate)
+
+    impact_parser = subparsers.add_parser(
+        "impact",
+        help="accepted-task impact report from an explicit bundle and/or a projection (M6)",
+    )
+    impact_parser.add_argument("--db", default=None, help="SQLite projection path (read-only evidence)")
+    impact_parser.add_argument(
+        "--input",
+        default=None,
+        help="explicit versioned impact bundle JSON (work items, cohorts, classifier overhead)",
+    )
+    impact_parser.add_argument(
+        "--primary-outcome",
+        default="time_to_accepted_seconds",
+        help="outcome whose matched effect drives the conclusion",
+    )
+    impact_parser.add_argument(
+        "--bootstrap-resamples", type=int, default=2000, help="deterministic bootstrap resamples"
+    )
+    impact_parser.add_argument("--out", default=None, help="write the impact report to this path")
+    impact_parser.set_defaults(func=_cmd_impact)
 
     episodes_parser = subparsers.add_parser(
         "episodes",

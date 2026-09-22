@@ -88,3 +88,12 @@ class RegistryConflictError(RegistryError):
     Changes and their activation records are append-only evidence: importing the
     same identity with different content is a conflict, not an update.
     """
+
+
+class ImpactError(ObservatoryError):
+    """An accepted-task impact bundle or report request is missing or malformed.
+
+    The impact input is an explicit, versioned JSON bundle (see
+    :mod:`agent_observatory.impact`); the report never fabricates an accepted
+    task, a baseline, a price or a matched control.
+    """
