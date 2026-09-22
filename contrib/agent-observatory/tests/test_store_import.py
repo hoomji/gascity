@@ -15,7 +15,6 @@ except ImportError:  # pragma: no cover
 
 from agent_observatory.errors import (
     ContractError,
-    ImportConflictError,
     LabelConflictError,
     SchemaVersionError,
 )
@@ -92,7 +91,7 @@ class StoreImportTest(unittest.TestCase):
             store.import_jsonl(path)
             self.assertEqual(store.event_count(), 3)
 
-    def test_conflicting_event_identity_aborts_the_whole_file(self):
+    def test_conflicting_event_identity_is_skipped_at_record_level(self):
         path = self._write(
             "conflict.jsonl",
             [
@@ -102,11 +101,19 @@ class StoreImportTest(unittest.TestCase):
             ],
         )
         with ObservatoryStore(self.db_path) as store:
-            with self.assertRaises(ImportConflictError):
-                store.import_jsonl(path)
-            self.assertEqual(store.event_count(), 0)
+            result = store.import_jsonl(path)
+            self.assertEqual(result.inserted, 2)
+            self.assertEqual(result.duplicates, 0)
+            self.assertEqual(result.skipped_conflicts, 1)
+            self.assertEqual(len(result.notes), 1)
+            self.assertIn("e1", result.notes[0])
+            self.assertIn(":3", result.notes[0])
+            self.assertEqual(store.event_count(), 2)
+            # The first occurrence wins; the conflicting payload is never stored.
+            event = store.get_event(("city-a", "host-a", "codex", "session-1", "e1"))
+            self.assertEqual(event["command"], "ls")
 
-    def test_conflict_across_files_preserves_earlier_commit_and_rolls_back_file(self):
+    def test_conflict_across_files_skips_only_the_conflicting_record(self):
         first = self._write("first.jsonl", [support.make_record(event_id="e1", command="ls")])
         second = self._write(
             "second.jsonl",
@@ -117,10 +124,14 @@ class StoreImportTest(unittest.TestCase):
         )
         with ObservatoryStore(self.db_path) as store:
             store.import_jsonl(first)
-            with self.assertRaises(ImportConflictError):
-                store.import_jsonl(second)
-            self.assertEqual(store.event_count(), 1)
-            self.assertIsNone(store.get_event(("city-a", "host-a", "codex", "session-1", "e9")))
+            result = store.import_jsonl(second)
+            self.assertEqual(result.inserted, 1)
+            self.assertEqual(result.skipped_conflicts, 1)
+            self.assertEqual(len(result.notes), 1)
+            self.assertEqual(store.event_count(), 2)
+            self.assertIsNotNone(store.get_event(("city-a", "host-a", "codex", "session-1", "e9")))
+            unchanged = store.get_event(("city-a", "host-a", "codex", "session-1", "e1"))
+            self.assertEqual(unchanged["command"], "ls")
 
     def test_truncated_input_reports_line_and_commits_nothing(self):
         path = os.path.join(self.tmp.name, "truncated.jsonl")

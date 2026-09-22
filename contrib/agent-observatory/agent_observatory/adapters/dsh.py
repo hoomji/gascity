@@ -14,6 +14,7 @@ example ``deepseek/deepseek-flash``), not the provider field.
 from __future__ import annotations
 
 import io
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -28,7 +29,9 @@ from .base import (
     TitleRevision,
     extract_command,
     fallback_event_id,
-    iso_from_epoch_millis,
+    is_number,
+    iso_from_epoch,
+    number_or_none,
     split_jsonl,
 )
 from .redaction import elide_large_text, redact_and_bound, redact_text
@@ -50,6 +53,50 @@ _META_TYPES = frozenset(
     }
 )
 
+# Record types only dsh emits. Used to content-check an uncompressed file that
+# happens to live under a ``.dsh/sessions`` layout before calling it a
+# transcript, so an unrelated JSONL file is not silently misclassified.
+_DSH_SIGNATURE_TYPES = _META_TYPES | frozenset(
+    {
+        "session",
+        "session/title",
+        "assistant/message",
+        "user/message",
+        "system/message",
+        "tool/call",
+        "tool/result",
+    }
+)
+
+# How much of an uncompressed candidate to scan for a dsh record signature.
+_DSH_SIGNATURE_BYTES = 65536
+
+
+def _looks_like_dsh_transcript(path: Path) -> bool:
+    """Return whether *path* begins with a recognizable dsh record.
+
+    Detection cannot rely on the directory layout alone: ``.dsh/sessions`` can
+    contain logs, notes and other JSONL that are not transcripts. Reading a
+    bounded prefix and looking for a dsh ``type`` keeps discovery honest.
+    """
+
+    try:
+        with open(path, "rb") as handle:
+            prefix = handle.read(_DSH_SIGNATURE_BYTES)
+    except OSError:
+        return False
+    for raw_line in prefix.split(b"\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            decoded = json.loads(line.decode("utf-8", "replace"))
+        except ValueError:
+            continue
+        if isinstance(decoded, dict) and decoded.get("type") in _DSH_SIGNATURE_TYPES:
+            return True
+    return False
+
 
 class DshAdapter(SourceAdapter):
     """Read-only adapter for compressed dsh session transcripts."""
@@ -58,13 +105,22 @@ class DshAdapter(SourceAdapter):
     adapter_version = "1.0.0"
 
     def detect(self, source_path: str) -> bool:
-        name = Path(source_path).name
-        if name.endswith(".zstd") and "session.v3.jsonl" in name:
-            return True
-        parts = Path(source_path).parts
-        return ".dsh" in parts and "sessions" in parts
+        path = Path(source_path)
+        name = path.name
+        if name.endswith(".zstd"):
+            # Compressed content cannot be sniffed without decompressing; the
+            # session filename is the only signal available.
+            return "session.v3.jsonl" in name
+        parts = path.parts
+        if ".dsh" not in parts or "sessions" not in parts or not name.endswith(".jsonl"):
+            return False
+        return _looks_like_dsh_transcript(path)
 
     def decompress(self, raw: bytes, source_path: str) -> bytes:
+        if not Path(source_path).name.endswith(".zstd"):
+            # An uncompressed session file is already logical content; the base
+            # contract is identity here. Only ``*.zstd`` names carry a stream.
+            return raw
         try:
             import zstandard  # type: ignore[import-not-found]
         except ImportError:
@@ -117,7 +173,7 @@ class DshAdapter(SourceAdapter):
             line_count=len(decoded),
         )
         model: str | None = None
-        call_times: dict[str, int] = {}
+        call_times: dict[str, float] = {}
 
         for line_number, obj in decoded:
             if not isinstance(obj, dict):
@@ -215,7 +271,7 @@ class DshAdapter(SourceAdapter):
             TitleRevision(
                 title=redact_text(title),
                 position=line_number,
-                observed_timestamp=iso_from_epoch_millis(obj.get("time")),
+                observed_timestamp=iso_from_epoch(obj.get("time")),
                 source="session/title",
             )
         )
@@ -230,13 +286,16 @@ class DshAdapter(SourceAdapter):
         model: str | None,
         result: AdapterResult,
     ) -> None:
-        timestamp = iso_from_epoch_millis(obj.get("time"))
+        timestamp = iso_from_epoch(obj.get("time"))
         if timestamp is None:
             result.note_skip("no_timestamp")
             return
         message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
         message_id = message.get("id") if isinstance(message.get("id"), str) else None
-        usage = _dsh_usage(payload.get("usage"))
+        raw_usage = payload.get("usage")
+        usage = _dsh_usage(raw_usage)
+        if isinstance(raw_usage, dict) and usage is None:
+            result.note_skip("usage_unmapped")
         seq = obj.get("seq")
         pending: list[dict[str, Any]] = []
 
@@ -270,17 +329,22 @@ class DshAdapter(SourceAdapter):
             else:
                 result.note_skip(f"block:{block_type}")
 
-        if not pending and usage is not None and isinstance(seq, int):
-            pending.append(
-                self._record(
-                    context,
-                    result,
-                    event_id=f"seq:{seq}",
-                    timestamp=timestamp,
-                    kind="assistant_message",
-                    model=model,
+        if not pending and usage is not None:
+            if isinstance(seq, int) and not isinstance(seq, bool):
+                pending.append(
+                    self._record(
+                        context,
+                        result,
+                        event_id=f"seq:{seq}",
+                        timestamp=timestamp,
+                        kind="assistant_message",
+                        model=model,
+                    )
                 )
-            )
+            else:
+                # The record reports tokens but carries no content and no usable
+                # seq to anchor an assistant_message, so the usage would vanish.
+                result.note_skip("usage_dropped")
         if pending:
             if usage is not None:
                 pending[0]["usage"] = usage
@@ -296,7 +360,7 @@ class DshAdapter(SourceAdapter):
         kind: str,
         result: AdapterResult,
     ) -> None:
-        timestamp = iso_from_epoch_millis(obj.get("time"))
+        timestamp = iso_from_epoch(obj.get("time"))
         if timestamp is None:
             result.note_skip("no_timestamp")
             return
@@ -325,16 +389,17 @@ class DshAdapter(SourceAdapter):
         context: AdapterContext,
         generation: int,
         model: str | None,
-        call_times: dict[str, int],
+        call_times: dict[str, float],
         result: AdapterResult,
     ) -> None:
-        timestamp = iso_from_epoch_millis(obj.get("time"))
+        timestamp = iso_from_epoch(obj.get("time"))
         if timestamp is None:
             result.note_skip("no_timestamp")
             return
         call_id = payload.get("callId") if isinstance(payload.get("callId"), str) else None
-        if call_id and isinstance(obj.get("time"), int):
-            call_times[call_id] = obj["time"]
+        call_time = obj.get("time")
+        if call_id and is_number(call_time):
+            call_times[call_id] = call_time
         seq = obj.get("seq")
         event_id = f"seq:{seq}" if isinstance(seq, int) else fallback_event_id(self.provider, generation, line_number, "tool_call", payload)
         tool_name = payload.get("name") if isinstance(payload.get("name"), str) else None
@@ -362,10 +427,10 @@ class DshAdapter(SourceAdapter):
         line_number: int,
         context: AdapterContext,
         generation: int,
-        call_times: dict[str, int],
+        call_times: dict[str, float],
         result: AdapterResult,
     ) -> None:
-        timestamp = iso_from_epoch_millis(obj.get("time"))
+        timestamp = iso_from_epoch(obj.get("time"))
         if timestamp is None:
             result.note_skip("no_timestamp")
             return
@@ -377,10 +442,17 @@ class DshAdapter(SourceAdapter):
                 call_id = source["callId"]
         text = _tool_result_text(message)
         duration_ms = None
-        if call_id and isinstance(obj.get("time"), int) and call_id in call_times:
-            delta = obj["time"] - call_times[call_id]
+        result_time = obj.get("time")
+        if call_id is None or not is_number(result_time) or call_id not in call_times:
+            # A result without a matching prior call has no duration to report;
+            # flag it explicitly instead of leaving None as the only signal.
+            result.note_skip("tool_result_unpaired")
+        else:
+            delta = result_time - call_times[call_id]
             if delta >= 0:
-                duration_ms = delta
+                # ``duration_ms`` is an integer field in the normalized contract;
+                # a fractional source clock is truncated, never emitted as float.
+                duration_ms = int(delta)
         seq = obj.get("seq")
         event_id = f"seq:{seq}" if isinstance(seq, int) else fallback_event_id(self.provider, generation, line_number, "tool_result", payload)
         result.records.append(
@@ -417,15 +489,15 @@ def _header_model(payload: dict[str, Any]) -> str | None:
     return None
 
 
-def _dsh_usage(usage: Any) -> dict[str, int | None] | None:
+def _dsh_usage(usage: Any) -> dict[str, int | float | None] | None:
     if not isinstance(usage, dict):
         return None
     mapped = {
-        "input_tokens": _int_or_none(usage.get("inputTokens")),
-        "output_tokens": _int_or_none(usage.get("outputTokens")),
-        "cache_read_tokens": _int_or_none(usage.get("cacheReadTokens")),
-        "cache_write_tokens": _int_or_none(usage.get("cacheWriteTokens")),
-        "total_tokens": _int_or_none(usage.get("totalTokens")),
+        "input_tokens": number_or_none(usage.get("inputTokens")),
+        "output_tokens": number_or_none(usage.get("outputTokens")),
+        "cache_read_tokens": number_or_none(usage.get("cacheReadTokens")),
+        "cache_write_tokens": number_or_none(usage.get("cacheWriteTokens")),
+        "total_tokens": number_or_none(usage.get("totalTokens")),
     }
     if all(value is None for value in mapped.values()):
         return None
@@ -469,9 +541,3 @@ def _tool_result_text(message: dict[str, Any]) -> str:
             if text:
                 parts.append(text)
     return "\n".join(parts)
-
-
-def _int_or_none(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value

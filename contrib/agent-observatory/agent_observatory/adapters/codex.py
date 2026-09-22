@@ -26,6 +26,7 @@ from .base import (
     SourceAdapter,
     extract_command,
     fallback_event_id,
+    number_or_none,
     split_jsonl,
 )
 from .redaction import elide_large_text, redact_and_bound
@@ -378,7 +379,7 @@ def _duration_ms(start: str | None, end: str | None) -> int | None:
     return int(delta)
 
 
-def _codex_usage(info: Any) -> dict[str, int | None] | None:
+def _codex_usage(info: Any) -> dict[str, int | float | None] | None:
     if not isinstance(info, dict):
         return None
     selected = info.get("last_token_usage")
@@ -387,18 +388,12 @@ def _codex_usage(info: Any) -> dict[str, int | None] | None:
     if not isinstance(selected, dict):
         return None
     usage = {
-        "input_tokens": _int_or_none(selected.get("input_tokens")),
-        "output_tokens": _int_or_none(selected.get("output_tokens")),
-        "cache_read_tokens": _int_or_none(selected.get("cached_input_tokens")),
-        "cache_write_tokens": _int_or_none(selected.get("cache_write_input_tokens")),
-        "total_tokens": _int_or_none(selected.get("total_tokens")),
+        "input_tokens": number_or_none(selected.get("input_tokens")),
+        "output_tokens": number_or_none(selected.get("output_tokens")),
+        "cache_read_tokens": number_or_none(selected.get("cached_input_tokens")),
+        "cache_write_tokens": number_or_none(selected.get("cache_write_input_tokens")),
+        "total_tokens": number_or_none(selected.get("total_tokens")),
     }
     if all(value is None for value in usage.values()):
         return None
     return usage
-
-
-def _int_or_none(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value

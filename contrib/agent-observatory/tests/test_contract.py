@@ -96,6 +96,22 @@ class ContractTest(unittest.TestCase):
         with self.assertRaises(ContractError):
             validate_record(raw)
 
+    def test_float_usage_values_are_kept(self):
+        raw = support.make_record(usage={"input_tokens": 10.5, "total_tokens": 10.5})
+        normalized = validate_record(raw)
+        self.assertEqual(normalized["usage"]["input_tokens"], 10.5)
+        self.assertEqual(normalized["usage"]["total_tokens"], 10.5)
+
+    def test_negative_float_usage_is_rejected(self):
+        raw = support.make_record(usage={"input_tokens": -0.5})
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
+    def test_boolean_usage_is_rejected(self):
+        raw = support.make_record(usage={"input_tokens": True})
+        with self.assertRaises(ContractError):
+            validate_record(raw)
+
     def test_identity_ignores_title_and_text(self):
         first = validate_record(support.make_record(title="alpha", text="one"))
         second = validate_record(support.make_record(title="beta", text="two"))

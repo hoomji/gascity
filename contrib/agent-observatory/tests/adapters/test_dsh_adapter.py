@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -34,6 +35,156 @@ class DshAdapterTest(unittest.TestCase):
             source_path=source_path or self.source,
             source_sha256=sha256_bytes(self.data),
         )
+
+    def _parse_bytes(self, lines, name="session.v3.jsonl"):
+        data = ("\n".join(json.dumps(line) for line in lines) + "\n").encode("utf-8")
+        source_path = os.path.join(self.tmp.name, ".dsh", "sessions", "--tmp--", name)
+        return DshAdapter().parse(
+            data,
+            context=support.CONTEXT,
+            generation=1,
+            source_path=source_path,
+            source_sha256=sha256_bytes(data),
+        )
+
+    def test_epoch_second_timestamp_is_not_misread_as_1970(self):
+        result = self._parse_bytes(
+            [
+                {
+                    "type": "user/message",
+                    "seq": 1,
+                    "time": 1790000000,  # epoch seconds, not milliseconds
+                    "data": {"content": [{"type": "text", "text": "hello"}]},
+                }
+            ]
+        )
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0]["timestamp"][:4], "2026", result.records[0]["timestamp"])
+
+    def test_float_usage_values_are_kept(self):
+        result = self._parse_bytes(
+            [
+                {
+                    "type": "assistant/message",
+                    "seq": 7,
+                    "time": 1789000001000.0,
+                    "data": {
+                        "message": {
+                            "role": "assistant",
+                            "id": "m-float",
+                            "content": [{"type": "text", "text": "fractional tokens"}],
+                        },
+                        "usage": {"inputTokens": 100.5, "outputTokens": 2.25},
+                    },
+                }
+            ]
+        )
+        record = next(record for record in result.records if record.get("usage"))
+        self.assertEqual(record["usage"]["input_tokens"], 100.5)
+        self.assertEqual(record["usage"]["output_tokens"], 2.25)
+
+    def test_usage_without_an_emitted_record_is_flagged(self):
+        result = self._parse_bytes(
+            [
+                {
+                    "type": "assistant/message",
+                    # No seq => no assistant_message anchor for a content-less record.
+                    "time": 1789000001000,
+                    "data": {
+                        "message": {
+                            "role": "assistant",
+                            "id": "m-reasoning",
+                            "content": [{"type": "reasoning", "text": "private"}],
+                        },
+                        "usage": {"inputTokens": 5, "outputTokens": 1},
+                    },
+                }
+            ]
+        )
+        self.assertEqual(result.skipped.get("usage_dropped"), 1)
+        self.assertFalse(any(record.get("usage") for record in result.records))
+
+    def test_unpaired_tool_result_is_flagged(self):
+        result = self._parse_bytes(
+            [
+                {
+                    "type": "tool/result",
+                    "seq": 9,
+                    "time": 1789000003001,
+                    "data": {
+                        "message": {
+                            "source": {"kind": "tool", "callId": "call-orphan"},
+                            "content": [
+                                {
+                                    "type": "tool-result",
+                                    "toolCallId": "call-orphan",
+                                    "content": [{"type": "text", "text": "orphan output"}],
+                                }
+                            ],
+                        }
+                    },
+                }
+            ]
+        )
+        self.assertEqual(result.skipped.get("tool_result_unpaired"), 1)
+        record = next(record for record in result.records if record["kind"] == "tool_result")
+        self.assertIsNone(record["duration_ms"])
+
+    def test_paired_tool_result_is_not_flagged(self):
+        result = self._parse()
+        self.assertIsNone(result.skipped.get("tool_result_unpaired"))
+
+    def test_detect_requires_content_signature_for_uncompressed(self):
+        adapter = DshAdapter()
+        session_dir = os.path.join(self.tmp.name, ".dsh", "sessions", "--tmp--", "session-x")
+        os.makedirs(session_dir, exist_ok=True)
+        transcript = os.path.join(session_dir, "session.v3.jsonl")
+        with open(transcript, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"type": "session", "version": 3, "id": "s"}) + "\n")
+        self.assertTrue(adapter.detect(transcript))
+
+        notes = os.path.join(session_dir, "notes.jsonl")
+        with open(notes, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"note": "not a dsh transcript"}) + "\n")
+        self.assertFalse(adapter.detect(notes))
+
+    def test_detect_rejects_non_jsonl_under_dsh_layout(self):
+        path = os.path.join(self.tmp.name, ".dsh", "sessions", "--tmp--", "README.md")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("just notes")
+        self.assertFalse(DshAdapter().detect(path))
+
+    def test_uncompressed_session_round_trips_through_read_source(self):
+        session_dir = os.path.join(self.tmp.name, ".dsh", "sessions", "--tmp--", "session-u")
+        os.makedirs(session_dir, exist_ok=True)
+        path = os.path.join(session_dir, "session.v3.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"type": "session", "version": 3, "id": "session-dsh-u"}) + "\n")
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "assistant/message",
+                        "seq": 1,
+                        "time": 1790000000,  # epoch seconds
+                        "data": {
+                            "message": {
+                                "role": "assistant",
+                                "id": "m-u",
+                                "content": [{"type": "text", "text": "uncompressed"}],
+                            },
+                            "usage": {"inputTokens": 100.5},
+                        },
+                    }
+                )
+                + "\n"
+            )
+        # Provider is auto-detected from the content signature, then read as-is.
+        result = read_source(path, context=support.CONTEXT)
+        self.assertEqual(result.session_id, "session-dsh-u")
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0]["timestamp"][:4], "2026")
+        self.assertEqual(result.records[0]["usage"]["input_tokens"], 100.5)
 
     def test_detects_dsh_layout(self):
         adapter = adapter_for_path(
