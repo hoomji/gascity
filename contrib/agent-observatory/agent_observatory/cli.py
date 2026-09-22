@@ -8,13 +8,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
+from .adapters import AdapterContext, read_source
 from .canonical import sha256_bytes
 from .errors import ObservatoryError
+from .inventory import (
+    SourceRoot,
+    build_manifest,
+    discover_sources,
+    load_manifest,
+    manifest_json,
+    records_to_jsonl,
+)
 from .jev import REQUEST_BYTE_CAP, build_request, import_response, persist_request
 from .report import build_report
 from .store import ObservatoryStore
@@ -185,6 +196,101 @@ def _cmd_import_response(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_inventory(args: argparse.Namespace) -> int:
+    roots = [SourceRoot(path=root, provider=args.provider) for root in args.root]
+    previous = load_manifest(args.previous) if args.previous else None
+    manifest = build_manifest(
+        roots,
+        city_id=args.city,
+        host_id=args.host,
+        repo=args.repo,
+        previous=previous,
+    )
+    _write_output(manifest_json(manifest), args.out)
+    print(
+        json.dumps(
+            {
+                "sources": manifest["totals"]["sources"],
+                "events": manifest["totals"]["events"],
+                "sessions": manifest["totals"]["sessions"],
+                "unsupported_providers": manifest["totals"]["unsupported_providers"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    context = AdapterContext(city_id=args.city, host_id=args.host, repo=args.repo)
+    inputs: list[str] = list(args.input or [])
+    if args.root:
+        sources, _unsupported = discover_sources(
+            [SourceRoot(path=root, provider=args.provider) for root in args.root]
+        )
+        inputs.extend(source.path for source in sources)
+    if not inputs:
+        raise ObservatoryError("export requires at least one --input or --root")
+
+    payloads = []
+    summaries = []
+    for source in inputs:
+        result = read_source(source, context=context, provider=args.provider, generation=args.generation)
+        payloads.append(records_to_jsonl(result.records))
+        summaries.append(
+            {
+                "source": str(source),
+                "session_id": result.session_id,
+                "parent_session_id": result.parent_session_id,
+                "records": len(result.records),
+                "partial_trailing_line": result.partial_trailing_line,
+                "errors": result.errors,
+            }
+        )
+    payload = "".join(payloads)
+    inserted: int | None = None
+    duplicate_count: int | None = None
+
+    if args.db:
+        if args.out:
+            import_path = args.out
+            Path(import_path).write_text(payload, encoding="utf-8")
+            with ObservatoryStore(args.db) as store:
+                imported = store.import_jsonl(import_path)
+                inserted, duplicate_count = imported.inserted, imported.duplicates
+        else:
+            handle = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8")
+            try:
+                handle.write(payload)
+                handle.close()
+                with ObservatoryStore(args.db) as store:
+                    imported = store.import_jsonl(handle.name)
+                    inserted, duplicate_count = imported.inserted, imported.duplicates
+            finally:
+                os.unlink(handle.name)
+    elif args.out:
+        Path(args.out).write_text(payload, encoding="utf-8")
+    else:
+        sys.stdout.write(payload)
+
+    print(
+        json.dumps(
+            {
+                "records": sum(item["records"] for item in summaries),
+                "sources": len(summaries),
+                "inserted": inserted,
+                "duplicates": duplicate_count,
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent-observatory",
@@ -223,6 +329,61 @@ def build_parser() -> argparse.ArgumentParser:
     response_parser.add_argument("--response", required=True, help="saved response JSON file")
     response_parser.add_argument("--request-hash", required=True, help="request hash the response answers")
     response_parser.set_defaults(func=_cmd_import_response)
+
+    inventory_parser = subparsers.add_parser(
+        "inventory",
+        help="scan explicit source roots and emit a coverage manifest",
+    )
+    inventory_parser.add_argument(
+        "--root",
+        action="append",
+        required=True,
+        help="explicit transcript root (repeatable; no home-directory crawling)",
+    )
+    inventory_parser.add_argument(
+        "--provider",
+        default=None,
+        help="force one provider instead of detecting it from each path",
+    )
+    inventory_parser.add_argument("--city", required=True, help="city id recorded in the manifest")
+    inventory_parser.add_argument("--host", required=True, help="host id recorded in the manifest")
+    inventory_parser.add_argument("--repo", default=None, help="optional repository scope")
+    inventory_parser.add_argument(
+        "--previous",
+        default=None,
+        help="previous manifest JSON used to detect append vs rewrite generations",
+    )
+    inventory_parser.add_argument("--out", default=None, help="write manifest JSON to this path instead of stdout")
+    inventory_parser.set_defaults(func=_cmd_inventory)
+
+    export_parser = subparsers.add_parser(
+        "export",
+        help="export native provider transcripts as normalized JSONL",
+    )
+    export_parser.add_argument(
+        "--provider",
+        required=True,
+        help="provider adapter to use (claude, codex, dsh)",
+    )
+    export_parser.add_argument(
+        "--input",
+        action="append",
+        default=None,
+        help="explicit transcript file (repeatable)",
+    )
+    export_parser.add_argument(
+        "--root",
+        action="append",
+        default=None,
+        help="explicit root to discover transcripts under (repeatable)",
+    )
+    export_parser.add_argument("--city", required=True, help="city id for emitted records")
+    export_parser.add_argument("--host", required=True, help="host id for emitted records")
+    export_parser.add_argument("--repo", default=None, help="optional repository scope")
+    export_parser.add_argument("--generation", type=int, default=1, help="logical source generation for fallback ids")
+    export_parser.add_argument("--out", default=None, help="write JSONL to this path instead of stdout")
+    export_parser.add_argument("--db", default=None, help="import the exported JSONL into this projection")
+    export_parser.set_defaults(func=_cmd_export)
 
     return parser
 
