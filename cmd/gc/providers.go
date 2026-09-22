@@ -288,22 +288,29 @@ func resolveSessionTransportProvider(ctx sessionProviderContext, sessionBeads *s
 				}
 			}
 		}
+		// Resolve every distinct explicit runtime before binding the router, so
+		// this function keeps the providerledger source-binding shape: one
+		// sessionauto.New binding, routing calls on it, and a single
+		// unconditional return with no early return after the binding (see
+		// providerledger.validateSourceConstructorFlow). The cache is keyed by
+		// runtime name because several sessions may share one backend.
+		remoteProviders := make(map[string]runtime.Provider)
+		for _, rtName := range runtimeRoutes {
+			if _, ok := remoteProviders[rtName]; ok {
+				continue
+			}
+			remoteSP, rErr := buildSessionProviderByName(ctx.cfg, rtName, ctx.sc, ctx.cityName, ctx.cityPath)
+			if rErr != nil {
+				return nil, fmt.Errorf("remote runtime %q: %w", rtName, rErr)
+			}
+			remoteProviders[rtName] = remoteSP
+		}
 		autoSP := sessionauto.New(base, acpSP)
 		for _, sessName := range acpRouteNames {
 			autoSP.RouteACP(sessName)
 		}
-		remoteProviders := make(map[string]runtime.Provider)
 		for sessName, rtName := range runtimeRoutes {
-			remoteSP, ok := remoteProviders[rtName]
-			if !ok {
-				var rErr error
-				remoteSP, rErr = buildSessionProviderByName(ctx.cfg, rtName, ctx.sc, ctx.cityName, ctx.cityPath)
-				if rErr != nil {
-					return nil, fmt.Errorf("remote runtime %q: %w", rtName, rErr)
-				}
-				remoteProviders[rtName] = remoteSP
-			}
-			autoSP.RouteProvider(sessName, remoteSP)
+			autoSP.RouteProvider(sessName, remoteProviders[rtName])
 		}
 		return autoSP, nil
 	}
