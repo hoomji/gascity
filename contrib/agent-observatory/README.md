@@ -438,7 +438,12 @@ join never treats a merge as exposure:
 - anything else is `unknown`. An incomplete commit graph, a session with no
   commit evidence, and an unobserved fingerprint are all ambiguous, never
   success. A pre-merge worktree (commit is an ancestor of the merge) is
-  `unexposed`; a delayed deployment (activation still pending) is `unexposed`.
+  `unexposed`; a delayed deployment (activation still pending) or a session
+  that predates `activated_at` is `unexposed` only while no direct fingerprint
+  contradicts the window. When the session's own fingerprint matches the
+  change, the window and the evidence disagree, so the evidence cannot decide:
+  exposure is `unknown` (`evidence_conflicts_window`), never a silent
+  `unexposed` that under-counts real use.
 
 Each ledger entry carries `baseline` and `price` as `present`/`unknown`, and
 `missingness` counts unknown baselines and prices. They are never synthesized;
