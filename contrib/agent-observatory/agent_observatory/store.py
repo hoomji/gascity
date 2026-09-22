@@ -206,6 +206,18 @@ def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"non-finite JSON constant {value!r} is not allowed")
 
 
+def _split_jsonl_lines(text: str) -> list[str]:
+    """Split JSONL text on ``"\\n"`` only, stripping a trailing ``"\\r"``.
+
+    ``str.splitlines()`` also breaks on U+2028, U+2029 and U+0085, which are
+    legal unescaped inside JSON strings (RFC 8259). Splitting on those would
+    tear one valid JSON object into several undecodable fragments, so JSONL
+    framing must follow the physical newline only. A CRLF file still yields
+    clean lines because the trailing carriage return is removed.
+    """
+    return [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
+
+
 class ObservatoryStore:
     """A rebuildable analytical projection over normalized observatory JSONL."""
 
@@ -297,7 +309,7 @@ class ObservatoryStore:
             raise ContractError(f"import file is not valid UTF-8: {exc}", source_path) from exc
 
         parsed: list[tuple[int, dict[str, Any]]] = []
-        for line_number, line in enumerate(text.splitlines(), start=1):
+        for line_number, line in enumerate(_split_jsonl_lines(text), start=1):
             if not line.strip():
                 continue
             try:
@@ -328,7 +340,7 @@ class ObservatoryStore:
 
     @staticmethod
     def _count_lines(data: bytes) -> int:
-        return sum(1 for line in data.decode("utf-8", errors="replace").splitlines() if line.strip())
+        return sum(1 for line in _split_jsonl_lines(data.decode("utf-8", errors="replace")) if line.strip())
 
     def _insert_record(
         self,

@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover
     import support
 
 from agent_observatory import load_taxonomy
-from agent_observatory.errors import LabelConflictError, ResponseError
+from agent_observatory.errors import ContractError, LabelConflictError, ResponseError
 from agent_observatory.jev import build_request, import_response, parse_json_document, persist_request
 from agent_observatory.store import ObservatoryStore
 
@@ -104,6 +104,23 @@ class JevResponseTest(unittest.TestCase):
         primary["value"] = primary.pop("choice")
         with self.assertRaises(ResponseError):
             import_response(self.store, broken, request_hash=self.request.request_hash)
+
+    def test_extra_key_alongside_valid_choice_is_rejected(self):
+        broken = copy.deepcopy(self.valid)
+        primary = broken["answers"]["primary_intent"]
+        primary["value"] = "x"
+        with self.assertRaises(ContractError) as caught:
+            import_response(self.store, broken, request_hash=self.request.request_hash)
+        self.assertIn("value", str(caught.exception))
+        self.assertEqual(self.store.classification_count(), 0)
+
+    def test_extra_key_on_noul_answer_is_rejected(self):
+        broken = copy.deepcopy(self.valid)
+        broken["answers"][self._noul_id()]["value"] = 0.5
+        with self.assertRaises(ContractError) as caught:
+            import_response(self.store, broken, request_hash=self.request.request_hash)
+        self.assertIn("value", str(caught.exception))
+        self.assertEqual(self.store.classification_count(), 0)
 
     def test_probabilities_must_sum_to_one(self):
         broken = copy.deepcopy(self.valid)

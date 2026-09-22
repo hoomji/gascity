@@ -60,7 +60,10 @@ in 3.11. No new pip dependencies.
 
 ## 1. Normalized JSONL import contract
 
-Each non-empty line is one JSON object. `schema_version` is `"1.0"`.
+Each non-empty line is one JSON object. `schema_version` is `"1.0"`. Lines are
+framed on the physical newline (`\n`) only, with a trailing `\r` stripped; Unicode
+line separators such as U+2028, U+2029 and U+0085 are legal unescaped inside JSON
+strings and do not split a record.
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
@@ -246,9 +249,11 @@ API reference:
 - `choice` answers: the `choice` field must be one of the question's criteria
   keys; `probabilities` must cover every criterion with finite values in `[0,1]`
   summing to ~1; `confidence` finite in `[0,1]`. The previously invented
-  `value` field is not accepted.
+  `value` field is not accepted; any field other than `type`, `choice`,
+  `confidence` and `probabilities` is rejected rather than dropped.
 - `noul` answers: exactly one finite `noul` probability in `[0,1]` and **no
-  confidence field**.
+  confidence field**; any field other than `type` and `noul` is rejected rather
+  than dropped.
 - Non-finite JSON (`NaN`/`Infinity`) is rejected.
 - Nothing is fabricated: missing labels, missing confidences, and live calls are
   all errors, not defaults. `tests/fixtures/jev_smoke_contract.json` pins a

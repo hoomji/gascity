@@ -107,6 +107,32 @@ class StoreImportTest(unittest.TestCase):
             self.assertIn(":2", str(caught.exception))
             self.assertEqual(store.event_count(), 0)
 
+    def test_unicode_line_separators_inside_json_string_do_not_split_records(self):
+        # U+2028/U+2029 are legal unescaped inside JSON strings (RFC 8259).
+        # str.splitlines() would tear this single record apart and reject it.
+        path = os.path.join(self.tmp.name, "u2028.jsonl")
+        record = support.make_record(event_id="e1", text="before\u2028middle\u2029after")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with ObservatoryStore(self.db_path) as store:
+            result = store.import_jsonl(path)
+            self.assertEqual(result.inserted, 1)
+            self.assertEqual(result.lines_read, 1)
+            event = store.get_event(("city-a", "host-a", "codex", "session-1", "e1"))
+            self.assertEqual(event["text"], "before\u2028middle\u2029after")
+
+    def test_unicode_line_separators_keep_error_line_numbers(self):
+        path = os.path.join(self.tmp.name, "u2028-bad.jsonl")
+        good = support.make_record(event_id="e1", text="before\u2028after")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(good, ensure_ascii=False) + "\n")
+            handle.write('{"schema_version": "1.0", "city_id": "city-a"')
+        with ObservatoryStore(self.db_path) as store:
+            with self.assertRaises(ContractError) as caught:
+                store.import_jsonl(path)
+            self.assertIn(":2", str(caught.exception))
+            self.assertEqual(store.event_count(), 0)
+
     def test_provenance_source_file_hash_and_line_are_preserved(self):
         path = self._write("prov.jsonl", [support.make_record(event_id="e1"), support.make_record(event_id="e2")])
         with ObservatoryStore(self.db_path) as store:
