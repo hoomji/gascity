@@ -60,10 +60,7 @@ in 3.11. No new pip dependencies.
 
 ## 1. Normalized JSONL import contract
 
-Each non-empty line is one JSON object. `schema_version` is `"1.0"`. Lines are
-framed on the physical newline (`\n`) only, with a trailing `\r` stripped; Unicode
-line separators such as U+2028, U+2029 and U+0085 are legal unescaped inside JSON
-strings and do not split a record.
+Each non-empty line is one JSON object. `schema_version` is `"1.0"`.
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
@@ -129,29 +126,40 @@ the tool executed, and does not prove success. Only a result event with an
 ## 2. SQLite projection
 
 - Schema version is stored in `PRAGMA user_version` and `schema_meta`. Opening a
-  store with an unknown/future version raises `SchemaVersionError`.
+  store with an unknown/future version raises `SchemaVersionError`. The current
+  version is **3**; the payload hash no longer covers identity fields, so a
+  version-2 projection must be rebuilt rather than reused.
 - Import is **per-file atomic**: the whole file is parsed and type-checked
   before writing, and all writes happen in one transaction. A malformed or
-  truncated line reports `path:line` and commits nothing.
+  truncated line reports `path:line` and commits nothing. Records are split on
+  **LF only** (a trailing CR is stripped), so U+2028/U+2029/U+0085 characters
+  that are legal unescaped inside JSON strings never split a record or shift
+  reported line numbers.
 - Import is **idempotent**: re-importing an identical file is skipped, and
   appending to a file imports only new events. Repeated files never duplicate
   events or usage.
 - A **conflicting reuse of a canonical event identity** (same identity,
   different payload) raises `ImportConflictError` and rolls back rather than
   silently overwriting.
+- Each `sessions` row records `first_timestamp` as the **minimum** observed
+  timestamp; importing an earlier event later lowers it.
 - Tables: `events`, `event_usage`, `sessions`, `imported_files`, `jev_requests`,
   `classifications`, `classification_answers`.
 - Classifications are **immutable**. They are keyed by subject (`event`/`session`
   snapshot hash), taxonomy version, question hash, and model version. Replaying
   an identical response deduplicates; a different response for the same key is
-  rejected (`LabelConflictError`) rather than overwriting. Complete probability
-  distributions and response provenance are stored.
+  rejected (`LabelConflictError`) rather than overwriting. The existence check
+  and the insert run in one `BEGIN IMMEDIATE` transaction, so a concurrent
+  UNIQUE collision is folded into the same dedupe/conflict outcomes. Complete
+  probability distributions and response provenance are stored.
 
 ### Subject snapshot hashes
 
 `event` snapshots hash the canonical identity plus the event payload hash;
 `session` snapshots hash the session identity plus its ordered event payload
-hashes. Both are deterministic.
+hashes. Both are deterministic. The **payload hash covers normalized content
+fields only**: canonical identity (`city_id`/`host_id`/`provider`/`session_id`/
+`event_id`) is matched separately and is covered by the event snapshot hash.
 
 ## 3. Deterministic report
 
@@ -161,7 +169,9 @@ projection are byte-identical. It contains:
 - `coverage`: `sessions`, `events`, `by_provider`, `by_kind`, and
   `missing_fields` NULL counts.
 - `tool_counts`: **invocation-only** counts per `tool_name`. A result event that
-  repeats a tool name never adds a count.
+  repeats a tool name never adds a count. An invocation with no `tool_name` is
+  counted under `unknown`, so `tool_counts` and `observed_outcomes` describe the
+  same set of invocations.
 - `command_categories`: counts for every category across distinct invocations.
   Result events and arbitrary prose records are never promoted to invocations,
   even when they contain a command. Recognition is conservative and
@@ -171,12 +181,15 @@ projection are byte-identical. It contains:
   `review`, `dispatch`, `wait`, `unknown`.
 - `observed_outcomes`: `success`/`failure`/`unknown` by category and in total,
   counted once per invocation. An invocation's outcome is paired to a result by
-  `(session, tool_call_id)` and inherits the invocation's categories even when
-  the result carries no command. A request-only event stays `unknown` even if it
-  carries a claimed exit code; a directly observed `command` may use its own
-  exit code. Missing `exit_code` is `unknown`, never success. Orphan result
-  events (no matching invocation) are still observed once, but never become
-  invocations.
+  `(session, tool_call_id)`. Invocations with no `tool_call_id` are keyed by
+  their own event id in a **separate namespace**, so a result whose
+  `tool_call_id` happens to equal an invocation's event id cannot pair with it;
+  a result with no `tool_call_id` likewise cannot pair. An invocation still
+  inherits its own categories even when the result carries no command. A
+  request-only event stays `unknown` even if it carries a claimed exit code; a
+  directly observed `command` may use its own exit code. Missing `exit_code` is
+  `unknown`, never success. Orphan result events (no matching invocation) are
+  still observed once, but never become invocations.
 - `test`: `invocations` and `results` (`passed`/`failed`/`unknown`) are reported
   separately. Duplicate or conflicting result events never inflate invocations;
   conflicting exit codes for one invocation stay `unknown`.
@@ -249,11 +262,14 @@ API reference:
 - `choice` answers: the `choice` field must be one of the question's criteria
   keys; `probabilities` must cover every criterion with finite values in `[0,1]`
   summing to ~1; `confidence` finite in `[0,1]`. The previously invented
-  `value` field is not accepted; any field other than `type`, `choice`,
-  `confidence` and `probabilities` is rejected rather than dropped.
+  `value` field is not accepted.
 - `noul` answers: exactly one finite `noul` probability in `[0,1]` and **no
-  confidence field**; any field other than `type` and `noul` is rejected rather
-  than dropped.
+  confidence field**.
+- Each answer object accepts only its wire keys (`type` plus `choice`/
+  `confidence`/`probabilities` for choice, or `noul` for noul). Any **unknown
+  key is rejected** with a `ContractError` naming it; it is never silently
+  dropped, so two responses with identical answers but different junk keys can
+  never be mistaken for a label conflict.
 - Non-finite JSON (`NaN`/`Infinity`) is rejected.
 - Nothing is fabricated: missing labels, missing confidences, and live calls are
   all errors, not defaults. `tests/fixtures/jev_smoke_contract.json` pins a
@@ -272,6 +288,9 @@ agent-observatory import-response --db DB --response RESP.json --request-hash HA
 agent-observatory --version
 ```
 
+A missing or unreadable input/output path is reported on stderr as
+`error: <path>: <reason>` with exit status 1, never a traceback.
+
 ## Tests
 
 ```bash
@@ -279,15 +298,21 @@ python3 -m unittest discover -s contrib/agent-observatory/tests -v
 ```
 
 The suite covers duplicate replay, same-session different providers/hosts and
-delimiter-colliding identities, conflict rollback, truncated input, nonzero vs
-unknown exit codes, invocation/result pairing, orphan and duplicate and
-conflicting results, request-only vs directly observed outcomes, tokens missing
+delimiter-colliding identities, conflict rollback, truncated input and LF-only
+line numbering (including records whose text contains U+2028/U+2029/U+0085),
+sessions `first_timestamp` as a running minimum, the classification UNIQUE race,
+nonzero vs unknown exit codes, invocation/result pairing (including that a
+result call id can never pair with an invocation's fallback event id), orphan
+and duplicate and conflicting results, request-only vs directly observed
+outcomes, unnamed-tool invocations counted under `unknown`, tokens missing
 vs zero, timezone-aware timestamp normalization and chronological ordering across
 offsets and fractional precision, the request byte cap, the real lowercase
-Jev question/answer wire shape, ambiguous commands, instruction-like text treated
-as data, question-hash sensitivity to instructions/criteria, and invalid/NaN
-responses. `examples/demo.sh` runs the CLI end to end against the synthetic
-fixture; replay preserves event and classification counts.
+Jev question/answer wire shape and unknown-answer-key rejection, the
+missing-input-file CLI error contract, payload-hash identity exclusion, ambiguous
+commands, instruction-like text treated as data, question-hash sensitivity to
+instructions/criteria, and invalid/NaN responses. `examples/demo.sh` runs the CLI
+end to end against the synthetic fixture; replay preserves event and
+classification counts.
 
 ## Limitations and next adapter requirements
 

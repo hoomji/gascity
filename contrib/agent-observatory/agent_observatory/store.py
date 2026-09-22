@@ -39,7 +39,11 @@ from .errors import (
 
 # Bump when the projection schema changes. The database is derived and
 # rebuildable, so an older schema is rejected rather than migrated in place.
-DB_SCHEMA_VERSION = 2
+#
+# Version 3 excludes canonical identity fields from the stored ``payload_hash``
+# (contract.payload_hash), so a version-2 projection would carry stale hashes and
+# could reject an identical re-import as a conflict. Rebuild instead.
+DB_SCHEMA_VERSION = 3
 
 # Normalized record fields, in table order. ``observed_timestamp`` is not here:
 # it is derived provenance (the raw input string), not part of the payload hash.
@@ -207,15 +211,15 @@ def _reject_json_constant(value: str) -> Any:
 
 
 def _split_jsonl_lines(text: str) -> list[str]:
-    """Split JSONL text on ``"\\n"`` only, stripping a trailing ``"\\r"``.
+    """Split JSONL on LF only, dropping one trailing CR per line.
 
-    ``str.splitlines()`` also breaks on U+2028, U+2029 and U+0085, which are
-    legal unescaped inside JSON strings (RFC 8259). Splitting on those would
-    tear one valid JSON object into several undecodable fragments, so JSONL
-    framing must follow the physical newline only. A CRLF file still yields
-    clean lines because the trailing carriage return is removed.
+    ``str.splitlines`` also splits on U+2028, U+2029 and U+0085, which are legal
+    unescaped inside JSON strings. Those characters must stay inside their record,
+    so splitting there would reject a valid file as malformed. Line numbers are
+    still 1-based over the LF-delimited records.
     """
-    return [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
+    lines = text.split("\n")
+    return [line[:-1] if line.endswith("\r") else line for line in lines]
 
 
 class ObservatoryStore:
@@ -340,7 +344,8 @@ class ObservatoryStore:
 
     @staticmethod
     def _count_lines(data: bytes) -> int:
-        return sum(1 for line in _split_jsonl_lines(data.decode("utf-8", errors="replace")) if line.strip())
+        text = data.decode("utf-8", errors="replace")
+        return sum(1 for line in _split_jsonl_lines(text) if line.strip())
 
     def _insert_record(
         self,
@@ -374,6 +379,21 @@ class ObservatoryStore:
                 identity[2],
                 identity[3],
                 record.get("parent_session_id"),
+                record.get("timestamp"),
+            ),
+        )
+        # ``first_timestamp`` is the earliest observed event, not merely the first
+        # one imported: a later import of an earlier event must lower it.
+        self._conn.execute(
+            "UPDATE sessions SET first_timestamp = ? WHERE city_id = ? AND host_id = ? "
+            "AND provider = ? AND session_id = ? "
+            "AND (first_timestamp IS NULL OR first_timestamp > ?)",
+            (
+                record.get("timestamp"),
+                identity[0],
+                identity[1],
+                identity[2],
+                identity[3],
                 record.get("timestamp"),
             ),
         )
@@ -522,6 +542,22 @@ class ObservatoryStore:
 
     # -- classifications ---------------------------------------------------
 
+    def _find_classification(
+        self,
+        *,
+        subject_kind: str,
+        snapshot_hash: str,
+        taxonomy_version: str,
+        question_hash: str,
+        model_version: str,
+    ) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT classification_id, response_hash FROM classifications WHERE "
+            "subject_kind = ? AND snapshot_hash = ? AND taxonomy_version = ? AND "
+            "question_hash = ? AND model_version = ?",
+            (subject_kind, snapshot_hash, taxonomy_version, question_hash, model_version),
+        ).fetchone()
+
     def save_classification(
         self,
         *,
@@ -541,24 +577,31 @@ class ObservatoryStore:
         Returns ``(classification_id, deduplicated)``. Replaying the identical
         response deduplicates; a different response for the same subject and
         taxonomy is rejected rather than overwriting the stored label.
-        """
-        existing = self._conn.execute(
-            "SELECT classification_id, response_hash FROM classifications WHERE "
-            "subject_kind = ? AND snapshot_hash = ? AND taxonomy_version = ? AND "
-            "question_hash = ? AND model_version = ?",
-            (subject_kind, snapshot_hash, taxonomy_version, question_hash, model_version),
-        ).fetchone()
-        if existing is not None:
-            if existing["response_hash"] == response_hash:
-                return int(existing["classification_id"]), True
-            raise LabelConflictError(
-                "refusing to overwrite classification for subject "
-                f"{subject_kind}:{snapshot_hash} taxonomy {taxonomy_version} "
-                f"model {model_version}"
-            )
 
+        The existing-row check runs *inside* the transaction. A concurrent writer
+        that wins the UNIQUE race between the check and the insert lands in the
+        same deduplicated/LabelConflictError paths instead of leaking an
+        ``IntegrityError``.
+        """
         self._conn.execute("BEGIN IMMEDIATE")
         try:
+            existing = self._find_classification(
+                subject_kind=subject_kind,
+                snapshot_hash=snapshot_hash,
+                taxonomy_version=taxonomy_version,
+                question_hash=question_hash,
+                model_version=model_version,
+            )
+            if existing is not None:
+                if existing["response_hash"] == response_hash:
+                    self._conn.execute("COMMIT")
+                    return int(existing["classification_id"]), True
+                raise LabelConflictError(
+                    "refusing to overwrite classification for subject "
+                    f"{subject_kind}:{snapshot_hash} taxonomy {taxonomy_version} "
+                    f"model {model_version}"
+                )
+
             cursor = self._conn.execute(
                 "INSERT INTO classifications(subject_kind, snapshot_hash, taxonomy_version, "
                 "question_hash, model_version, request_hash, response_hash, source_path, "
@@ -588,10 +631,28 @@ class ObservatoryStore:
                     ),
                 )
             self._conn.execute("COMMIT")
+            return classification_id, False
+        except sqlite3.IntegrityError:
+            self._conn.execute("ROLLBACK")
+            existing = self._find_classification(
+                subject_kind=subject_kind,
+                snapshot_hash=snapshot_hash,
+                taxonomy_version=taxonomy_version,
+                question_hash=question_hash,
+                model_version=model_version,
+            )
+            if existing is not None:
+                if existing["response_hash"] == response_hash:
+                    return int(existing["classification_id"]), True
+                raise LabelConflictError(
+                    "refusing to overwrite classification for subject "
+                    f"{subject_kind}:{snapshot_hash} taxonomy {taxonomy_version} "
+                    f"model {model_version}"
+                ) from None
+            raise
         except BaseException:
             self._conn.execute("ROLLBACK")
             raise
-        return classification_id, False
 
     def get_classification(
         self, *, subject_kind: str, snapshot_hash: str, taxonomy_version: str,

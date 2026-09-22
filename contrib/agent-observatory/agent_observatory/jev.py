@@ -28,13 +28,6 @@ REQUEST_BYTE_CAP = 24 * 1024
 
 _PROBABILITY_SUM_TOLERANCE = 1e-6
 
-# Exact wire shape of one answer object. Any other key is a contract violation
-# rather than data to be silently dropped (see _reject_unknown_answer_keys).
-# ``confidence`` is deliberately absent from the noul set: it is a known-but-
-# forbidden field with its own dedicated error below.
-_CHOICE_ANSWER_FIELDS = frozenset({"type", "choice", "confidence", "probabilities"})
-_NOUL_ANSWER_FIELDS = frozenset({"type", "noul"})
-
 
 def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"non-finite JSON constant {value!r} is not allowed")
@@ -246,17 +239,16 @@ def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[
 def _reject_unknown_answer_keys(
     question_id: str, answer: dict[str, Any], allowed: frozenset[str]
 ) -> None:
-    """Reject fields outside the declared wire shape for one answer.
+    """Reject answer keys outside the wire contract, naming every offender.
 
-    Unknown keys must not be silently dropped: ``import_response`` hashes the
-    whole response object, so identical stored answers that differ only in junk
-    keys would otherwise fail to deduplicate and raise ``LabelConflictError``
-    instead of replaying.
+    Unknown keys are not silently dropped: dropping them let two responses with
+    identical stored answers but different junk keys hash differently, which
+    surfaced as a spurious LabelConflictError instead of a clean dedupe.
     """
     unknown = sorted(set(answer) - allowed)
     if unknown:
         raise ContractError(
-            f"answer {question_id!r} contains unknown field(s): {', '.join(unknown)}"
+            f"answer {question_id!r} contains unknown key(s): {', '.join(unknown)}"
         )
 
 
@@ -271,8 +263,6 @@ def _validate_choice_answer(question_id: str, question: dict[str, Any], answer: 
         raise ResponseError(
             f"answer {question_id!r} choice {value!r} is not one of {options!r}"
         )
-
-    _reject_unknown_answer_keys(question_id, answer, _CHOICE_ANSWER_FIELDS)
 
     confidence = answer.get("confidence")
     if not _is_finite_number(confidence) or not (0.0 <= float(confidence) <= 1.0):
@@ -311,6 +301,9 @@ def _validate_choice_answer(question_id: str, question: dict[str, Any], answer: 
             f"answer {question_id!r} probabilities sum to {total!r}, not ~1"
         )
 
+    _reject_unknown_answer_keys(
+        question_id, answer, frozenset({"type", "choice", "confidence", "probabilities"})
+    )
     return {
         "choice": value,
         "confidence": float(confidence),
@@ -326,7 +319,7 @@ def _validate_noul_answer(question_id: str, answer: dict[str, Any]) -> dict[str,
         raise ResponseError(
             f"Noul answer {question_id!r} noul must be a finite number in [0,1], got {value!r}"
         )
-    _reject_unknown_answer_keys(question_id, answer, _NOUL_ANSWER_FIELDS)
+    _reject_unknown_answer_keys(question_id, answer, frozenset({"type", "noul"}))
     return {"noul": float(value)}
 
 

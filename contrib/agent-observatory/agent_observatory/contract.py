@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .canonical import canonical_hash, event_identity
+from .canonical import IDENTITY_FIELDS, canonical_hash, event_identity
 from .errors import ContractError
 
 # Bump when the normalized record shape changes in a non-backwards-compatible way.
@@ -68,6 +68,11 @@ USAGE_INT_FIELDS = (
 )
 
 KNOWN_FIELDS = frozenset(REQUIRED_STRING_FIELDS + OPTIONAL_STRING_FIELDS + OPTIONAL_INT_FIELDS + ("usage",))
+
+# The evidence payload is everything except the canonical identity fields. The
+# identity is matched separately (SQL PRIMARY KEY / WHERE clauses), and
+# ``event_snapshot_hash`` covers identity plus this payload hash.
+PAYLOAD_FIELDS = tuple(sorted(field for field in KNOWN_FIELDS if field not in IDENTITY_FIELDS))
 
 # Fields whose NULL counts are surfaced in report coverage. Timestamp/kind are
 # required, so their presence is guaranteed by the contract.
@@ -208,10 +213,12 @@ def validate_record(
 def payload_hash(record: dict[str, Any]) -> str:
     """Hash the evidence payload that defines an event's content.
 
-    Identity fields and provenance are excluded by construction; the caller
-    passes an already-normalized record. Unknown keys are already dropped.
+    Canonical identity fields (``city_id``/``host_id``/``provider``/``session_id``/
+    ``event_id``) and provenance are excluded by construction; identity is
+    covered separately by ``canonical.event_snapshot_hash``. The caller passes an
+    already-normalized record, and unknown keys are already dropped.
     """
-    payload = {field: record.get(field) for field in KNOWN_FIELDS}
+    payload = {field: record.get(field) for field in PAYLOAD_FIELDS}
     return canonical_hash(payload)
 
 

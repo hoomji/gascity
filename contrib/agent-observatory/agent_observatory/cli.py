@@ -235,6 +235,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ObservatoryError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        # File IO at the CLI boundary is unchecked on purpose: turn a missing or
+        # unreadable path into the documented ``error: <path>: <reason>`` contract
+        # instead of a traceback.
+        reason = exc.strerror or str(exc)
+        if exc.filename:
+            print(f"error: {exc.filename}: {reason}", file=sys.stderr)
+        else:
+            print(f"error: {reason}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":  # pragma: no cover

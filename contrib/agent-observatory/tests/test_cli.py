@@ -143,6 +143,23 @@ class CliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("bad.jsonl:2", result.stderr)
 
+    def test_missing_state_file_reports_error_without_traceback(self):
+        missing = os.path.join(self.tmp.name, "does-not-exist-state.json")
+        result = run_cli(["build-request", "--state", missing])
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertTrue(result.stderr.strip().startswith("error:"), result.stderr)
+        self.assertIn(missing, result.stderr)
+
+    def test_missing_response_file_reports_error_without_traceback(self):
+        missing = os.path.join(self.tmp.name, "does-not-exist-response.json")
+        result = run_cli(
+            ["import-response", "--db", self.db, "--response", missing, "--request-hash", "0" * 64]
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn(missing, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -201,6 +201,40 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report["observed_outcomes"]["by_category"]["lint"], {"success": 1, "failure": 0, "unknown": 0})
         self.assertEqual(report["observed_outcomes"]["totals"], {"success": 1, "failure": 0, "unknown": 0})
 
+    def test_invocations_without_tool_name_count_under_unknown(self):
+        store = self._store_with(
+            [
+                support.make_record(
+                    event_id="e1", kind="tool_call", tool_name="bash",
+                    tool_call_id="tc1", command="go test ./...",
+                ),
+                support.make_record(event_id="e2", kind="command", command="git status --short"),
+            ]
+        )
+        report = build_report(store)
+        # An unnamed invocation still has an observed outcome, so it must appear
+        # in tool_counts too; the two tables then describe the same invocations.
+        self.assertEqual(report["tool_counts"], {"bash": 1, "unknown": 1})
+        self.assertEqual(
+            sum(report["tool_counts"].values()),
+            sum(report["observed_outcomes"]["totals"].values()),
+        )
+
+    def test_result_cannot_pair_with_invocation_by_matching_event_id(self):
+        store = self._store_with(
+            [
+                # No tool_call_id: this invocation's unit key is its own event id.
+                support.make_record(event_id="e1", kind="tool_call", command="go test ./..."),
+                # A result whose tool_call_id equals that event id must not pair.
+                support.make_record(event_id="e2", kind="tool_result", tool_call_id="e1", exit_code=1),
+            ]
+        )
+        report = build_report(store)
+        self.assertEqual(report["test"]["results"], {"passed": 0, "failed": 0, "unknown": 1})
+        self.assertEqual(
+            report["observed_outcomes"]["totals"], {"success": 0, "failure": 1, "unknown": 1}
+        )
+
     def test_duplicate_result_events_are_not_counted_twice(self):
         store = self._store_with(
             [

@@ -9,6 +9,7 @@ try:
 except ImportError:  # pragma: no cover - depends on discovery invocation
     import support
 
+from agent_observatory.canonical import event_snapshot_hash
 from agent_observatory.contract import payload_hash, record_identity, validate_record
 from agent_observatory.errors import ContractError
 
@@ -105,6 +106,32 @@ class ContractTest(unittest.TestCase):
         first = validate_record(support.make_record(command="ls", exit_code=0))
         second = validate_record(support.make_record(command="ls", exit_code=0))
         self.assertEqual(payload_hash(first), payload_hash(second))
+
+    def test_payload_hash_excludes_identity_fields(self):
+        base = validate_record(support.make_record(event_id="e1"))
+        other_identity = validate_record(
+            support.make_record(
+                city_id="city-b",
+                host_id="host-b",
+                provider="claude",
+                session_id="session-2",
+                event_id="e9",
+            )
+        )
+        # Identity is matched separately; it is not part of the content payload.
+        self.assertEqual(payload_hash(base), payload_hash(other_identity))
+        # Non-identity content still changes the payload hash.
+        changed = validate_record(support.make_record(event_id="e1", command="ls"))
+        self.assertNotEqual(payload_hash(base), payload_hash(changed))
+
+    def test_event_snapshot_hash_still_covers_identity(self):
+        first = validate_record(support.make_record(event_id="e1"))
+        second = validate_record(support.make_record(event_id="e2"))
+        self.assertEqual(payload_hash(first), payload_hash(second))
+        self.assertNotEqual(
+            event_snapshot_hash(record_identity(first), payload_hash(first)),
+            event_snapshot_hash(record_identity(second), payload_hash(second)),
+        )
 
 
 if __name__ == "__main__":

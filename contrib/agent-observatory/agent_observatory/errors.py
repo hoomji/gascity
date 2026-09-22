@@ -34,10 +34,6 @@ class SchemaVersionError(ObservatoryError):
     """The SQLite schema version is missing, unknown, or incompatible."""
 
 
-class ReportError(ObservatoryError):
-    """A report could not be built from the stored projection."""
-
-
 class TaxonomyError(ObservatoryError):
     """The question taxonomy is missing or malformed."""
 
