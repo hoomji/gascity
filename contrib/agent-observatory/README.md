@@ -11,8 +11,9 @@ This is deliberately **not** the whole product and **not** production-ready:
   request body; nothing is sent by `build-request`. The `classify` subcommand
   performs a live, bounded send (retries, budgets, circuit breaker) and records
   provenance; saved responses are otherwise validated offline.
-- **No live collector.** Import reads explicit files only. There is no
-  home-directory crawling and no provider-transcript scraping.
+- **Collection is explicit and bounded.** `collect` reads only the roots it is
+  given (there is no implicit home-directory crawl), checkpoints every source,
+  and stops on a kill switch. Nothing in Gas City waits on it.
 - **No paid API calls, real transcript uploads, publishing, or merging.**
 - **No orchestration truth.** Beads and events remain authoritative. The SQLite
   file is a local, rebuildable analytical projection.
@@ -41,6 +42,7 @@ contrib/agent-observatory/
     episodes.py        deterministic session -> task-episode segmentation
     annotations.py     versioned gold annotations (separate from predictions)
     evaluation.py      grouped temporal holdout, baselines, metrics, calibration
+    collector.py       M4 checkpointed backfill, debounced collection, queue, status
   examples/
     synthetic_events.jsonl   synthetic fixture (no real data)
     state.json               explicit sanitized state for the request builder
@@ -475,6 +477,83 @@ Bundle contract (schema version `1.0`):
 }
 ```
 
+## 9. Collection: backfill, live tailing and the classification queue
+
+`collect` turns the M1 adapters into a checkpointed collector over explicit
+roots. One pass discovers sources, imports what changed through the idempotent
+store import, and queues each changed session's snapshot for classification.
+`collect --watch` repeats the pass every `--interval` seconds. Agents never wait
+on it and dispatch never reads it.
+
+Every scoped source keeps one row in `collector_sources` with a status and a
+reason:
+
+| Status | Meaning |
+| --- | --- |
+| `imported` | Read this pass; the reason names `new`/`appended`/`rewritten`, the generation and new/duplicate event counts. |
+| `unchanged` | Size and mtime match the checkpoint; not re-read. |
+| `debounced` | Modified within `--debounce-seconds`; read on a later pass. A file that never goes quiet is read anyway after `--max-debounce-seconds` since its last import. |
+| `deferred` | A per-run source/byte cap, the per-source cap or the projection storage cap was reached. The work waits; it is not dropped. |
+| `error` | The adapter or import refused the source; the reason carries `path:line`. |
+| `unreadable` | The file or directory could not be read or listed. |
+| `unsupported` | A known provider without an adapter (OpenCode, pi). |
+| `missing` | Seen before, gone now (rotation or deletion); its events stay. |
+
+Files that no adapter recognizes (locks, notes, tool-result sidecars) are
+counted per pass by suffix in `ignored_files`, not dropped silently.
+
+Replay safety: a source is re-read only when its stat changes. Append keeps the
+generation and rewrite increments it (the M1 rules). Imports are idempotent, so
+if a crash lands between the import and the checkpoint write, the next pass
+re-imports as duplicates and the counts stay the same. A failed import writes no
+checkpoint and the source is retried. A per-projection advisory lock
+(`DB.collector.lock`) keeps two collectors from interleaving.
+
+Bounds:
+
+- `--max-sources` / `--max-bytes` cap the work per pass. The first changed
+  source always proceeds, so a byte cap cannot wedge the backlog.
+- `--max-source-bytes` defers any single file above the cap. The adapters parse
+  a whole file in memory, and peak RSS runs several times the file size (a
+  305 MB Codex transcript peaked at 2.5 GB).
+- `--max-db-bytes` defers imports once the projection reaches the cap.
+- Normalized JSONL is spooled to `DB.collector-spool/<source_id>.jsonl` and
+  deleted right after each import. Imported events therefore carry the spool
+  path as `source_path`. `collector_sources.source_id` maps it back to the
+  original transcript's realpath.
+
+Kill switch: `collector-switch --db DB off` creates `DB.collector-disabled`
+(override the path with `--kill-switch`), and `OBSERVATORY_COLLECTOR_DISABLED=1`
+does the same from the environment. `collect`, `collect --watch` (checked before
+every pass) and `queue-drain` then do nothing and report `disabled`. The switch
+never touches the city.
+
+### Classification queue
+
+`collector_queue` keeps one row per `(session, snapshot)`. A newer snapshot of
+the same session marks the older pending row `superseded`, and re-queuing an
+unchanged snapshot does nothing. `queue-drain` classifies due items through the
+bounded M3 transport and **requires `--max-requests`** as the per-run spend
+ceiling:
+
+- `classified` → `done`, with the classification id.
+- `budget_exhausted`, `circuit_open`, `credential_error`, `model_drift` or a
+  transport error → the drain stops and the item stays `pending` with no
+  attempt charged. These say nothing about the subject.
+- Any other failure → it is retried after `--retry-backoff` seconds, doubling
+  each time. After `--max-item-attempts` failures the item moves to `unknown`
+  and keeps its last failure. Nothing is fabricated.
+
+The drain sends **metadata-only state**: event-kind counts, tool invocation
+counts, command-category counts, models, duration, and bead/formula/parent
+flags. No text, titles or command lines leave the host. Sending transcript
+content to the classifier is a separate data-scope decision this slice does not
+make.
+
+`collect-status` reports coverage (`current / scoped`), per-provider status
+counts, lagging sources with their lag and reason, queue counts, the oldest
+pending age, the `unknown` items with their failures, and the last pass.
+
 ## CLI reference
 
 ```
@@ -502,6 +581,16 @@ agent-observatory evaluate --gold GOLD.json --predictions PRED.json
     [--min-class-support N] [--calibration-bins N] [--out FILE]
 agent-observatory changes-sync --db DB --input BUNDLE.json
 agent-observatory exposure --db DB [--out FILE]
+agent-observatory collect --db DB --root DIR [--root DIR ...] --city CITY --host HOST
+    [--repo REPO] [--provider P] [--debounce-seconds S] [--max-debounce-seconds S]
+    [--max-sources N] [--max-bytes N] [--max-source-bytes N] [--max-db-bytes N]
+    [--kill-switch PATH] [--spool-dir DIR] [--no-enqueue]
+    [--watch [--interval S] [--iterations N]]
+agent-observatory collect-status --db DB [--kill-switch PATH] [--out FILE]
+agent-observatory collector-switch --db DB on|off [--kill-switch PATH]
+agent-observatory queue-drain --db DB --max-requests N [--max-items N]
+    [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
+    [transport options as for classify] [--out FILE]
 agent-observatory --version
 ```
 

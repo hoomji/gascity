@@ -1,7 +1,8 @@
 """Command-line interface for the offline agent observatory.
 
-Only explicitly supplied files are read. There is no automatic live collector
-and no home-directory crawling.
+Only explicitly supplied files and roots are read; there is no implicit
+home-directory crawling. ``collect`` is the bounded, checkpointed collector over
+explicit roots.
 """
 
 from __future__ import annotations
@@ -22,6 +23,15 @@ from .adapters import AdapterContext, read_source
 from .annotations import load_gold_set, save_gold_annotations
 from .canonical import sha256_bytes
 from .changes import normalize_change_bundle
+from .collector import (
+    CollectorConfig,
+    collect_once,
+    collect_watch,
+    collector_status,
+    default_kill_switch_path,
+    drain_queue,
+    set_kill_switch,
+)
 from .episodes import segment_store
 from .errors import ObservatoryError
 from .evaluation import (
@@ -589,6 +599,105 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     return 0 if split["leak_free"] else 1
 
 
+def _kill_switch_path(args: argparse.Namespace) -> str:
+    return args.kill_switch or default_kill_switch_path(args.db)
+
+
+def _print_json(value: Any) -> None:
+    sys.stdout.write(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def _cmd_collect(args: argparse.Namespace) -> int:
+    """Run one bounded collection pass, or repeat it with ``--watch``."""
+    config = CollectorConfig(
+        roots=tuple(SourceRoot(path=root, provider=args.provider) for root in args.root),
+        city_id=args.city,
+        host_id=args.host,
+        repo=args.repo,
+        debounce_seconds=args.debounce_seconds,
+        max_debounce_seconds=max(args.max_debounce_seconds, args.debounce_seconds),
+        max_sources_per_run=args.max_sources,
+        max_bytes_per_run=args.max_bytes,
+        max_source_bytes=args.max_source_bytes,
+        max_db_bytes=args.max_db_bytes,
+        kill_switch_path=_kill_switch_path(args),
+        spool_dir=args.spool_dir,
+        enqueue=not args.no_enqueue,
+    )
+    with _open_store(args.db) as store:
+        if args.watch:
+            runs = collect_watch(
+                store,
+                config,
+                interval_seconds=args.interval,
+                iterations=args.iterations,
+                on_run=lambda run: _print_json(run.to_dict()),
+            )
+            last = runs[-1] if runs else None
+        else:
+            last = collect_once(store, config)
+            _print_json(last.to_dict())
+    # ``locked`` means another collector is running: not an error, but not work.
+    return 0 if last is None or last.status in {"ok", "disabled", "locked"} else 1
+
+
+def _cmd_collect_status(args: argparse.Namespace) -> int:
+    with _open_store(args.db) as store:
+        status = collector_status(store, kill_switch_path=_kill_switch_path(args))
+    _write_output(json.dumps(status, indent=2, sort_keys=True, ensure_ascii=False), args.out)
+    return 0
+
+
+def _cmd_collector_switch(args: argparse.Namespace) -> int:
+    path = _kill_switch_path(args)
+    disabled = set_kill_switch(path, disabled=args.state == "off")
+    _print_json({"collector": "disabled" if disabled else "enabled", "kill_switch": path})
+    return 0
+
+
+def _cmd_queue_drain(args: argparse.Namespace) -> int:
+    """Classify due queued sessions within an explicit request ceiling."""
+    if args.max_requests is None:
+        raise ObservatoryError("queue-drain requires --max-requests (the per-run spend ceiling)")
+    taxonomy = load_taxonomy(args.taxonomy)
+    config = _transport_config_from_args(args)
+    with _open_store(args.db) as store:
+        result = drain_queue(
+            store,
+            taxonomy,
+            transport_config=config,
+            max_items=args.max_items if args.max_items is not None else args.max_requests,
+            max_attempts=args.max_item_attempts,
+            retry_backoff_seconds=args.retry_backoff,
+            kill_switch_path=_kill_switch_path(args),
+        )
+    _write_output(json.dumps(result.to_dict(), indent=2, sort_keys=True, ensure_ascii=False), args.out)
+    return 0 if result.status in {"ok", "disabled"} else 1
+
+
+def _add_transport_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="JSON transport config (timeout/retry/budget/circuit); unknown keys are rejected",
+    )
+    parser.add_argument("--timeout", type=float, default=None, help="HTTP timeout in seconds (default 30)")
+    parser.add_argument("--max-attempts", type=int, default=None, help="maximum HTTP attempts")
+    parser.add_argument("--max-requests", type=int, default=None, help="per-run request cap")
+    parser.add_argument("--max-tokens", type=int, default=None, help="per-run token budget ceiling")
+    parser.add_argument("--max-cost-usd", type=float, default=None, help="per-run dollar budget ceiling")
+    parser.add_argument(
+        "--price-per-million-input-usd", type=float, default=None, help="input token price (USD per million)"
+    )
+    parser.add_argument(
+        "--price-per-million-output-usd", type=float, default=None, help="output token price (USD per million)"
+    )
+    parser.add_argument(
+        "--allow-model-drift", action="store_true", help="allow a model other than the pinned jev-1.13.0"
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent-observatory",
@@ -799,6 +908,81 @@ def build_parser() -> argparse.ArgumentParser:
         "--out", default=None, help="write the ledger JSON to this path instead of stdout"
     )
     exposure_parser.set_defaults(func=_cmd_exposure)
+
+    collect_parser = subparsers.add_parser(
+        "collect",
+        help="checkpointed, debounced, bounded collection from explicit roots (M4)",
+    )
+    collect_parser.add_argument("--db", required=True, help="SQLite projection path")
+    collect_parser.add_argument(
+        "--root", action="append", required=True, help="explicit transcript root (repeatable)"
+    )
+    collect_parser.add_argument("--provider", default=None, help="force one provider for every root")
+    collect_parser.add_argument("--city", required=True, help="city id for emitted records")
+    collect_parser.add_argument("--host", required=True, help="host id for emitted records")
+    collect_parser.add_argument("--repo", default=None, help="optional repository scope")
+    collect_parser.add_argument(
+        "--debounce-seconds", type=float, default=30.0, help="quiet period before a changed file is read"
+    )
+    collect_parser.add_argument(
+        "--max-debounce-seconds",
+        type=float,
+        default=600.0,
+        help="read a never-quiet file anyway after this long since its last import",
+    )
+    collect_parser.add_argument("--max-sources", type=int, default=None, help="changed sources read per run")
+    collect_parser.add_argument("--max-bytes", type=int, default=None, help="source bytes read per run")
+    collect_parser.add_argument(
+        "--max-source-bytes",
+        type=int,
+        default=None,
+        help="defer any single source larger than this (adapters parse whole files in memory)",
+    )
+    collect_parser.add_argument(
+        "--max-db-bytes", type=int, default=None, help="defer imports once the projection reaches this size"
+    )
+    collect_parser.add_argument(
+        "--kill-switch", default=None, help="kill switch file (default DB.collector-disabled)"
+    )
+    collect_parser.add_argument("--spool-dir", default=None, help="normalized JSONL spool (default DB.collector-spool)")
+    collect_parser.add_argument(
+        "--no-enqueue", action="store_true", help="do not queue changed sessions for classification"
+    )
+    collect_parser.add_argument("--watch", action="store_true", help="repeat until the kill switch engages")
+    collect_parser.add_argument("--interval", type=float, default=60.0, help="seconds between --watch passes")
+    collect_parser.add_argument("--iterations", type=int, default=None, help="stop --watch after N passes")
+    collect_parser.set_defaults(func=_cmd_collect)
+
+    status_parser = subparsers.add_parser(
+        "collect-status", help="collector coverage, lag and classification queue health"
+    )
+    status_parser.add_argument("--db", required=True, help="SQLite projection path")
+    status_parser.add_argument("--kill-switch", default=None, help="kill switch file (default DB.collector-disabled)")
+    status_parser.add_argument("--out", default=None, help="write status JSON to this path instead of stdout")
+    status_parser.set_defaults(func=_cmd_collect_status)
+
+    switch_parser = subparsers.add_parser("collector-switch", help="engage (off) or release (on) the kill switch")
+    switch_parser.add_argument("--db", required=True, help="SQLite projection path")
+    switch_parser.add_argument("state", choices=("on", "off"), help="on enables collection, off disables it")
+    switch_parser.add_argument("--kill-switch", default=None, help="kill switch file (default DB.collector-disabled)")
+    switch_parser.set_defaults(func=_cmd_collector_switch)
+
+    drain_parser = subparsers.add_parser(
+        "queue-drain", help="classify queued sessions with metadata-only state within a request ceiling"
+    )
+    drain_parser.add_argument("--db", required=True, help="SQLite projection path")
+    drain_parser.add_argument("--taxonomy", default=None, help="taxonomy JSON path")
+    drain_parser.add_argument("--max-items", type=int, default=None, help="queue items to consider (default --max-requests)")
+    drain_parser.add_argument(
+        "--max-item-attempts", type=int, default=3, help="failed attempts before an item moves to unknown"
+    )
+    drain_parser.add_argument(
+        "--retry-backoff", type=float, default=300.0, help="base seconds before a failed item is retried"
+    )
+    drain_parser.add_argument("--kill-switch", default=None, help="kill switch file (default DB.collector-disabled)")
+    drain_parser.add_argument("--out", default=None, help="write the drain result to this path instead of stdout")
+    _add_transport_args(drain_parser)
+    drain_parser.set_defaults(func=_cmd_queue_drain)
 
     return parser
 
