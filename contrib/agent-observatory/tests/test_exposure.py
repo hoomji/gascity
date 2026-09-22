@@ -165,6 +165,61 @@ class ExposureJoinTest(unittest.TestCase):
         )
         self.assertEqual(rollup["status"], "unexposed")
 
+    def test_offset_session_timestamps_are_compared_chronologically(self):
+        # Raw session bounds must be normalized before the activation window
+        # check: 09:30-04:00 is 13:30Z, so this session is *inside* the window
+        # even though the raw string sorts before the Z-suffixed activation.
+        bundle = self._merged_pr()
+        rollup = evaluate_change(
+            bundle["changes"][0],
+            bundle["activations"],
+            graph=CommitGraph({SHARED: []}),
+            sessions=[
+                _session(
+                    commits=[SHARED],
+                    first="2026-09-21T09:30:00-04:00",
+                    last="2026-09-21T10:00:00-04:00",
+                )
+            ],
+        )
+        self.assertEqual(rollup["status"], "exposed")
+        self.assertEqual(rollup["rows"][0]["reason"], "exact_commit")
+
+    def test_session_after_deactivation_is_unexposed(self):
+        # ``after_deactivation`` is a window verdict and needs its own coverage.
+        bundle = _bundle(
+            [{"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}],
+            activations=[
+                {
+                    "change_id": normalize_change(
+                        {"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"}
+                    )["change_id"],
+                    "mechanism": "config_toggle",
+                    "target": "gateway-llm",
+                    "activated_at": "2026-09-22T00:00:00Z",
+                    "deactivated_at": "2026-09-22T01:00:00Z",
+                    "fingerprint": {"type": "config_digest", "value": "cfg-2"},
+                }
+            ],
+        )
+        rollup = evaluate_change(
+            bundle["changes"][0],
+            bundle["activations"],
+            graph=CommitGraph(),
+            sessions=[
+                _session(
+                    repo="gateway-llm",
+                    first="2026-09-22T02:00:00Z",
+                    last="2026-09-22T03:00:00Z",
+                    fingerprints=[
+                        {"type": "config_digest", "value": "cfg-2", "observed_at": "2026-09-22T02:30:00Z"}
+                    ],
+                )
+            ],
+        )
+        self.assertEqual(rollup["status"], "unexposed")
+        self.assertEqual(rollup["rows"][0]["reason"], "after_deactivation")
+
     def test_other_repo_session_is_not_a_candidate(self):
         bundle = self._merged_pr()
         rollup = evaluate_change(
@@ -174,6 +229,21 @@ class ExposureJoinTest(unittest.TestCase):
             sessions=[_session(repo="gateway-llm", commits=[SHARED])],
         )
         self.assertTrue(rollup["no_candidates"])
+        self.assertEqual(rollup["status"], "unknown")
+
+    def test_repo_less_session_is_not_a_candidate_for_repo_bound_change(self):
+        # A session whose events carried no repo must not be a candidate for
+        # every repo-bound change, which would let a shared model fingerprint
+        # create cross-repo exposure rows.
+        bundle = self._merged_pr()
+        rollup = evaluate_change(
+            bundle["changes"][0],
+            bundle["activations"],
+            graph=CommitGraph({SHARED: []}),
+            sessions=[_session(repo=None, models=["glm-4.6"])],
+        )
+        self.assertTrue(rollup["no_candidates"])
+        self.assertEqual(rollup["candidate_sessions"], 0)
         self.assertEqual(rollup["status"], "unknown")
 
     def test_overlapping_changes_both_exposed(self):
@@ -447,7 +517,7 @@ class StoreRegistryTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.db = os.path.join(self.tmp.name, "projection.db")
 
-    def _bundle(self, title="perf: cache the build"):
+    def _bundle(self, title="perf: cache the build", graph=None):
         return _bundle(
             [
                 {
@@ -460,7 +530,7 @@ class StoreRegistryTest(unittest.TestCase):
                     "changed_paths": ["Makefile"],
                 }
             ],
-            graph={SHARED: []},
+            graph={SHARED: []} if graph is None else graph,
         )
 
     def test_import_is_idempotent_and_conflicts_are_refused(self):
@@ -476,6 +546,18 @@ class StoreRegistryTest(unittest.TestCase):
             with self.assertRaises(RegistryConflictError):
                 store.import_registry(self._bundle(title="perf: a different description"))
             self.assertEqual(store.change_count(), 1)
+
+    def test_conflicting_commit_parents_are_refused(self):
+        # ``commit_parents`` is immutable evidence: the same sha with different
+        # parents must be a conflict, not a silent INSERT OR IGNORE no-op.
+        with ObservatoryStore(self.db) as store:
+            first = store.import_registry(self._bundle())
+            self.assertEqual(first.commit_parents_inserted, 1)
+            second = store.import_registry(self._bundle())
+            self.assertEqual(second.commit_parents_inserted, 0)
+            with self.assertRaises(RegistryConflictError):
+                store.import_registry(self._bundle(graph={SHARED: ["P" * 40]}))
+            self.assertEqual(store.load_commit_graph(), {SHARED: []})
 
     def test_exposures_are_replaced_not_appended(self):
         with ObservatoryStore(self.db) as store:

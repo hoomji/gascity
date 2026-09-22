@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Sequence
 
 from .canonical import identity_key
+from .contract import normalize_timestamp
 
 EXPOSURE_STATUSES = ("exposed", "unexposed", "unknown")
 LEDGER_VERSION = "1.0"
@@ -154,12 +155,14 @@ def attach_session_fingerprints(
 
 
 def _session_in_scope(change: dict[str, Any], session: dict[str, Any]) -> bool:
-    """A session is a candidate only when its observed repo matches the change."""
-    change_repo = change.get("repo")
-    session_repo = session.get("repo")
-    if change_repo and session_repo and change_repo != session_repo:
-        return False
-    return True
+    """A session is a candidate only when its observed repo matches the change.
+
+    A session whose events carried no ``repo`` is repo-less, so it is a candidate
+    only for a repo-less change. Treating it as a candidate everywhere would let
+    one shared model fingerprint produce cross-repo exposure rows and pollute
+    ``candidate_sessions``/``counts``.
+    """
+    return change.get("repo") == session.get("repo")
 
 
 def applicable_activations(
@@ -185,16 +188,30 @@ def applicable_activations(
     return result
 
 
+def _normalized_or_none(value: Any) -> str | None:
+    """Canonicalize a timestamp for comparison, preserving ``None``.
+
+    Window comparisons must not compare raw strings: an offset such as
+    ``...-04:00`` sorts before ``...Z`` lexically even when it is later in time.
+    Both the activation bounds (already canonical from the change bundle) and
+    caller-supplied session bounds are normalized here so the comparison is
+    chronological.
+    """
+    if value is None:
+        return None
+    return normalize_timestamp(value)
+
+
 def _activation_window_verdict(
     activation: dict[str, Any], session: dict[str, Any]
 ) -> str:
     """Return ``active``/``before``/``after``/``pending`` for one activation."""
     if activation.get("pending"):
         return "pending"
-    activated_at = activation.get("activated_at")
-    deactivated_at = activation.get("deactivated_at")
-    first = session.get("first_timestamp")
-    last = session.get("last_timestamp")
+    activated_at = _normalized_or_none(activation.get("activated_at"))
+    deactivated_at = _normalized_or_none(activation.get("deactivated_at"))
+    first = _normalized_or_none(session.get("first_timestamp"))
+    last = _normalized_or_none(session.get("last_timestamp"))
     if activated_at is not None and last is not None and last < activated_at:
         return "before"
     if deactivated_at is not None and first is not None and first > deactivated_at:

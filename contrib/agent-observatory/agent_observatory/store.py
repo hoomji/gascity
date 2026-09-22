@@ -956,11 +956,27 @@ class ObservatoryStore:
                 result.activations_inserted += 1
 
             for sha, parents in graph.items():
-                cursor = self._conn.execute(
-                    "INSERT OR IGNORE INTO commit_parents(sha, parents_json) VALUES (?, ?)",
-                    (sha, canonical_json(list(parents))),
+                parents_json = canonical_json(list(parents))
+                existing = self._conn.execute(
+                    "SELECT parents_json FROM commit_parents WHERE sha = ?",
+                    (sha,),
+                ).fetchone()
+                if existing is not None:
+                    # ``commit_parents`` is immutable evidence too: the same sha
+                    # with different parents is a conflict, not an update, even
+                    # though the original INSERT OR IGNORE silently kept the old
+                    # row. Identical content stays a no-op.
+                    if existing["parents_json"] != parents_json:
+                        raise RegistryConflictError(
+                            "refusing to overwrite commit parents for "
+                            f"{sha} (existing content differs)"
+                        )
+                    continue
+                self._conn.execute(
+                    "INSERT INTO commit_parents(sha, parents_json) VALUES (?, ?)",
+                    (sha, parents_json),
                 )
-                result.commit_parents_inserted += cursor.rowcount
+                result.commit_parents_inserted += 1
 
             for fingerprint in fingerprints:
                 observed_at = fingerprint.get("observed_at") or ""
