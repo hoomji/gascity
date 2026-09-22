@@ -31,6 +31,12 @@ CHOICE = "choice"
 NOUL = "noul"
 SUPPORTED_QUESTION_TYPES = (CHOICE, NOUL)
 
+# Facet cardinality: ``one`` is mutually exclusive (a Choice question),
+# ``many`` is a set of independent labels (a family of Noul questions).
+ONE = "one"
+MANY = "many"
+SUPPORTED_CARDINALITIES = (ONE, MANY)
+
 # Criteria values may be a plain string or the structured object/array the API
 # accepts; ``None`` is allowed by the API when an option needs no extra detail.
 def _is_criterion_value(value: Any) -> bool:
@@ -57,6 +63,38 @@ class Question:
 
 
 @dataclass(frozen=True)
+class FacetValue:
+    """One allowed label in an evaluation facet."""
+
+    value: str
+    definition: str = ""
+
+
+@dataclass(frozen=True)
+class Facet:
+    """A versioned evaluation facet (for example ``phase`` or ``target``).
+
+    Facets are the *evaluation* vocabulary: gold annotations and predictions are
+    labelled with facet values. They are declared alongside the on-the-wire
+    questions so the label space is inspectable and versioned without changing
+    the wire contract. ``cardinality`` is ``one`` (mutually exclusive) or
+    ``many`` (an independent label set); the taxonomy may declare more facets
+    than the current wire request asks.
+    """
+
+    facet_id: str
+    cardinality: str
+    values: tuple[FacetValue, ...]
+    description: str = ""
+
+    def value_keys(self) -> tuple[str, ...]:
+        return tuple(item.value for item in self.values)
+
+    def definitions(self) -> dict[str, str]:
+        return {item.value: item.definition for item in self.values if item.definition}
+
+
+@dataclass(frozen=True)
 class Taxonomy:
     """A versioned, immutable question set."""
 
@@ -64,6 +102,7 @@ class Taxonomy:
     model: str
     endpoint: str
     questions: tuple[Question, ...]
+    facets: tuple[Facet, ...] = ()
 
     def as_request_questions(self) -> dict[str, dict[str, Any]]:
         """Return the question map placed on the wire."""
@@ -96,15 +135,57 @@ class Taxonomy:
     def by_id(self) -> dict[str, Question]:
         return {question.question_id: question for question in self.questions}
 
-    def to_json(self) -> str:
-        return canonical_json(
+    def facet_by_id(self) -> dict[str, Facet]:
+        return {facet.facet_id: facet for facet in self.facets}
+
+    def label_keys(self, facet_id: str) -> frozenset[str]:
+        """Return the allowed label keys for *facet_id* (empty when unknown)."""
+        facet = self.facet_by_id().get(facet_id)
+        return frozenset(facet.value_keys()) if facet is not None else frozenset()
+
+    def facet_hash(self) -> str:
+        """Stable hash over the evaluation facet vocabulary.
+
+        This is deliberately separate from :meth:`question_hash`: the wire
+        questions carry the live request shape while facets carry the evaluation
+        label space. Pinning both keeps predictions and annotations reproducible
+        when either revision changes.
+        """
+        if not self.facets:
+            return ""
+        return canonical_hash(
             {
                 "taxonomy_version": self.taxonomy_version,
-                "model": self.model,
-                "endpoint": self.endpoint,
-                "questions": self.as_request_questions(),
+                "facets": [
+                    {
+                        "facet_id": facet.facet_id,
+                        "cardinality": facet.cardinality,
+                        "values": list(facet.value_keys()),
+                        "descriptions": facet.definitions(),
+                    }
+                    for facet in self.facets
+                ],
             }
         )
+
+    def to_json(self) -> str:
+        payload: dict[str, Any] = {
+            "taxonomy_version": self.taxonomy_version,
+            "model": self.model,
+            "endpoint": self.endpoint,
+            "questions": self.as_request_questions(),
+        }
+        if self.facets:
+            payload["facets"] = [
+                {
+                    "facet_id": facet.facet_id,
+                    "cardinality": facet.cardinality,
+                    "values": list(facet.value_keys()),
+                    "definitions": facet.definitions(),
+                }
+                for facet in self.facets
+            ]
+        return canonical_json(payload)
 
 
 def _require(condition: bool, message: str) -> None:
@@ -140,6 +221,65 @@ def _validate_criteria(raw: Any, question_id: str, *, required: bool) -> tuple[t
         f"question {question_id!r} criteria keys must be unique",
     )
     return tuple(items)
+
+
+def _parse_facets(raw: Any) -> tuple[Facet, ...]:
+    """Parse and validate the optional ``facets`` evaluation vocabulary."""
+    if raw is None:
+        return ()
+    _require(isinstance(raw, list), "facets must be a list")
+    facets: list[Facet] = []
+    seen: set[str] = set()
+    for entry in raw:
+        _require(isinstance(entry, dict), "each facet must be an object")
+        facet_id = entry.get("facet_id")
+        cardinality = entry.get("cardinality")
+        _require(isinstance(facet_id, str) and facet_id, "facet_id is required")
+        _require(facet_id not in seen, f"duplicate facet_id {facet_id!r}")
+        _require(
+            cardinality in SUPPORTED_CARDINALITIES,
+            f"facet {facet_id!r} cardinality must be one of "
+            f"{', '.join(SUPPORTED_CARDINALITIES)}, got {cardinality!r}",
+        )
+        values = entry.get("values")
+        _require(
+            isinstance(values, list) and values,
+            f"facet {facet_id!r} requires a non-empty values list",
+        )
+        definitions = entry.get("definitions", {})
+        _require(
+            isinstance(definitions, dict),
+            f"facet {facet_id!r} definitions must be an object",
+        )
+        parsed_values: list[FacetValue] = []
+        value_keys: set[str] = set()
+        for value in values:
+            _require(
+                isinstance(value, str) and value,
+                f"facet {facet_id!r} values must be non-empty strings",
+            )
+            _require(value not in value_keys, f"facet {facet_id!r} duplicate value {value!r}")
+            value_keys.add(value)
+            definition = definitions.get(value, "")
+            _require(
+                isinstance(definition, str),
+                f"facet {facet_id!r} definition for {value!r} must be a string",
+            )
+            parsed_values.append(FacetValue(value, definition))
+        unknown_definitions = sorted(set(definitions) - value_keys)
+        _require(
+            not unknown_definitions,
+            f"facet {facet_id!r} definitions name unknown values: "
+            + ", ".join(unknown_definitions),
+        )
+        description = entry.get("description", "")
+        _require(
+            isinstance(description, str),
+            f"facet {facet_id!r} description must be a string",
+        )
+        seen.add(facet_id)
+        facets.append(Facet(facet_id, cardinality, tuple(parsed_values), description))
+    return tuple(facets)
 
 
 def load_taxonomy(path: str | Path | None = None) -> Taxonomy:
@@ -226,4 +366,5 @@ def load_taxonomy(path: str | Path | None = None) -> Taxonomy:
         model=model,
         endpoint=endpoint,
         questions=tuple(questions),
+        facets=_parse_facets(raw.get("facets")),
     )

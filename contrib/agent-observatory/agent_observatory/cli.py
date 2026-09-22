@@ -18,8 +18,17 @@ from typing import Any, Sequence
 
 from . import __version__
 from .adapters import AdapterContext, read_source
+from .annotations import load_gold_set, save_gold_annotations
 from .canonical import sha256_bytes
+from .episodes import segment_store
 from .errors import ObservatoryError
+from .evaluation import (
+    DEFAULT_MULTI_LABEL_FACETS,
+    EvaluationConfig,
+    evaluate_gold_set,
+    load_predictions,
+    report_json,
+)
 from .inventory import (
     SourceRoot,
     build_manifest,
@@ -31,7 +40,7 @@ from .inventory import (
 from .jev import REQUEST_BYTE_CAP, build_request, import_response, persist_request
 from .report import build_report
 from .store import ObservatoryStore
-from .taxonomy import load_taxonomy
+from .taxonomy import DEFAULT_TAXONOMY_PATH, load_taxonomy
 from .transport import TransportConfig, classify
 
 
@@ -382,6 +391,98 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_episodes(args: argparse.Namespace) -> int:
+    """Emit deterministic episode candidates from the projection."""
+    with ObservatoryStore(args.db) as store:
+        episodes = segment_store(store)
+    payload = {
+        "report_version": "1",
+        "kind": "episode_candidates",
+        "episodes": [
+            {
+                "episode_id": episode.episode_id,
+                "group_key": episode.group_key,
+                "session": list(episode.session_key),
+                "provider": episode.provider,
+                "repo": episode.repo,
+                "work_anchor": episode.work_anchor,
+                "started_at": episode.started_at,
+                "ended_at": episode.ended_at,
+                "event_count": episode.event_count,
+            }
+            for episode in episodes
+        ],
+    }
+    _write_output(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False), args.out)
+    print(
+        json.dumps({"episodes": len(episodes), "groups": len({ep.group_key for ep in episodes})}, sort_keys=True),
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _cmd_annotate(args: argparse.Namespace) -> int:
+    """Validate a gold set and append it to the projection (append-only)."""
+    taxonomy = load_taxonomy(args.taxonomy)
+    gold_set = load_gold_set(args.gold, taxonomy)
+    with ObservatoryStore(args.db) as store:
+        inserted = save_gold_annotations(store, gold_set)
+        total = store.gold_annotation_count()
+    print(
+        json.dumps(
+            {
+                "gold_set_version": gold_set.gold_set_version,
+                "episodes": len(gold_set.episodes),
+                "inserted": inserted,
+                "stored_annotations": total,
+                "gold_set_hash": gold_set.gold_set_hash(),
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _cmd_evaluate(args: argparse.Namespace) -> int:
+    taxonomy = load_taxonomy(args.taxonomy)
+    gold_set = load_gold_set(args.gold, taxonomy)
+    predictors = {
+        "jev": load_predictions(args.predictions, taxonomy, primary_facet=args.primary_facet),
+    }
+    multi_label_facets = (
+        tuple(args.multi_label_facet)
+        if args.multi_label_facet
+        else DEFAULT_MULTI_LABEL_FACETS
+    )
+    config = EvaluationConfig(
+        primary_facet=args.primary_facet,
+        multi_label_facets=multi_label_facets,
+        holdout_fraction=args.holdout_fraction,
+        confidence_threshold=args.confidence_threshold,
+        min_class_support=args.min_class_support,
+        calibration_bins=args.calibration_bins,
+    )
+    report = evaluate_gold_set(gold_set, predictors, taxonomy, config)
+    _write_output(report_json(report), args.out)
+    split = report["split"]
+    print(
+        json.dumps(
+            {
+                "gold_episodes": report["gold"]["episodes"],
+                "gold_groups": report["gold"]["groups"],
+                "tuning_episodes": split["tuning_episodes"],
+                "holdout_episodes": split["holdout_episodes"],
+                "leak_free": split["leak_free"],
+                "evaluation_hash": report["evaluation_hash"],
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0 if split["leak_free"] else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent-observatory",
@@ -511,6 +612,60 @@ def build_parser() -> argparse.ArgumentParser:
     )
     classify_parser.add_argument("--out", default=None, help="write the result JSON to this path instead of stdout")
     classify_parser.set_defaults(func=_cmd_classify)
+
+    evaluate_parser = subparsers.add_parser(
+        "evaluate",
+        help="evaluate predictions against a pinned gold set with a leak-free split",
+    )
+    evaluate_parser.add_argument("--gold", required=True, help="gold annotation JSON file")
+    evaluate_parser.add_argument(
+        "--predictions",
+        required=True,
+        help="prediction JSON file for the semantic model (title/metadata baselines are added automatically)",
+    )
+    evaluate_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (defaults to the versioned facet taxonomy)",
+    )
+    evaluate_parser.add_argument("--primary-facet", default="primary_intent", help="single-valued facet to score")
+    evaluate_parser.add_argument(
+        "--multi-label-facet",
+        action="append",
+        default=None,
+        help="many-valued facet to score (repeatable; replaces the default set)",
+    )
+    evaluate_parser.add_argument("--holdout-fraction", type=float, default=0.4, help="fraction of groups held out")
+    evaluate_parser.add_argument(
+        "--confidence-threshold", type=float, default=0.9, help="minimum confidence for the automation gate"
+    )
+    evaluate_parser.add_argument(
+        "--min-class-support", type=int, default=2, help="tuning support below which a class is report-only"
+    )
+    evaluate_parser.add_argument("--calibration-bins", type=int, default=5, help="reliability bin count")
+    evaluate_parser.add_argument("--out", default=None, help="write the evaluation report to this path")
+    evaluate_parser.set_defaults(func=_cmd_evaluate)
+
+    episodes_parser = subparsers.add_parser(
+        "episodes",
+        help="segment the projection into task-episode candidates",
+    )
+    episodes_parser.add_argument("--db", required=True, help="SQLite projection path")
+    episodes_parser.add_argument("--out", default=None, help="write episode candidates to this path")
+    episodes_parser.set_defaults(func=_cmd_episodes)
+
+    annotate_parser = subparsers.add_parser(
+        "annotate",
+        help="validate a gold annotation set and append it to the projection",
+    )
+    annotate_parser.add_argument("--db", required=True, help="SQLite projection path")
+    annotate_parser.add_argument("--gold", required=True, help="gold annotation JSON file")
+    annotate_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (defaults to the versioned facet taxonomy)",
+    )
+    annotate_parser.set_defaults(func=_cmd_annotate)
 
     return parser
 

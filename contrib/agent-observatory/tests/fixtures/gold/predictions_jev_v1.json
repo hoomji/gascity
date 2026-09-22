@@ -1,0 +1,120 @@
+{
+  "predictor": "jev",
+  "model": "jev-1.13.0",
+  "taxonomy_version": "2.0.0",
+  "question_hash": "f3f8c21d4cef655ce9cc35ea97a1c327f7a7cf49ad363fa2fb89add6b7013178",
+  "predictions": [
+    {
+      "episode_id": "ep-bugfix-flaky-1",
+      "primary_intent": "bugfix",
+      "confidence": 0.95,
+      "probabilities": {"bugfix": 0.95, "unknown": 0.05},
+      "secondary_activity": ["regression_repair"],
+      "target": ["tests"]
+    },
+    {
+      "episode_id": "ep-bugfix-null-2",
+      "primary_intent": "bugfix",
+      "confidence": 0.9,
+      "probabilities": {"bugfix": 0.9, "unknown": 0.1},
+      "secondary_activity": ["regression_repair", "code_implementation"],
+      "target": ["application"]
+    },
+    {
+      "episode_id": "ep-impl-retry-3",
+      "primary_intent": "implementation",
+      "confidence": 0.93,
+      "probabilities": {"implementation": 0.93, "unknown": 0.07},
+      "secondary_activity": ["code_implementation"],
+      "target": ["api"]
+    },
+    {
+      "episode_id": "ep-impl-export-4",
+      "primary_intent": "planning_spec",
+      "confidence": 0.8,
+      "probabilities": {"planning_spec": 0.8, "implementation": 0.2},
+      "secondary_activity": ["code_implementation"],
+      "target": ["application"]
+    },
+    {
+      "episode_id": "ep-plan-scope-5",
+      "primary_intent": "planning_spec",
+      "confidence": 0.97,
+      "probabilities": {"planning_spec": 0.97, "unknown": 0.03},
+      "secondary_activity": ["spec_reconciliation"],
+      "target": ["docs_spec"]
+    },
+    {
+      "episode_id": "ep-plan-design-6",
+      "primary_intent": "planning_spec",
+      "confidence": 0.88,
+      "probabilities": {"planning_spec": 0.88, "unknown": 0.12},
+      "secondary_activity": ["architecture_review"],
+      "target": ["harness_prompt_skill"]
+    },
+    {
+      "episode_id": "ep-ci-cache-7",
+      "primary_intent": "implementation",
+      "confidence": 0.7,
+      "probabilities": {"implementation": 0.7, "test_lint_build_ci": 0.3},
+      "secondary_activity": ["ci_repair"],
+      "target": ["ci_cd"]
+    },
+    {
+      "episode_id": "ep-ci-lint-8",
+      "primary_intent": "test_lint_build_ci",
+      "confidence": 0.92,
+      "probabilities": {"test_lint_build_ci": 0.92, "unknown": 0.08},
+      "secondary_activity": ["lint_style"],
+      "target": ["lint_typecheck"]
+    },
+    {
+      "episode_id": "ep-research-injected-9",
+      "primary_intent": "research_docs",
+      "confidence": 0.85,
+      "probabilities": {"research_docs": 0.85, "unknown": 0.15},
+      "secondary_activity": ["investigation"],
+      "target": ["docs_spec"]
+    },
+    {
+      "episode_id": "ep-unknown-uncertain-10",
+      "primary_intent": "unknown",
+      "confidence": 0.6,
+      "probabilities": {"unknown": 0.6, "bugfix": 0.4},
+      "secondary_activity": [],
+      "target": []
+    },
+    {
+      "episode_id": "ep-rare-flake-11",
+      "primary_intent": "bugfix",
+      "confidence": 0.99,
+      "probabilities": {"bugfix": 0.99, "unknown": 0.01},
+      "secondary_activity": ["flaky_test_repair"],
+      "target": ["tests"]
+    },
+    {
+      "episode_id": "ep-contested-refactor-12",
+      "primary_intent": "implementation",
+      "confidence": 0.94,
+      "probabilities": {"implementation": 0.94, "unknown": 0.06},
+      "secondary_activity": ["code_implementation", "refactor"],
+      "target": ["application"]
+    },
+    {
+      "episode_id": "ep-bugfix-startup-13",
+      "primary_intent": "bugfix",
+      "confidence": 0.96,
+      "probabilities": {"bugfix": 0.96, "unknown": 0.04},
+      "secondary_activity": ["regression_repair"],
+      "target": ["application"]
+    },
+    {
+      "episode_id": "ep-bugfix-shutdown-14",
+      "primary_intent": "bugfix",
+      "confidence": 0.91,
+      "probabilities": {"bugfix": 0.91, "unknown": 0.09},
+      "secondary_activity": ["regression_repair"],
+      "target": ["application"]
+    }
+  ]
+}

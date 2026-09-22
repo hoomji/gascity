@@ -32,9 +32,13 @@ contrib/agent-observatory/
     store.py           SQLite schema versioning, transactional import, classifications
     commands.py        conservative, non-executing command categorization
     report.py          deterministic report JSON
-    taxonomy.py        versioned question taxonomy loader
-    taxonomy/jev_taxonomy_v1.json
+    taxonomy.py        versioned question taxonomy loader (questions + facets)
+    taxonomy/jev_taxonomy_v1.json   wire taxonomy (implemented intent subset)
+    taxonomy/jev_taxonomy_v2.json   wire taxonomy + full evaluation facets
     jev.py             /v1/systemone request builder + saved-response validation
+    episodes.py        deterministic session -> task-episode segmentation
+    annotations.py     versioned gold annotations (separate from predictions)
+    evaluation.py      grouped temporal holdout, baselines, metrics, calibration
   examples/
     synthetic_events.jsonl   synthetic fixture (no real data)
     state.json               explicit sanitized state for the request builder
@@ -42,6 +46,8 @@ contrib/agent-observatory/
     demo.sh                  end-to-end CLI demo into a temp SQLite file
   tests/                     unittest suite
     fixtures/jev_smoke_contract.json  synthetic-only pinned real wire exchange
+    fixtures/gold/gold_episodes_v1.json  pinned gold mechanics fixture (synthetic)
+    fixtures/gold/predictions_jev_v1.json  model predictions for that fixture
   README.md
 ```
 
@@ -309,6 +315,80 @@ fields are exposed; response bodies are read in bounded chunks on both the 2xx
 and error paths; the circuit breaker persists its state and reserves a single
 half-open probe.
 
+## 7. Evaluation: facets, episodes, gold labels, calibration
+
+The classifier is only useful if it is measured. This slice adds the evaluation
+machinery; it does **not** claim classifier quality from the synthetic fixture
+and it never treats a model label as execution authority.
+
+### Facets
+
+`taxonomy/jev_taxonomy_v2.json` declares the full `taxonomy.md` facet vocabulary
+alongside the wire questions: `primary_intent` (the implemented wire subset),
+`secondary_activity`, `work_unit`, `scope`, `workflow`, `phase`, `target`,
+`disposition` and `bottleneck_hypothesis`. A facet is `one` (mutually exclusive)
+or `many` (an independent label set). `Taxonomy.facet_hash()` pins the label
+space separately from `question_hash()`, which stays the live wire shape. The new
+schema is additive: v1 still loads, and the default `build-request` taxonomy is
+unchanged.
+
+### Episodes
+
+`episodes.py` splits a session into task episodes at configured boundary kinds
+(`user`, `user_request`, `user_excerpt`, `task`), never dropping an event. The
+episode id is a hash of the session identity and first event id; a session with
+no boundary is one episode. The lineage root (resolved through
+`parent_session_id`) is the **continuation group** so resumed/subagent sessions
+cannot leak across an evaluation split.
+
+### Gold annotations
+
+`annotations.py` loads a versioned gold set and validates every label against the
+taxonomy facet cardinality. Annotations are stored in their own append-only
+`gold_annotations` table, keyed by content: replay dedupes, and a correction is a
+new row rather than an overwrite of the old label or any prediction. The content
+key covers the labels, flags, annotator, adjudication and metadata, so a second
+annotator's independent label or a metadata-only correction also appends a row.
+Flags (`uncertain`, `injected`, `contested`, `rare`, `non_english`, `synthetic`,
+`changed_intent`) keep ambiguous and adversarial cases report-only.
+
+### Split and audit
+
+`grouped_temporal_split` orders continuation groups by earliest observed time
+(normalized to canonical UTC so mixed offsets order chronologically) and holds out
+the latest fraction; whole groups stay together. `audit_split` reports
+`leak_free`, `temporal_order_ok` and any violations. A report whose split is not
+leak-free makes the CLI exit non-zero.
+
+### Metrics, baselines, calibration and the routing gate
+
+For the primary facet the report records per-class precision/recall/F1/support,
+macro and micro F1, a confusion matrix, accuracy, coverage and abstentions. For
+each many-valued facet it records per-label and micro/macro F1. Probabilistic
+predictions also get a multiclass Brier score, reliability bins and expected
+calibration error, plus Wilson lower bounds on holdout precision. Deterministic
+`title_only` and `metadata_only` baselines are always scored on the same holdout
+so a semantic model is compared against weak evidence, never an empty baseline.
+`macro_f1` averages only over gold-labelled classes (a predicted-only class
+appears in `per_class` with zero support but not in the macro average), and
+`coverage` counts an `unknown` prediction as covered even though the automation
+gate abstains on `unknown`.
+
+The automation gate is conservative: rare classes (tuning support below
+`--min-class-support`, including classes unseen in tuning), `unknown` labels,
+low-confidence predictions, and any case flagged `injected`, `uncertain`,
+`contested`, `changed_intent` or `rare` are **never** eligible to auto-route,
+regardless of model confidence. The report records every abstention and its
+reason, and asserts there are no gate violations.
+
+Reproducibility: the report pins `taxonomy_version`, `facet_hash`,
+`question_hash`, `model`, `gold_set_version`, `gold_set_hash` and an
+`evaluation_hash` over the split, provenance and every prediction hash, so a
+model or question revision produces a different, replayable report. The pinned
+`tests/fixtures/gold/` fixture proves the evaluator mechanics; establishing
+per-class quality requires an independently annotated real gold set (the 400
+episode stratified set in `measurement.md`), which remains a separate gate.
+
 ## CLI reference
 
 ```
@@ -327,8 +407,20 @@ agent-observatory classify --db DB --state STATE.json
     [--max-requests N] [--max-tokens N] [--max-cost-usd USD]
     [--price-per-million-input-usd USD] [--price-per-million-output-usd USD]
     [--allow-model-drift] [--out FILE]
+agent-observatory episodes --db DB [--out FILE]
+agent-observatory annotate --db DB --gold GOLD.json [--taxonomy PATH]
+agent-observatory evaluate --gold GOLD.json --predictions PRED.json
+    [--taxonomy PATH] [--primary-facet FACET]
+    [--multi-label-facet FACET ...]
+    [--holdout-fraction F] [--confidence-threshold C]
+    [--min-class-support N] [--calibration-bins N] [--out FILE]
 agent-observatory --version
 ```
+
+`episodes` emits deterministic annotation candidates from the projection;
+`annotate` validates a gold set and appends it (append-only) to the projection;
+`evaluate` writes the deterministic evaluation report and exits non-zero when the
+split audit is not leak-free.
 
 When `--snapshot-hash` is supplied together with `--db` and `--session`, the
 explicit value is cross-checked against the projection and a mismatch is refused
@@ -360,6 +452,16 @@ commands, instruction-like text treated as data, question-hash sensitivity to
 instructions/criteria, and invalid/NaN responses. `examples/demo.sh` runs the CLI
 end to end against the synthetic fixture; replay preserves event and
 classification counts.
+
+The evaluation tests add: v2 facet parsing/cardinality/hash stability, episode
+segmentation (boundaries, work-anchor splitting, stable collision-free ids,
+parent-lineage grouping, deterministic ordering), gold validation (unknown
+labels, wrong cardinality, unknown flags, duplicate ids, taxonomy mismatch, naive
+timestamps), append-only annotation storage distinct from predictions, exact
+metric arithmetic, grouped temporal split and leak-free audit (including a
+detected group-overlap violation), the automation gate (injected/uncertain/rare/
+low-confidence/unknown never eligible), report reproducibility, and the
+`evaluate` CLI.
 
 ## Limitations and next adapter requirements
 

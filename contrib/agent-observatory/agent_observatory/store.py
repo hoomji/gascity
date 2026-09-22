@@ -192,6 +192,25 @@ _SCHEMA_STATEMENTS = (
         FOREIGN KEY (classification_id) REFERENCES classifications(classification_id) ON DELETE CASCADE
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS gold_annotations (
+        annotation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        annotation_hash TEXT NOT NULL UNIQUE,
+        episode_id TEXT NOT NULL,
+        group_key TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        taxonomy_version TEXT NOT NULL,
+        facet_hash TEXT NOT NULL,
+        gold_set_version TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        annotator TEXT NOT NULL,
+        adjudication TEXT NOT NULL,
+        flags_json TEXT NOT NULL,
+        labels_json TEXT NOT NULL,
+        metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )
+    """,
 )
 
 @dataclass
@@ -683,6 +702,61 @@ class ObservatoryStore:
 
     def classification_count(self) -> int:
         return int(self._conn.execute("SELECT COUNT(*) FROM classifications").fetchone()[0])
+
+    # -- gold annotations --------------------------------------------------
+
+    def save_gold_annotations(self, gold_set: Any) -> int:
+        """Append gold annotations from *gold_set*; return newly stored rows.
+
+        Rows are content-keyed and append-only: identical annotations dedupe, a
+        correction for the same episode is a new row, and no prediction row is
+        ever rewritten. This keeps human labels and model output separate.
+        """
+        inserted = 0
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            for episode in gold_set.episodes:
+                cursor = self._conn.execute(
+                    "INSERT OR IGNORE INTO gold_annotations(annotation_hash, episode_id, "
+                    "group_key, observed_at, taxonomy_version, facet_hash, gold_set_version, "
+                    "provider, annotator, adjudication, flags_json, labels_json, metadata_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        episode.annotation_hash(),
+                        episode.episode_id,
+                        episode.group_key,
+                        episode.observed_at,
+                        gold_set.taxonomy_version,
+                        gold_set.facet_hash,
+                        gold_set.gold_set_version,
+                        episode.provider,
+                        episode.annotator,
+                        episode.adjudication,
+                        canonical_json(sorted(episode.flags)),
+                        canonical_json({key: list(value) for key, value in sorted(episode.labels.items())}),
+                        canonical_json(dict(episode.metadata)),
+                    ),
+                )
+                inserted += cursor.rowcount
+            self._conn.execute("COMMIT")
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        return inserted
+
+    def iter_gold_annotations(self) -> Iterator[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM gold_annotations ORDER BY annotation_id"
+        ).fetchall()
+        for row in rows:
+            record = dict(row)
+            record["flags"] = json.loads(record.pop("flags_json"))
+            record["labels"] = json.loads(record.pop("labels_json"))
+            record["metadata"] = json.loads(record.pop("metadata_json"))
+            yield record
+
+    def gold_annotation_count(self) -> int:
+        return int(self._conn.execute("SELECT COUNT(*) FROM gold_annotations").fetchone()[0])
 
 
 def content_hash(value: Any) -> str:
