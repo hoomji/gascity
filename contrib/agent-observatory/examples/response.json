@@ -1,0 +1,55 @@
+{
+  "answers": {
+    "concurrency_or_race_risk": {
+      "type": "noul",
+      "noul": 0.25
+    },
+    "measurement_or_telemetry": {
+      "type": "noul",
+      "noul": 0.25
+    },
+    "primary_intent": {
+      "confidence": 0.9,
+      "probabilities": {
+        "adversarial_review": 0.0,
+        "bugfix": 1.0,
+        "dependency_worktree_agent_ops": 0.0,
+        "implementation": 0.0,
+        "planning_spec": 0.0,
+        "pr_review": 0.0,
+        "research_docs": 0.0,
+        "test_lint_build_ci": 0.0,
+        "unknown": 0.0
+      },
+      "type": "choice",
+      "choice": "bugfix"
+    },
+    "requires_runtime_provisioning": {
+      "type": "noul",
+      "noul": 0.25
+    },
+    "review_heavy": {
+      "type": "noul",
+      "noul": 0.25
+    },
+    "scope": {
+      "confidence": 0.9,
+      "probabilities": {
+        "large": 0.0,
+        "small": 1.0,
+        "unknown": 0.0
+      },
+      "type": "choice",
+      "choice": "small"
+    },
+    "security_sensitive": {
+      "type": "noul",
+      "noul": 0.25
+    }
+  },
+  "model": "jev-1.13.0",
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 7
+  }
+}
