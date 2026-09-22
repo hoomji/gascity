@@ -70,6 +70,43 @@ class GoldAnnotationTest(unittest.TestCase):
                 save_gold_annotations(store, corrected)
                 self.assertEqual(store.gold_annotation_count(), 15)
 
+    def test_second_annotator_is_a_new_row(self):
+        import dataclasses
+
+        original_annotator = self.gold_set.episodes[0].annotator
+        bob = dataclasses.replace(
+            self.gold_set,
+            episodes=tuple(
+                dataclasses.replace(episode, annotator="bob")
+                for episode in self.gold_set.episodes
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with ObservatoryStore(os.path.join(tmp, "p.db")) as store:
+                self.assertEqual(save_gold_annotations(store, self.gold_set), 14)
+                # Identical labels, different annotator: a genuinely new row.
+                self.assertEqual(save_gold_annotations(store, bob), 14)
+                self.assertEqual(store.gold_annotation_count(), 28)
+                annotators = {row["annotator"] for row in store.iter_gold_annotations()}
+                self.assertEqual(annotators, {original_annotator, "bob"})
+
+    def test_metadata_correction_is_a_new_row(self):
+        import dataclasses
+
+        first = self.gold_set.episodes[0]
+        corrected_episode = dataclasses.replace(
+            first, metadata={**dict(first.metadata), "bead_kind": "feature"}
+        )
+        corrected = dataclasses.replace(self.gold_set, episodes=(corrected_episode,))
+        with tempfile.TemporaryDirectory() as tmp:
+            with ObservatoryStore(os.path.join(tmp, "p.db")) as store:
+                save_gold_annotations(store, self.gold_set)
+                # Identical labels, corrected metadata: still a new row.
+                self.assertEqual(save_gold_annotations(store, corrected), 1)
+                self.assertEqual(store.gold_annotation_count(), 15)
+                rows = list(store.iter_gold_annotations())
+                self.assertEqual(rows[-1]["metadata"]["bead_kind"], "feature")
+
     def _load_mutated(self, mutation):
         with open(GOLD_PATH, encoding="utf-8") as handle:
             document = copy.deepcopy(json.load(handle))

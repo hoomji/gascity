@@ -346,14 +346,17 @@ cannot leak across an evaluation split.
 `annotations.py` loads a versioned gold set and validates every label against the
 taxonomy facet cardinality. Annotations are stored in their own append-only
 `gold_annotations` table, keyed by content: replay dedupes, and a correction is a
-new row rather than an overwrite of the old label or any prediction. Flags
-(`uncertain`, `injected`, `contested`, `rare`, `non_english`, `synthetic`,
+new row rather than an overwrite of the old label or any prediction. The content
+key covers the labels, flags, annotator, adjudication and metadata, so a second
+annotator's independent label or a metadata-only correction also appends a row.
+Flags (`uncertain`, `injected`, `contested`, `rare`, `non_english`, `synthetic`,
 `changed_intent`) keep ambiguous and adversarial cases report-only.
 
 ### Split and audit
 
-`grouped_temporal_split` orders continuation groups by earliest observed time and
-holds out the latest fraction; whole groups stay together. `audit_split` reports
+`grouped_temporal_split` orders continuation groups by earliest observed time
+(normalized to canonical UTC so mixed offsets order chronologically) and holds out
+the latest fraction; whole groups stay together. `audit_split` reports
 `leak_free`, `temporal_order_ok` and any violations. A report whose split is not
 leak-free makes the CLI exit non-zero.
 
@@ -366,6 +369,10 @@ predictions also get a multiclass Brier score, reliability bins and expected
 calibration error, plus Wilson lower bounds on holdout precision. Deterministic
 `title_only` and `metadata_only` baselines are always scored on the same holdout
 so a semantic model is compared against weak evidence, never an empty baseline.
+`macro_f1` averages only over gold-labelled classes (a predicted-only class
+appears in `per_class` with zero support but not in the macro average), and
+`coverage` counts an `unknown` prediction as covered even though the automation
+gate abstains on `unknown`.
 
 The automation gate is conservative: rare classes (tuning support below
 `--min-class-support`, including classes unseen in tuning), `unknown` labels,

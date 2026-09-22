@@ -88,7 +88,24 @@ class GoldEpisode:
         }
 
     def annotation_hash(self) -> str:
-        return canonical_hash(["annotation", self.content()])
+        """Content hash for the append-only store, including provenance.
+
+        The dedupe key must cover ``annotator``, ``adjudication`` and
+        ``metadata`` as well as the labels: a second annotator's independent
+        label, or a metadata-only correction, is a genuinely different annotation
+        and must append a row, while a byte-identical replay still dedupes.
+        """
+        return canonical_hash(
+            [
+                "annotation",
+                {
+                    **self.content(),
+                    "annotator": self.annotator,
+                    "adjudication": self.adjudication,
+                    "metadata": dict(self.metadata),
+                },
+            ]
+        )
 
 
 @dataclass(frozen=True)

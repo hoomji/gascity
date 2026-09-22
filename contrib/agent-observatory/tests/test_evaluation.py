@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -13,6 +15,7 @@ except ImportError:  # pragma: no cover
     import support
 
 from agent_observatory.annotations import GoldEpisode, load_gold_set
+from agent_observatory.errors import EvaluationError
 from agent_observatory.evaluation import (
     EvaluationConfig,
     HoldoutSplit,
@@ -142,6 +145,125 @@ class SplitTest(unittest.TestCase):
         split = grouped_temporal_split([make_episode("e1", "g1", "2026-09-01T00:00:00Z")])
         counts = len(split.tuning) + len(split.holdout)
         self.assertEqual(counts, 1)
+
+    def test_mixed_offset_timestamps_split_chronologically(self):
+        # g1 is 21:00Z and g2 is 22:30Z; raw lexicographic order is the reverse,
+        # so an unnormalized split would put the later group in tuning.
+        episodes = [
+            make_episode("ea", "g1", "2026-09-01T23:00:00+02:00"),
+            make_episode("eb", "g2", "2026-09-01T22:30:00Z"),
+        ]
+        split = grouped_temporal_split(episodes, holdout_fraction=0.5)
+        self.assertEqual(split.tuning_groups, ("g1",))
+        self.assertEqual(split.holdout_groups, ("g2",))
+        self.assertEqual(split.boundary_time, "2026-09-01T22:30:00.000000Z")
+        audit = audit_split(split)
+        self.assertTrue(audit["leak_free"])
+        self.assertTrue(audit["temporal_order_ok"])
+
+    def test_audit_detects_mixed_offset_inversion(self):
+        # Tuning is chronologically after holdout once the offsets are applied.
+        tuning = (make_episode("eb", "g2", "2026-09-01T22:30:00Z"),)
+        holdout = (make_episode("ea", "g1", "2026-09-01T23:00:00+02:00"),)
+        split = HoldoutSplit(
+            tuning=tuning,
+            holdout=holdout,
+            tuning_groups=("g2",),
+            holdout_groups=("g1",),
+            boundary_time=None,
+        )
+        audit = audit_split(split)
+        self.assertFalse(audit["temporal_order_ok"])
+        self.assertTrue(any("not earlier" in violation for violation in audit["violations"]))
+
+
+class PredictionValidationTest(unittest.TestCase):
+    """Probabilities are validated the way the saved-response path validates them."""
+
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+
+    def _load(self, probabilities_literal, **kwargs):
+        document = (
+            '{"predictor": "jev", "predictions": [{"episode_id": "e1", '
+            '"primary_intent": "bugfix", "probabilities": '
+            + probabilities_literal
+            + "}]}"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "predictions.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(document)
+            return load_predictions(path, self.taxonomy, **kwargs)
+
+    def test_out_of_range_probabilities_are_rejected(self):
+        with self.assertRaises(EvaluationError):
+            self._load('{"bugfix": 1.5, "unknown": -0.5}')
+
+    def test_numeric_overflow_is_rejected(self):
+        with self.assertRaises(EvaluationError):
+            self._load('{"bugfix": 1e999}')
+
+    def test_null_probability_is_rejected(self):
+        with self.assertRaises(EvaluationError):
+            self._load('{"bugfix": null}')
+
+    def test_string_probability_is_rejected(self):
+        with self.assertRaises(EvaluationError):
+            self._load('{"bugfix": "0.9"}')
+
+    def test_unknown_probability_label_is_rejected(self):
+        with self.assertRaises(EvaluationError):
+            self._load('{"not_a_label": 1.0}')
+
+    def test_probabilities_must_sum_to_one(self):
+        with self.assertRaises(EvaluationError):
+            self._load('{"bugfix": 0.4, "unknown": 0.4}')
+
+    def test_valid_distribution_loads(self):
+        predictions = self._load('{"bugfix": 0.9, "unknown": 0.1}')
+        self.assertEqual(predictions[0].probabilities, {"bugfix": 0.9, "unknown": 0.1})
+
+    def test_probability_labels_follow_the_primary_facet(self):
+        valid = self._load('{"implement": 0.8, "unknown": 0.2}', primary_facet="phase")
+        self.assertEqual(valid[0].probabilities, {"implement": 0.8, "unknown": 0.2})
+        with self.assertRaises(EvaluationError):
+            self._load('{"bugfix": 1.0}', primary_facet="phase")
+
+
+class PredictionGoldCrossCheckTest(unittest.TestCase):
+    """Prediction episode ids are cross-checked against the gold set (F5)."""
+
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+        self.gold_set = load_gold_set(GOLD_PATH, self.taxonomy)
+        self.predictions = load_predictions(PRED_PATH, self.taxonomy)
+        self.config = EvaluationConfig(confidence_threshold=0.9, min_class_support=2)
+
+    def test_unknown_prediction_episode_id_raises(self):
+        import dataclasses
+
+        ghost = dataclasses.replace(self.predictions[0], episode_id="typo-does-not-exist")
+        with self.assertRaises(EvaluationError) as caught:
+            evaluate_gold_set(
+                self.gold_set,
+                {"jev": (ghost,) + self.predictions[1:]},
+                self.taxonomy,
+                self.config,
+            )
+        self.assertIn("typo-does-not-exist", str(caught.exception))
+
+    def test_missing_predictions_are_counted_not_silently_skipped(self):
+        reduced = self.predictions[:-1]
+        report = evaluate_gold_set(
+            self.gold_set, {"jev": reduced}, self.taxonomy, self.config
+        )
+        missing = report["evaluations"]["jev"]["missing_predictions"]
+        self.assertEqual(missing["count"], 1)
+        self.assertEqual(missing["episode_ids"], [self.predictions[-1].episode_id])
+        self.assertEqual(
+            report["evaluations"]["title_only"]["missing_predictions"]["count"], 0
+        )
 
 
 class AutomationGateTest(unittest.TestCase):
@@ -284,6 +406,106 @@ class EvaluateCliTest(unittest.TestCase):
                 report = json.load(handle)
             self.assertTrue(report["split"]["leak_free"])
             self.assertIn("jev", report["evaluations"])
+
+    def _report_config(self, extra_args):
+        from agent_observatory.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "report.json")
+            status = main(
+                [
+                    "evaluate",
+                    "--gold",
+                    GOLD_PATH,
+                    "--predictions",
+                    PRED_PATH,
+                    "--taxonomy",
+                    V2_PATH,
+                    "--out",
+                    out,
+                ]
+                + extra_args
+            )
+            self.assertEqual(status, 0)
+            with open(out, encoding="utf-8") as handle:
+                return json.load(handle)["config"]
+
+    def test_multi_label_facet_defaults_when_flag_absent(self):
+        config = self._report_config([])
+        self.assertEqual(config["multi_label_facets"], ["secondary_activity", "target"])
+
+    def test_multi_label_facet_flag_replaces_defaults(self):
+        config = self._report_config(["--multi-label-facet", "bottleneck_hypothesis"])
+        self.assertEqual(config["multi_label_facets"], ["bottleneck_hypothesis"])
+
+    def test_multi_label_facet_flag_accepts_repeats(self):
+        config = self._report_config(
+            [
+                "--multi-label-facet",
+                "bottleneck_hypothesis",
+                "--multi-label-facet",
+                "target",
+            ]
+        )
+        self.assertEqual(config["multi_label_facets"], ["bottleneck_hypothesis", "target"])
+
+    def test_cli_rejects_overflow_probabilities_without_traceback(self):
+        from agent_observatory.cli import main
+
+        document = (
+            '{"predictor": "jev", "predictions": [{"episode_id": "ep-bugfix-flaky-1", '
+            '"primary_intent": "bugfix", "probabilities": {"bugfix": 1e999}}]}'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            predictions = os.path.join(tmp, "predictions.json")
+            with open(predictions, "w", encoding="utf-8") as handle:
+                handle.write(document)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                status = main(
+                    [
+                        "evaluate",
+                        "--gold",
+                        GOLD_PATH,
+                        "--predictions",
+                        predictions,
+                        "--taxonomy",
+                        V2_PATH,
+                    ]
+                )
+        self.assertEqual(status, 1)
+        self.assertTrue(stderr.getvalue().strip().startswith("error:"), stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_cli_rejects_unknown_episode_id_without_traceback(self):
+        from agent_observatory.cli import main
+
+        with open(PRED_PATH, encoding="utf-8") as handle:
+            document = json.load(handle)
+        document["predictions"].append(
+            {"episode_id": "typo-does-not-exist", "primary_intent": "bugfix"}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            predictions = os.path.join(tmp, "predictions.json")
+            with open(predictions, "w", encoding="utf-8") as handle:
+                json.dump(document, handle)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                status = main(
+                    [
+                        "evaluate",
+                        "--gold",
+                        GOLD_PATH,
+                        "--predictions",
+                        predictions,
+                        "--taxonomy",
+                        V2_PATH,
+                    ]
+                )
+        self.assertEqual(status, 1)
+        self.assertTrue(stderr.getvalue().strip().startswith("error:"), stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+        self.assertIn("typo-does-not-exist", stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -29,7 +29,9 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .annotations import GoldEpisode, GoldSet
 from .canonical import canonical_hash, canonical_json
+from .contract import normalize_timestamp
 from .errors import EvaluationError
+from .jev import _PROBABILITY_SUM_TOLERANCE
 from .taxonomy import Taxonomy
 
 EVALUATION_REPORT_VERSION = "1"
@@ -124,6 +126,20 @@ def _require(condition: bool, message: str) -> None:
         raise EvaluationError(message)
 
 
+def _is_finite_unit_interval(value: Any) -> bool:
+    """True when *value* is a real number, finite and within ``[0, 1]``.
+
+    Guards numeric overflow so a malformed distribution (``1e999`` -> ``inf``,
+    or an integer too large to convert to float) can never escape as an
+    uncaught ``OverflowError``/``ValueError``.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, int):
+        return 0 <= value <= 1
+    return math.isfinite(value) and 0.0 <= value <= 1.0
+
+
 def grouped_temporal_split(
     episodes: Sequence[GoldEpisode],
     *,
@@ -142,9 +158,13 @@ def grouped_temporal_split(
 
     group_earliest: dict[str, str] = {}
     for episode in episodes:
+        # Compare canonical UTC microseconds, not raw strings: a hand-built
+        # GoldEpisode may still carry a mixed offset, where lexicographic order
+        # is not chronological order.
+        observed_at = normalize_timestamp(episode.observed_at)
         previous = group_earliest.get(episode.group_key)
-        if previous is None or episode.observed_at < previous:
-            group_earliest[episode.group_key] = episode.observed_at
+        if previous is None or observed_at < previous:
+            group_earliest[episode.group_key] = observed_at
 
     ordered_groups = sorted(group_earliest.items(), key=lambda item: (item[1], item[0]))
     total = len(ordered_groups)
@@ -158,7 +178,7 @@ def grouped_temporal_split(
 
     tuning = tuple(ep for ep in episodes if ep.group_key in tuning_group_set)
     holdout = tuple(ep for ep in episodes if ep.group_key in holdout_group_set)
-    boundary_time = min((ep.observed_at for ep in holdout), default=None)
+    boundary_time = min((normalize_timestamp(ep.observed_at) for ep in holdout), default=None)
     return HoldoutSplit(
         tuning=tuning,
         holdout=holdout,
@@ -188,11 +208,11 @@ def audit_split(split: HoldoutSplit) -> dict[str, Any]:
     temporal_order = True
     if split.tuning and split.holdout:
         latest_tuning_group_time = max(
-            min(ep.observed_at for ep in split.tuning if ep.group_key == group)
+            min(normalize_timestamp(ep.observed_at) for ep in split.tuning if ep.group_key == group)
             for group in split.tuning_groups
         )
         earliest_holdout_group_time = min(
-            min(ep.observed_at for ep in split.holdout if ep.group_key == group)
+            min(normalize_timestamp(ep.observed_at) for ep in split.holdout if ep.group_key == group)
             for group in split.holdout_groups
         )
         temporal_order = latest_tuning_group_time <= earliest_holdout_group_time
@@ -474,12 +494,24 @@ def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"non-finite JSON constant {value!r} is not allowed")
 
 
-def load_predictions(path: str | Path, taxonomy: Taxonomy | None = None) -> tuple[Prediction, ...]:
+def load_predictions(
+    path: str | Path,
+    taxonomy: Taxonomy | None = None,
+    *,
+    primary_facet: str = DEFAULT_PRIMARY_FACET,
+) -> tuple[Prediction, ...]:
     """Load a prediction document.
 
     Each entry names ``episode_id`` and any facet id; single facets take a string
     (or one-element list), many-valued facets take a list. ``confidence`` and
-    ``probabilities`` are optional and apply to the primary facet.
+    ``probabilities`` are optional and apply to *primary_facet*.
+
+    ``probabilities`` is validated the way the saved-response path validates a
+    choice distribution: every value must be a finite number in ``[0, 1]``, every
+    key must be a label of *primary_facet*, and the distribution must sum to ~1.
+    Out-of-range, non-finite, non-numeric or mislabelled values raise
+    :class:`EvaluationError` instead of reaching the Brier score or the canonical
+    serializer.
     """
     prediction_path = Path(path)
     try:
@@ -549,7 +581,33 @@ def load_predictions(path: str | Path, taxonomy: Taxonomy | None = None) -> tupl
                 isinstance(probabilities, dict),
                 f"prediction for {episode_id!r} probabilities must be an object",
             )
-            probabilities = {str(key): float(value) for key, value in probabilities.items()}
+            allowed_probability_labels = (
+                taxonomy.label_keys(primary_facet)
+                if facets and primary_facet in facets
+                else None
+            )
+            normalized_probabilities: dict[str, float] = {}
+            probability_total = 0.0
+            for label, value in probabilities.items():
+                if allowed_probability_labels is not None:
+                    _require(
+                        label in allowed_probability_labels,
+                        f"prediction for {episode_id!r} probabilities name unknown "
+                        f"label {label!r}",
+                    )
+                _require(
+                    _is_finite_unit_interval(value),
+                    f"prediction for {episode_id!r} probability for {label!r} must be "
+                    "a finite number in [0,1]",
+                )
+                normalized_probabilities[label] = float(value)
+                probability_total += float(value)
+            _require(
+                abs(probability_total - 1.0) <= _PROBABILITY_SUM_TOLERANCE,
+                f"prediction for {episode_id!r} probabilities sum to "
+                f"{probability_total!r}, not ~1",
+            )
+            probabilities = normalized_probabilities
         predictions.append(
             Prediction(
                 episode_id=episode_id,
@@ -631,6 +689,16 @@ def evaluate_predictor(
 ) -> dict[str, Any]:
     """Evaluate one predictor on the tuning and holdout partitions."""
     by_id = {prediction.episode_id: prediction for prediction in predictions}
+    gold_ids = {episode.episode_id for episode in tuning} | {
+        episode.episode_id for episode in holdout
+    }
+    unknown_ids = sorted(set(by_id) - gold_ids)
+    if unknown_ids:
+        raise EvaluationError(
+            "predictions name episode ids absent from the gold set: "
+            + ", ".join(unknown_ids)
+        )
+    missing_ids = sorted(gold_ids - set(by_id))
     tuning_metrics = _partition_metrics(tuning, by_id, taxonomy, config)
     holdout_metrics = _partition_metrics(holdout, by_id, taxonomy, config)
     holdout_metrics["automation_gate"] = _automation_gate(holdout, by_id, tuning, taxonomy, config)
@@ -638,6 +706,10 @@ def evaluate_predictor(
     calibrations = _calibration_metrics(holdout, by_id, taxonomy, config)
     result: dict[str, Any] = {
         "predictor": predictions[0].predictor if predictions else "unknown",
+        "missing_predictions": {
+            "count": len(missing_ids),
+            "episode_ids": missing_ids,
+        },
         "tuning": tuning_metrics,
         "holdout": holdout_metrics,
         "calibration": calibrations,

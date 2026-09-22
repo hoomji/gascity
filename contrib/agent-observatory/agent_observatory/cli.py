@@ -23,6 +23,7 @@ from .canonical import sha256_bytes
 from .episodes import segment_store
 from .errors import ObservatoryError
 from .evaluation import (
+    DEFAULT_MULTI_LABEL_FACETS,
     EvaluationConfig,
     evaluate_gold_set,
     load_predictions,
@@ -447,11 +448,16 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     taxonomy = load_taxonomy(args.taxonomy)
     gold_set = load_gold_set(args.gold, taxonomy)
     predictors = {
-        "jev": load_predictions(args.predictions, taxonomy),
+        "jev": load_predictions(args.predictions, taxonomy, primary_facet=args.primary_facet),
     }
+    multi_label_facets = (
+        tuple(args.multi_label_facet)
+        if args.multi_label_facet
+        else DEFAULT_MULTI_LABEL_FACETS
+    )
     config = EvaluationConfig(
         primary_facet=args.primary_facet,
-        multi_label_facets=tuple(args.multi_label_facet),
+        multi_label_facets=multi_label_facets,
         holdout_fraction=args.holdout_fraction,
         confidence_threshold=args.confidence_threshold,
         min_class_support=args.min_class_support,
@@ -626,8 +632,8 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument(
         "--multi-label-facet",
         action="append",
-        default=["secondary_activity", "target"],
-        help="many-valued facet to score (repeatable)",
+        default=None,
+        help="many-valued facet to score (repeatable; replaces the default set)",
     )
     evaluate_parser.add_argument("--holdout-fraction", type=float, default=0.4, help="fraction of groups held out")
     evaluate_parser.add_argument(
