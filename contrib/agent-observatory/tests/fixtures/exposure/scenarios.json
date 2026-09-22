@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "synthetic M5 verification fixture (no real data)",
+  "changes": [
+    {
+      "repo": "gascity",
+      "kind": "pr",
+      "pr": 101,
+      "title": "perf: cache build artifacts",
+      "merge_sha": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "merged_at": "2026-09-21T10:00:00Z",
+      "changed_paths": ["Makefile"]
+    },
+    {
+      "repo": "gascity",
+      "kind": "pr",
+      "pr": 102,
+      "title": "reduce agent token usage",
+      "merge_sha": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "merged_at": "2026-09-21T11:00:00Z",
+      "changed_paths": ["internal/agent/context.go"]
+    },
+    {
+      "repo": "gascity",
+      "kind": "pr",
+      "pr": 103,
+      "title": "document the fleet workflow",
+      "labels": ["documentation"],
+      "changed_paths": ["README.md"]
+    },
+    {
+      "repo": "gateway-llm",
+      "kind": "config",
+      "artifact_digest": "cfg-2",
+      "title": "tighten the worker concurrency config",
+      "changed_paths": ["city.toml"]
+    },
+    {
+      "repo": "gateway-llm",
+      "kind": "model",
+      "artifact_digest": "glm-4.6",
+      "title": "switch the worker default model",
+      "changed_paths": ["city.toml"]
+    }
+  ],
+  "activations": [
+    {
+      "change_ref": {"repo": "gateway-llm", "kind": "config", "artifact_digest": "cfg-2"},
+      "mechanism": "deploy",
+      "target": "gateway-llm",
+      "pending": true,
+      "fingerprint": {"type": "config_digest", "value": "cfg-2"},
+      "evidence": "deployment not yet recorded"
+    },
+    {
+      "change_ref": {"repo": "gateway-llm", "kind": "model", "artifact_digest": "glm-4.6"},
+      "mechanism": "model_switch",
+      "target": "gateway-llm",
+      "activated_at": "2026-09-22T00:00:00Z",
+      "fingerprint": {"type": "model", "value": "glm-4.6"},
+      "evidence": "fleet receipt"
+    }
+  ],
+  "commit_graph": {
+    "commits": [
+      {"sha": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "parents": ["BASECOMMIT0000000000000000000000000000000"]},
+      {"sha": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", "parents": []},
+      {"sha": "BASECOMMIT0000000000000000000000000000000", "parents": []},
+      {"sha": "SESSIONCOMMIT000000000000000000000000000", "parents": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"]}
+    ]
+  },
+  "session_fingerprints": [
+    {
+      "session": ["city-a", "host-a", "codex", "config-session"],
+      "type": "config_digest",
+      "value": "cfg-2",
+      "observed_at": "2026-09-22T01:00:00Z",
+      "evidence": "fleet state snapshot"
+    },
+    {
+      "session": ["city-a", "host-a", "codex", "model-session"],
+      "type": "model",
+      "value": "glm-4.6",
+      "observed_at": "2026-09-22T01:00:00Z",
+      "evidence": "fleet state snapshot"
+    }
+  ]
+}

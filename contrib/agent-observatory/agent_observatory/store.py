@@ -34,6 +34,8 @@ from .errors import (
     ContractError,
     ImportConflictError,
     LabelConflictError,
+    RegistryConflictError,
+    RegistryError,
     SchemaVersionError,
 )
 
@@ -43,7 +45,10 @@ from .errors import (
 # Version 3 excludes canonical identity fields from the stored ``payload_hash``
 # (contract.payload_hash), so a version-2 projection would carry stale hashes and
 # could reject an identical re-import as a conflict. Rebuild instead.
-DB_SCHEMA_VERSION = 3
+#
+# Version 4 adds the M5 optimization registry: ``changes``, ``change_activations``,
+# ``commit_parents``, ``session_fingerprints`` and the derived ``exposures`` join.
+DB_SCHEMA_VERSION = 4
 
 # Normalized record fields, in table order. ``observed_timestamp`` is not here:
 # it is derived provenance (the raw input string), not part of the payload hash.
@@ -211,6 +216,83 @@ _SCHEMA_STATEMENTS = (
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS changes (
+        change_id TEXT PRIMARY KEY,
+        change_hash TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        source_ref TEXT,
+        pr INTEGER,
+        title TEXT,
+        body TEXT,
+        labels_json TEXT NOT NULL,
+        author TEXT,
+        base_sha TEXT,
+        head_sha TEXT,
+        merge_sha TEXT,
+        merged_at TEXT,
+        changed_paths_json TEXT NOT NULL,
+        hypothesis TEXT,
+        rollback TEXT,
+        artifact_digest TEXT,
+        classification TEXT NOT NULL,
+        categories_json TEXT NOT NULL,
+        classification_evidence_json TEXT NOT NULL,
+        baseline_json TEXT,
+        prices_json TEXT,
+        screening_version TEXT NOT NULL,
+        taxonomy_version TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS changes_repo_kind ON changes(repo, kind)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS change_activations (
+        activation_id TEXT PRIMARY KEY,
+        change_id TEXT NOT NULL,
+        activation_hash TEXT NOT NULL,
+        mechanism TEXT NOT NULL,
+        target TEXT,
+        activated_at TEXT,
+        deactivated_at TEXT,
+        pending INTEGER NOT NULL,
+        fingerprint_type TEXT,
+        fingerprint_value TEXT,
+        evidence TEXT,
+        FOREIGN KEY (change_id) REFERENCES changes(change_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS change_activations_change ON change_activations(change_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS commit_parents (
+        sha TEXT PRIMARY KEY,
+        parents_json TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS session_fingerprints (
+        session_json TEXT NOT NULL,
+        type TEXT NOT NULL,
+        value TEXT NOT NULL,
+        observed_at TEXT NOT NULL DEFAULT '',
+        evidence TEXT,
+        PRIMARY KEY (session_json, type, value, observed_at)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS exposures (
+        change_id TEXT NOT NULL,
+        session_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        evidence_json TEXT NOT NULL,
+        PRIMARY KEY (change_id, session_json),
+        FOREIGN KEY (change_id) REFERENCES changes(change_id) ON DELETE CASCADE
+    )
+    """,
 )
 
 @dataclass
@@ -223,6 +305,18 @@ class ImportResult:
     inserted: int = 0
     duplicates: int = 0
     skipped_identical_file: bool = False
+
+
+@dataclass
+class RegistryImportResult:
+    """Outcome of one M5 change-registry bundle import."""
+
+    changes_inserted: int = 0
+    changes_deduplicated: int = 0
+    activations_inserted: int = 0
+    activations_deduplicated: int = 0
+    commit_parents_inserted: int = 0
+    session_fingerprints_inserted: int = 0
 
 
 def _reject_json_constant(value: str) -> Any:
@@ -757,6 +851,284 @@ class ObservatoryStore:
 
     def gold_annotation_count(self) -> int:
         return int(self._conn.execute("SELECT COUNT(*) FROM gold_annotations").fetchone()[0])
+
+
+    # -- M5 optimization registry -----------------------------------------
+
+    def import_registry(self, bundle: dict[str, Any]) -> RegistryImportResult:
+        """Import a normalized change bundle atomically.
+
+        Re-importing an identical change or activation deduplicates; re-importing
+        the same identity with different content raises
+        :class:`RegistryConflictError`. The bundle must already be normalized by
+        :func:`agent_observatory.changes.normalize_change_bundle`.
+        """
+        changes = bundle.get("changes", [])
+        activations = bundle.get("activations", [])
+        graph = bundle.get("commit_graph") or {}
+        fingerprints = bundle.get("session_fingerprints", [])
+        result = RegistryImportResult()
+
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            for change in changes:
+                existing = self._conn.execute(
+                    "SELECT change_hash FROM changes WHERE change_id = ?",
+                    (change["change_id"],),
+                ).fetchone()
+                if existing is not None:
+                    if existing["change_hash"] != change["change_hash"]:
+                        raise RegistryConflictError(
+                            "refusing to overwrite change "
+                            f"{change['change_id']} (existing content differs)"
+                        )
+                    result.changes_deduplicated += 1
+                    continue
+                self._conn.execute(
+                    "INSERT INTO changes(change_id, change_hash, repo, kind, source_ref, pr, "
+                    "title, body, labels_json, author, base_sha, head_sha, merge_sha, merged_at, "
+                    "changed_paths_json, hypothesis, rollback, artifact_digest, classification, "
+                    "categories_json, classification_evidence_json, baseline_json, prices_json, "
+                    "screening_version, taxonomy_version) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        change["change_id"],
+                        change["change_hash"],
+                        change["repo"],
+                        change["kind"],
+                        change.get("source_ref"),
+                        change.get("pr"),
+                        change.get("title"),
+                        change.get("body"),
+                        canonical_json(change.get("labels") or []),
+                        change.get("author"),
+                        change.get("base_sha"),
+                        change.get("head_sha"),
+                        change.get("merge_sha"),
+                        change.get("merged_at"),
+                        canonical_json(change.get("changed_paths") or []),
+                        change.get("hypothesis"),
+                        change.get("rollback"),
+                        change.get("artifact_digest"),
+                        change["classification"],
+                        canonical_json(change.get("categories") or []),
+                        canonical_json(change.get("classification_evidence") or []),
+                        canonical_json(change["baseline"]) if change.get("baseline") is not None else None,
+                        canonical_json(change["prices"]) if change.get("prices") is not None else None,
+                        change["screening_version"],
+                        change["taxonomy_version"],
+                    ),
+                )
+                result.changes_inserted += 1
+
+            for activation in activations:
+                existing = self._conn.execute(
+                    "SELECT activation_hash FROM change_activations WHERE activation_id = ?",
+                    (activation["activation_id"],),
+                ).fetchone()
+                if existing is not None:
+                    if existing["activation_hash"] != activation["activation_hash"]:
+                        raise RegistryConflictError(
+                            "refusing to overwrite activation "
+                            f"{activation['activation_id']} (existing content differs)"
+                        )
+                    result.activations_deduplicated += 1
+                    continue
+                fingerprint = activation.get("fingerprint") or {}
+                self._conn.execute(
+                    "INSERT INTO change_activations(activation_id, change_id, activation_hash, "
+                    "mechanism, target, activated_at, deactivated_at, pending, fingerprint_type, "
+                    "fingerprint_value, evidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        activation["activation_id"],
+                        activation["change_id"],
+                        activation["activation_hash"],
+                        activation["mechanism"],
+                        activation.get("target"),
+                        activation.get("activated_at"),
+                        activation.get("deactivated_at"),
+                        1 if activation.get("pending") else 0,
+                        fingerprint.get("type"),
+                        fingerprint.get("value"),
+                        activation.get("evidence"),
+                    ),
+                )
+                result.activations_inserted += 1
+
+            for sha, parents in graph.items():
+                cursor = self._conn.execute(
+                    "INSERT OR IGNORE INTO commit_parents(sha, parents_json) VALUES (?, ?)",
+                    (sha, canonical_json(list(parents))),
+                )
+                result.commit_parents_inserted += cursor.rowcount
+
+            for fingerprint in fingerprints:
+                observed_at = fingerprint.get("observed_at") or ""
+                cursor = self._conn.execute(
+                    "INSERT OR IGNORE INTO session_fingerprints(session_json, type, value, "
+                    "observed_at, evidence) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        identity_key(fingerprint["session"]),
+                        fingerprint["type"],
+                        fingerprint["value"],
+                        observed_at,
+                        fingerprint.get("evidence"),
+                    ),
+                )
+                result.session_fingerprints_inserted += cursor.rowcount
+
+            self._conn.execute("COMMIT")
+        except sqlite3.IntegrityError as exc:
+            self._conn.execute("ROLLBACK")
+            raise RegistryError(f"registry import rejected: {exc}") from None
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        return result
+
+    def change_count(self) -> int:
+        return int(self._conn.execute("SELECT COUNT(*) FROM changes").fetchone()[0])
+
+    def activation_count(self) -> int:
+        return int(self._conn.execute("SELECT COUNT(*) FROM change_activations").fetchone()[0])
+
+    def exposure_count(self) -> int:
+        return int(self._conn.execute("SELECT COUNT(*) FROM exposures").fetchone()[0])
+
+    def get_change(self, change_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM changes WHERE change_id = ?", (change_id,)
+        ).fetchone()
+        return _change_from_row(row) if row is not None else None
+
+    def iter_changes(self) -> Iterator[dict[str, Any]]:
+        rows = self._conn.execute("SELECT * FROM changes ORDER BY change_id").fetchall()
+        for row in rows:
+            yield _change_from_row(row)
+
+    def iter_activations(self, change_id: str | None = None) -> Iterator[dict[str, Any]]:
+        if change_id is None:
+            rows = self._conn.execute(
+                "SELECT * FROM change_activations ORDER BY activation_id"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM change_activations WHERE change_id = ? ORDER BY activation_id",
+                (change_id,),
+            ).fetchall()
+        for row in rows:
+            yield _activation_from_row(row)
+
+    def load_commit_graph(self) -> dict[str, list[str]]:
+        rows = self._conn.execute("SELECT sha, parents_json FROM commit_parents").fetchall()
+        return {row["sha"]: json.loads(row["parents_json"]) for row in rows}
+
+    def load_session_fingerprints(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT session_json, type, value, observed_at, evidence FROM session_fingerprints "
+            "ORDER BY session_json, type, value, observed_at"
+        ).fetchall()
+        return [
+            {
+                "session": json.loads(row["session_json"]),
+                "type": row["type"],
+                "value": row["value"],
+                "observed_at": row["observed_at"] or None,
+                "evidence": row["evidence"],
+            }
+            for row in rows
+        ]
+
+    def replace_exposures(self, rows: Iterable[dict[str, Any]]) -> int:
+        """Replace the derived exposure projection in one transaction.
+
+        Exposures are recomputable derived rows, so a fresh join replaces the
+        previous one rather than appending a second copy.
+        """
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute("DELETE FROM exposures")
+            count = 0
+            for row in rows:
+                self._conn.execute(
+                    "INSERT INTO exposures(change_id, session_json, status, evidence_json) "
+                    "VALUES (?, ?, ?, ?)",
+                    (
+                        row["change_id"],
+                        identity_key(row["session"]),
+                        row["status"],
+                        canonical_json(row.get("evidence") or []),
+                    ),
+                )
+                count += 1
+            self._conn.execute("COMMIT")
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        return count
+
+    def iter_exposures(self) -> Iterator[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT change_id, session_json, status, evidence_json FROM exposures "
+            "ORDER BY change_id, session_json"
+        ).fetchall()
+        for row in rows:
+            yield {
+                "change_id": row["change_id"],
+                "session": json.loads(row["session_json"]),
+                "status": row["status"],
+                "evidence": json.loads(row["evidence_json"]),
+            }
+
+
+def _change_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    baseline = row["baseline_json"]
+    prices = row["prices_json"]
+    return {
+        "change_id": row["change_id"],
+        "change_hash": row["change_hash"],
+        "repo": row["repo"],
+        "kind": row["kind"],
+        "source_ref": row["source_ref"],
+        "pr": row["pr"],
+        "title": row["title"],
+        "body": row["body"],
+        "labels": json.loads(row["labels_json"]),
+        "author": row["author"],
+        "base_sha": row["base_sha"],
+        "head_sha": row["head_sha"],
+        "merge_sha": row["merge_sha"],
+        "merged_at": row["merged_at"],
+        "changed_paths": json.loads(row["changed_paths_json"]),
+        "hypothesis": row["hypothesis"],
+        "rollback": row["rollback"],
+        "artifact_digest": row["artifact_digest"],
+        "classification": row["classification"],
+        "categories": json.loads(row["categories_json"]),
+        "classification_evidence": json.loads(row["classification_evidence_json"]),
+        "baseline": json.loads(baseline) if baseline is not None else None,
+        "prices": json.loads(prices) if prices is not None else None,
+        "screening_version": row["screening_version"],
+        "taxonomy_version": row["taxonomy_version"],
+    }
+
+
+def _activation_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    fingerprint = None
+    if row["fingerprint_type"] is not None:
+        fingerprint = {"type": row["fingerprint_type"], "value": row["fingerprint_value"]}
+    return {
+        "activation_id": row["activation_id"],
+        "change_id": row["change_id"],
+        "activation_hash": row["activation_hash"],
+        "mechanism": row["mechanism"],
+        "target": row["target"],
+        "activated_at": row["activated_at"],
+        "deactivated_at": row["deactivated_at"],
+        "pending": bool(row["pending"]),
+        "fingerprint": fingerprint,
+        "evidence": row["evidence"],
+    }
 
 
 def content_hash(value: Any) -> str:

@@ -20,6 +20,7 @@ from . import __version__
 from .adapters import AdapterContext, read_source
 from .annotations import load_gold_set, save_gold_annotations
 from .canonical import sha256_bytes
+from .changes import normalize_change_bundle
 from .episodes import segment_store
 from .errors import ObservatoryError
 from .evaluation import (
@@ -28,6 +29,12 @@ from .evaluation import (
     evaluate_gold_set,
     load_predictions,
     report_json,
+)
+from .exposure import (
+    CommitGraph,
+    attach_session_fingerprints,
+    build_ledger,
+    session_evidence_from_store,
 )
 from .inventory import (
     SourceRoot,
@@ -444,6 +451,78 @@ def _cmd_annotate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_changes_sync(args: argparse.Namespace) -> int:
+    """Import an explicit change/exposure registry bundle (M5).
+
+    There is no live PR crawler: the bundle is the caller-supplied, versioned
+    evidence, and importing the same identity with different content is refused
+    rather than silently overwritten.
+    """
+    bundle = normalize_change_bundle(_read_json_object(args.input, "change bundle"))
+    with _open_store(args.db) as store:
+        result = store.import_registry(bundle)
+        summary = {
+            "changes_inserted": result.changes_inserted,
+            "changes_deduplicated": result.changes_deduplicated,
+            "activations_inserted": result.activations_inserted,
+            "activations_deduplicated": result.activations_deduplicated,
+            "commit_parents_inserted": result.commit_parents_inserted,
+            "session_fingerprints_inserted": result.session_fingerprints_inserted,
+            "changes": store.change_count(),
+            "activations": store.activation_count(),
+        }
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
+
+
+def _cmd_exposure(args: argparse.Namespace) -> int:
+    """Join observed sessions to registered changes and emit the ledger."""
+    with _open_store(args.db) as store:
+        changes = list(store.iter_changes())
+        activations = list(store.iter_activations())
+        graph = CommitGraph(store.load_commit_graph())
+        sessions = attach_session_fingerprints(
+            session_evidence_from_store(store), store.load_session_fingerprints()
+        )
+        ledger = build_ledger(
+            changes,
+            activations,
+            sessions,
+            graph=graph,
+            generated_by=f"agent-observatory/{__version__}",
+        )
+        exposure_rows = []
+        for entry in ledger["changes"]:
+            exposure = entry.get("exposure")
+            if not exposure:
+                continue
+            for row in exposure["rows"]:
+                exposure_rows.append(
+                    {
+                        "change_id": entry["change_id"],
+                        "session": row["session"],
+                        "status": row["status"],
+                        "evidence": row["evidence"],
+                    }
+                )
+        stored = store.replace_exposures(exposure_rows)
+    _write_output(json.dumps(ledger, indent=2, sort_keys=True, ensure_ascii=False), args.out)
+    print(
+        json.dumps(
+            {
+                "screened": ledger["screening"]["screened"],
+                "interventions": ledger["screening"]["optimization"],
+                "exposure_totals": ledger["exposure_totals"],
+                "exposure_rows": stored,
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _cmd_evaluate(args: argparse.Namespace) -> int:
     taxonomy = load_taxonomy(args.taxonomy)
     gold_set = load_gold_set(args.gold, taxonomy)
@@ -666,6 +745,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="taxonomy JSON path (defaults to the versioned facet taxonomy)",
     )
     annotate_parser.set_defaults(func=_cmd_annotate)
+
+    changes_parser = subparsers.add_parser(
+        "changes-sync",
+        help="import an explicit change/exposure registry bundle (M5)",
+    )
+    changes_parser.add_argument("--db", required=True, help="SQLite projection path")
+    changes_parser.add_argument(
+        "--input",
+        required=True,
+        help="explicit change bundle JSON (no live PR crawler)",
+    )
+    changes_parser.set_defaults(func=_cmd_changes_sync)
+
+    exposure_parser = subparsers.add_parser(
+        "exposure",
+        help="join sessions to registered changes and emit the optimization ledger",
+    )
+    exposure_parser.add_argument("--db", required=True, help="SQLite projection path")
+    exposure_parser.add_argument(
+        "--out", default=None, help="write the ledger JSON to this path instead of stdout"
+    )
+    exposure_parser.set_defaults(func=_cmd_exposure)
 
     return parser
 
