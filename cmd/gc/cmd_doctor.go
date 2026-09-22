@@ -377,7 +377,7 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 			register(newPoolIdleRoutedWorkCheck(cfg, cityPath, storeFactory))
 			register(newWorkOptionMetadataMigrationCheck(cfg, cityPath, storeFactory))
 			register(newBacklogDepthCheck(cityPath, storeFactory))
-			register(newOrderTrackingRetentionCheck(cityPath, storeFactory))
+			register(newOrderTrackingRetentionCheck(cityPath, storeFactory).withConfig(cfg))
 			register(&sessionModelDoctorCheck{cfg: cfg, cityPath: cityPath, newStore: storeFactory})
 			register(newStartupHealthEpisodesCheck(cfg, cityPath, storeFactory))
 			// Differential probe: the preflight above just proved the store

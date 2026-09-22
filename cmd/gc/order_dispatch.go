@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1793,6 +1794,7 @@ func (m *memoryOrderDispatcher) dispatchExec(ctx context.Context, front *orders.
 	}
 
 	env, err := orderExecEnvWithError(cityPath, m.cfg, target, a, vars)
+	env = withOrderExecDeadlineEnv(ctx, env)
 	var output []byte
 	var execErrMsg string
 	if err != nil {
@@ -2880,6 +2882,10 @@ type orderTrackingSweepResult struct {
 type orderTrackingRetentionSweepResult struct {
 	deleted     int
 	storesSwept int
+	// remaining is the eligible backlog a budgeted pass left for the next run.
+	remaining int
+	// alreadyGone counts candidates skipped because the store no longer had them.
+	alreadyGone int
 }
 
 type orderTrackingRetentionPolicy struct {
@@ -3124,6 +3130,49 @@ func sweepClosedOrderTrackingRetentionAcrossStores(stores []beads.Store, now tim
 	return result, errors.Join(errs...)
 }
 
+// sweepClosedOrderTrackingRetentionAcrossStoresBudgeted is the CLI/exec-order
+// retention pass. limit (>0) caps total deletions across stores; ctx carries
+// the time budget. Either running out ends the pass early with a nil error,
+// keeps every completed delete, and reports what is left in result.remaining
+// so the next run resumes the drain. storesSwept counts stores whose pass had
+// no list or delete error, as in the unbounded variant.
+func sweepClosedOrderTrackingRetentionAcrossStoresBudgeted(ctx context.Context, stores []beads.Store, now time.Time, policy orderTrackingRetentionPolicy, onlyOrders map[string]struct{}, limit int) (orderTrackingRetentionSweepResult, error) {
+	result := orderTrackingRetentionSweepResult{}
+	var errs []error
+	for i, store := range stores {
+		if store == nil {
+			continue
+		}
+		storeLimit := 0
+		if limit > 0 {
+			storeLimit = limit - result.deleted
+			if storeLimit <= 0 {
+				// Budget spent: still count what this store would prune so
+				// the reported backlog covers every store.
+				storeLimit = -1
+			}
+		}
+		var res orderTrackingRetentionStoreResult
+		var err error
+		if storeLimit < 0 {
+			var n int
+			n, err = countClosedOrderTrackingRetentionEligible([]beads.Store{store}, now, policy, onlyOrders)
+			res.remaining = n
+		} else {
+			res, err = sweepClosedOrderTrackingRetentionStore(ctx, store, now, policy, onlyOrders, storeLimit)
+		}
+		result.deleted += res.deleted
+		result.remaining += res.remaining
+		result.alreadyGone += res.alreadyGone
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pruning closed order-tracking %s: %w", orderTrackingSweepStoreLabel(store, i), err))
+			continue
+		}
+		result.storesSwept++
+	}
+	return result, errors.Join(errs...)
+}
+
 // sweepClosedOrderTrackingRetentionAcrossStoresBounded is the watchdog variant
 // of sweepClosedOrderTrackingRetentionAcrossStores. It stops once the total
 // deletion count across all stores reaches limit, returning the partial deleted
@@ -3155,61 +3204,8 @@ func sweepClosedOrderTrackingRetentionAcrossStoresBounded(stores []beads.Store, 
 }
 
 func sweepClosedOrderTrackingRetention(store beads.Store, now time.Time, policy orderTrackingRetentionPolicy, onlyOrders map[string]struct{}) (int, error) {
-	if store == nil {
-		return 0, fmt.Errorf("bead store unavailable")
-	}
-	if policy.deleteAfterClose <= 0 {
-		return 0, nil
-	}
-	// retainLast is intentionally package-internal and hardcoded; config can
-	// shorten the TTL but cannot remove the recent-history floor.
-	if policy.retainLast < minClosedOrderTrackingRetained {
-		policy.retainLast = minClosedOrderTrackingRetained
-	}
-	runs, err := orders.NewStore(beads.OrdersStore{Store: store}).ClosedRunsForRetention()
-	if err != nil {
-		return 0, fmt.Errorf("listing closed order-tracking beads: %w", err)
-	}
-
-	byOrder := bucketClosedRetentionRuns(runs, onlyOrders)
-
-	cutoff := now.Add(-policy.deleteAfterClose)
-	deleted := 0
-	var retained []string
-	var deleteErr error
-	for _, runs := range byOrder {
-		sort.Slice(runs, func(i, j int) bool {
-			left := orderTrackingClosedReferenceTime(runs[i])
-			right := orderTrackingClosedReferenceTime(runs[j])
-			if left.Equal(right) {
-				return runs[i].ID > runs[j].ID
-			}
-			return left.After(right)
-		})
-		if len(runs) <= policy.retainLast {
-			continue
-		}
-		for _, run := range runs[policy.retainLast:] {
-			if !orderTrackingClosedReferenceTime(run).Before(cutoff) {
-				continue
-			}
-			// deleteWorkflowBead is the graph-aware delete (dep unwind) the
-			// retention prune uses; it stays raw graph residual. A closed
-			// tracking root can still own OPEN steps — the delete refuses
-			// those rather than stranding them (ga-ejwo1q).
-			if err := deleteWorkflowBead(store, run.ID); err != nil {
-				if errors.Is(err, errWorkflowDeleteLiveDescendants) {
-					retained = append(retained, run.ID)
-					continue
-				}
-				deleteErr = errors.Join(deleteErr, fmt.Errorf("deleting closed order-tracking bead %q: %w", run.ID, err))
-				continue
-			}
-			deleted++
-		}
-	}
-	logRetainedForLiveDescendants(retained)
-	return deleted, deleteErr
+	res, err := sweepClosedOrderTrackingRetentionStore(context.Background(), store, now, policy, onlyOrders, 0)
+	return res.deleted, err
 }
 
 // logRetainedForLiveDescendants reports the candidates the retention prune
@@ -3229,61 +3225,118 @@ func logRetainedForLiveDescendants(ids []string) {
 // occurred within this store call. On budget exhaustion it returns the partial
 // count with a nil error; delete errors are still propagated.
 func sweepClosedOrderTrackingRetentionBounded(store beads.Store, now time.Time, policy orderTrackingRetentionPolicy, onlyOrders map[string]struct{}, limit int) (int, error) {
-	if store == nil {
-		return 0, fmt.Errorf("bead store unavailable")
-	}
-	if policy.deleteAfterClose <= 0 || limit <= 0 {
+	if limit <= 0 {
 		return 0, nil
 	}
+	res, err := sweepClosedOrderTrackingRetentionStore(context.Background(), store, now, policy, onlyOrders, limit)
+	return res.deleted, err
+}
+
+// orderTrackingRetentionStoreResult is one store's retention pass.
+type orderTrackingRetentionStoreResult struct {
+	deleted int
+	// remaining counts eligible candidates this pass left in place because the
+	// count or time budget ran out. Candidates retained for live descendants
+	// or that failed to delete are not counted: they are not budget leftovers.
+	remaining int
+	// alreadyGone counts candidates whose delete reported the bead missing —
+	// orphaned rows (gastownhall/gascity#3926). They are skipped, not errors.
+	alreadyGone int
+}
+
+// sweepClosedOrderTrackingRetentionStore is the single retention prune every
+// caller (manual CLI, exec order, controller watchdog) goes through.
+//
+// Candidates are deleted oldest-first across all orders, one durable graph
+// delete at a time, so a pass cut short by limit (>0) or by ctx keeps every
+// delete it completed and the next pass resumes at the oldest survivor. ctx is
+// checked before each delete; a done ctx ends the pass with a nil error and the
+// unprocessed candidates reported as remaining — running out of budget is the
+// expected shape of a backlog drain, not a failure.
+func sweepClosedOrderTrackingRetentionStore(ctx context.Context, store beads.Store, now time.Time, policy orderTrackingRetentionPolicy, onlyOrders map[string]struct{}, limit int) (orderTrackingRetentionStoreResult, error) {
+	var res orderTrackingRetentionStoreResult
+	if store == nil {
+		return res, fmt.Errorf("bead store unavailable")
+	}
+	if policy.deleteAfterClose <= 0 {
+		return res, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// retainLast is intentionally package-internal and hardcoded; config can
+	// shorten the TTL but cannot remove the recent-history floor.
 	if policy.retainLast < minClosedOrderTrackingRetained {
 		policy.retainLast = minClosedOrderTrackingRetained
 	}
 	runs, err := orders.NewStore(beads.OrdersStore{Store: store}).ClosedRunsForRetention()
 	if err != nil {
-		return 0, fmt.Errorf("listing closed order-tracking beads: %w", err)
+		return res, fmt.Errorf("listing closed order-tracking beads: %w", err)
 	}
+	candidates := closedOrderTrackingRetentionCandidates(runs, now, policy, onlyOrders)
 
-	byOrder := bucketClosedRetentionRuns(runs, onlyOrders)
-
-	cutoff := now.Add(-policy.deleteAfterClose)
-	deleted := 0
 	var retained []string
 	var deleteErr error
-	for _, runs := range byOrder {
-		if deleted >= limit {
+	for i, run := range candidates {
+		if (limit > 0 && res.deleted >= limit) || ctx.Err() != nil {
+			res.remaining = len(candidates) - i
 			break
 		}
-		sort.Slice(runs, func(i, j int) bool {
-			left := orderTrackingClosedReferenceTime(runs[i])
-			right := orderTrackingClosedReferenceTime(runs[j])
-			if left.Equal(right) {
-				return runs[i].ID > runs[j].ID
+		// deleteWorkflowBead is the graph-aware delete (dep unwind) the
+		// retention prune uses; it stays raw graph residual. A closed
+		// tracking root can still own OPEN steps — the delete refuses
+		// those rather than stranding them (ga-ejwo1q).
+		if err := deleteWorkflowBead(store, run.ID); err != nil {
+			switch {
+			case errors.Is(err, errWorkflowDeleteLiveDescendants):
+				retained = append(retained, run.ID)
+			case errors.Is(err, beads.ErrNotFound):
+				// Listed but no longer deletable: another sweeper won the
+				// race, or the row is orphaned. Either way there is nothing
+				// left to prune; do not let it fail the pass (#3926).
+				res.alreadyGone++
+			default:
+				deleteErr = errors.Join(deleteErr, fmt.Errorf("deleting closed order-tracking bead %q: %w", run.ID, err))
 			}
-			return left.After(right)
-		})
-		if len(runs) <= policy.retainLast {
 			continue
 		}
-		for _, run := range runs[policy.retainLast:] {
-			if deleted >= limit {
-				break
-			}
-			if !orderTrackingClosedReferenceTime(run).Before(cutoff) {
-				continue
-			}
-			if err := deleteWorkflowBead(store, run.ID); err != nil {
-				if errors.Is(err, errWorkflowDeleteLiveDescendants) {
-					retained = append(retained, run.ID)
-					continue
-				}
-				deleteErr = errors.Join(deleteErr, fmt.Errorf("deleting closed order-tracking bead %q: %w", run.ID, err))
-				continue
-			}
-			deleted++
-		}
+		res.deleted++
 	}
 	logRetainedForLiveDescendants(retained)
-	return deleted, deleteErr
+	return res, deleteErr
+}
+
+// closedOrderTrackingRetentionCandidates applies the retention rule — keep the
+// latest retainLast closed runs per order, then everything closed before the
+// TTL cutoff is eligible — and returns the eligible runs oldest-first.
+func closedOrderTrackingRetentionCandidates(runs []orders.OrderRun, now time.Time, policy orderTrackingRetentionPolicy, onlyOrders map[string]struct{}) []orders.OrderRun {
+	cutoff := now.Add(-policy.deleteAfterClose)
+	var candidates []orders.OrderRun
+	for _, group := range bucketClosedRetentionRuns(runs, onlyOrders) {
+		sortClosedRetentionRunsNewestFirst(group)
+		if len(group) <= policy.retainLast {
+			continue
+		}
+		for _, run := range group[policy.retainLast:] {
+			if orderTrackingClosedReferenceTime(run).Before(cutoff) {
+				candidates = append(candidates, run)
+			}
+		}
+	}
+	sortClosedRetentionRunsNewestFirst(candidates)
+	slices.Reverse(candidates)
+	return candidates
+}
+
+func sortClosedRetentionRunsNewestFirst(runs []orders.OrderRun) {
+	sort.Slice(runs, func(i, j int) bool {
+		left := orderTrackingClosedReferenceTime(runs[i])
+		right := orderTrackingClosedReferenceTime(runs[j])
+		if left.Equal(right) {
+			return runs[i].ID > runs[j].ID
+		}
+		return left.After(right)
+	})
 }
 
 // countClosedOrderTrackingRetentionEligible returns the number of closed
@@ -3303,7 +3356,6 @@ func countClosedOrderTrackingRetentionEligible(stores []beads.Store, now time.Ti
 		policy.retainLast = minClosedOrderTrackingRetained
 	}
 	total := 0
-	cutoff := now.Add(-policy.deleteAfterClose)
 	var errs []error
 	for i, store := range stores {
 		if store == nil {
@@ -3314,24 +3366,7 @@ func countClosedOrderTrackingRetentionEligible(stores []beads.Store, now time.Ti
 			errs = append(errs, fmt.Errorf("listing closed order-tracking %s: %w", orderTrackingSweepStoreLabel(store, i), err))
 			continue
 		}
-		for _, group := range bucketClosedRetentionRuns(runs, onlyOrders) {
-			sort.Slice(group, func(a, b int) bool {
-				l := orderTrackingClosedReferenceTime(group[a])
-				r := orderTrackingClosedReferenceTime(group[b])
-				if l.Equal(r) {
-					return group[a].ID > group[b].ID
-				}
-				return l.After(r)
-			})
-			if len(group) <= policy.retainLast {
-				continue
-			}
-			for _, run := range group[policy.retainLast:] {
-				if orderTrackingClosedReferenceTime(run).Before(cutoff) {
-					total++
-				}
-			}
-		}
+		total += len(closedOrderTrackingRetentionCandidates(runs, now, policy, onlyOrders))
 	}
 	return total, errors.Join(errs...)
 }
@@ -3790,6 +3825,26 @@ func sweepOrphanedOrderTrackingRetryLimit(store beads.Store, attempts int, backo
 		time.Sleep(backoff)
 	}
 	return total, err
+}
+
+// orderExecDeadlineEnv names the env var carrying the exec order's absolute
+// kill deadline (RFC 3339, UTC) into the child. A long-running maintenance
+// command reads it to stop its own work with headroom and exit cleanly instead
+// of being killed mid-pass at the order timeout (gc order sweep-tracking).
+const orderExecDeadlineEnv = "GC_ORDER_DEADLINE"
+
+// withOrderExecDeadlineEnv appends GC_ORDER_DEADLINE when ctx has a deadline.
+// It is appended last so it wins over any inherited or [order.env] value: the
+// deadline is the controller's, not the order's to restate.
+func withOrderExecDeadlineEnv(ctx context.Context, env []string) []string {
+	if ctx == nil {
+		return env
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return env
+	}
+	return append(env, orderExecDeadlineEnv+"="+deadline.UTC().Format(time.RFC3339Nano))
 }
 
 // effectiveTimeout returns the timeout to use for an order dispatch.
