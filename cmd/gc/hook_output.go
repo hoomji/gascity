@@ -54,6 +54,16 @@ func codexHookAdditionalContext(eventName, content string) map[string]any {
 	if strings.TrimSpace(eventName) == "" {
 		eventName = "SessionStart"
 	}
+	// Codex's PreCompactCommandOutputWire is deny_unknown_fields and has no
+	// hookSpecificOutput variant (unlike SessionStart/UserPromptSubmit), so the
+	// Claude envelope is rejected with "hook returned invalid PreCompact hook
+	// JSON output". Emit only the one accepted field; an empty object or empty
+	// stdout fails too, and continue:false/stopReason would block compaction.
+	if strings.EqualFold(strings.TrimSpace(eventName), "PreCompact") {
+		return map[string]any{
+			"systemMessage": strings.TrimRight(content, "\n"),
+		}
+	}
 	return map[string]any{
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":     eventName,

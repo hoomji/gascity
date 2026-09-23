@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
 )
 
@@ -13,19 +15,42 @@ const (
 	orderTrackingRetentionCheckListLimit = 501
 )
 
-// orderTrackingRetentionCheck reports the count of closed order-tracking beads
-// in the city store and warns when retention sweeps are overdue. The controller
-// watchdog prunes these automatically (7d TTL default); the check surfaces
-// cities where the watchdog has not yet run or where the backlog is large enough
-// to be operationally visible. It is pure observability and never gates.
+// orderTrackingRetentionCheck warns when closed order-tracking beads past
+// their retention TTL pile up — i.e. when retention sweeps are overdue. The
+// controller watchdog and the order-tracking-sweep order prune these; the
+// check surfaces cities where neither is keeping up. It is pure observability
+// and never gates.
+//
+// It counts only beads closed before now - delete_after_close, not every
+// closed tracking bead. The live closed population is set by production rate
+// times TTL (a city minting ~7k tracking beads/day with a 24h TTL holds ~7k
+// closed beads when perfectly healthy), so a raw closed count against a fixed
+// threshold fires forever on a busy city and says nothing about retention. The
+// expired count is ~0 on a healthy city whatever its rate or TTL — only the
+// per-order recent-history floor and one sweep interval of lag remain — and
+// grows only when pruning falls behind, which is what this check is for.
 type orderTrackingRetentionCheck struct {
 	cityPath string
 	newStore func(string) (beads.Store, error)
+	policy   orderTrackingRetentionPolicy
+	now      func() time.Time
 }
 
-// newOrderTrackingRetentionCheck constructs an orderTrackingRetentionCheck.
+// newOrderTrackingRetentionCheck constructs an orderTrackingRetentionCheck
+// using the default retention policy; withConfig applies a city's policy.
 func newOrderTrackingRetentionCheck(cityPath string, newStore func(string) (beads.Store, error)) *orderTrackingRetentionCheck {
-	return &orderTrackingRetentionCheck{cityPath: cityPath, newStore: newStore}
+	return &orderTrackingRetentionCheck{
+		cityPath: cityPath,
+		newStore: newStore,
+		policy:   orderTrackingRetentionPolicyForConfig(nil),
+		now:      time.Now,
+	}
+}
+
+// withConfig applies cfg's [beads.policies.order_tracking] retention TTL.
+func (c *orderTrackingRetentionCheck) withConfig(cfg *config.City) *orderTrackingRetentionCheck {
+	c.policy = orderTrackingRetentionPolicyForConfig(cfg)
+	return c
 }
 
 // Name implements doctor.Check.
@@ -61,6 +86,15 @@ func (c *orderTrackingRetentionCheck) Run(_ *doctor.CheckContext) *doctor.CheckR
 	if ordersStore := relocatedOrdersClassStore(c.cityPath, nil); ordersStore != nil && ordersStore != store {
 		stores = append(stores, ordersStore)
 	}
+	now := time.Now
+	if c.now != nil {
+		now = c.now
+	}
+	ttl := c.policy.deleteAfterClose
+	if ttl <= 0 {
+		ttl = defaultOrderTrackingDeleteAfterClose
+	}
+	cutoff := now().Add(-ttl)
 	count := 0
 	capped := false
 	for _, s := range stores {
@@ -68,7 +102,9 @@ func (c *orderTrackingRetentionCheck) Run(_ *doctor.CheckContext) *doctor.CheckR
 			Status:   "closed",
 			Label:    labelOrderTracking,
 			TierMode: beads.TierBoth,
-			Limit:    orderTrackingRetentionCheckListLimit,
+			// Same reference time the sweep uses (UpdatedAt, else CreatedAt).
+			UpdatedBefore: cutoff,
+			Limit:         orderTrackingRetentionCheckListLimit,
 		})
 		if err != nil {
 			res.Status = doctor.StatusWarning
@@ -88,10 +124,10 @@ func (c *orderTrackingRetentionCheck) Run(_ *doctor.CheckContext) *doctor.CheckR
 			countStr = "≥" + countStr
 		}
 		res.Status = doctor.StatusWarning
-		res.Message = fmt.Sprintf("%s closed order-tracking beads: retention watchdog will prune automatically (7d TTL default; configure [beads.policies.order_tracking].delete_after_close)", countStr)
+		res.Message = fmt.Sprintf("%s closed order-tracking beads are past their %s retention TTL: pruning is behind (run gc order sweep-tracking --confirm, or check the order-tracking-sweep order; TTL: [beads.policies.order_tracking].delete_after_close)", countStr, ttl)
 		return res
 	}
 	res.Status = doctor.StatusOK
-	res.Message = fmt.Sprintf("%d closed order-tracking beads", count)
+	res.Message = fmt.Sprintf("%d closed order-tracking beads past the %s retention TTL", count, ttl)
 	return res
 }

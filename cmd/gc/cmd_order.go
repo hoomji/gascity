@@ -286,6 +286,8 @@ func newOrderSweepTrackingCmd(stdout, stderr io.Writer) *cobra.Command {
 	dryRun := false
 	quiet := false
 	confirm := false
+	maxDelete := 0
+	var timeBudget time.Duration
 	cmd := &cobra.Command{
 		Use:   "sweep-tracking [order ...]",
 		Short: "Close stale and prune closed order-tracking beads",
@@ -296,8 +298,13 @@ older than --stale-after so a fresh in-flight order is not interrupted.
 Closed order-tracking history is deleted after
 [beads.policies.order_tracking].delete_after_close, defaulting to 7d, while
 always retaining at least the latest 10 closed tracking beads per order.
-The manual command runs to completion; controller startup and watchdog sweeps
-use bounded cleanup to avoid spending an unbounded tick on stale work.
+The manual command runs to completion unless --max-delete or --time-budget
+bounds it. Run as an exec order, the prune stops on its own before the order
+timeout (it reads GC_ORDER_DEADLINE and keeps 20% of the remaining time, at
+least 15s, as headroom). Deletes run oldest-first and each one is durable, so a
+bounded pass always shrinks the backlog and the next run resumes where it
+stopped; the number left is reported on stderr. Controller startup and
+watchdog sweeps use bounded cleanup the same way.
 
 Use --include-wisps for operator recovery of abandoned order-run wisp
 subtrees whose open descendants are also older than --stale-after. Pass one
@@ -310,7 +317,8 @@ proceed. This guard prevents accidental mass-deletes without an explicit
 operator acknowledgement.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdOrderSweepTrackingWithOptions(staleAfter, includeWisps, dryRun, quiet, confirm, args, stdout, stderr) != 0 {
+			budget := orderTrackingRetentionBudget{maxDelete: maxDelete, timeBudget: timeBudget}
+			if cmdOrderSweepTrackingWithBudget(staleAfter, includeWisps, dryRun, quiet, confirm, args, budget, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -326,6 +334,8 @@ operator acknowledgement.`,
 	// construction time, which would make docs/reference/cli.md regenerate
 	// differently depending on the generator's environment.
 	cmd.Flags().BoolVar(&confirm, "confirm", false, fmt.Sprintf("confirm bulk deletion when eligible count > GC_BULK_DELETE_CONFIRM_THRESHOLD (default %d)", defaultBulkDeleteConfirmThreshold))
+	cmd.Flags().IntVar(&maxDelete, "max-delete", 0, "delete at most this many closed order-tracking beads this run (0 = no cap)")
+	cmd.Flags().DurationVar(&timeBudget, "time-budget", 0, "stop pruning closed history after this long (0 = derive from the exec order deadline, else unbounded)")
 	return cmd
 }
 
@@ -1027,6 +1037,7 @@ func doOrderRunExecResult(a orders.Order, cityPath string, cfg *config.City, var
 		fmt.Fprintf(stderr, "gc order run: %s\n", redactOrderEnvError(err, os.Environ())) //nolint:errcheck // best-effort stderr
 		return orderRunExecResult{code: 1, failureLabel: "exec-env-failed"}
 	}
+	env = withOrderExecDeadlineEnv(ctx, env)
 
 	output, err := shellExecRunner(ctx, a.Exec, target.ScopeRoot, env)
 	// The exec env now projects the controller's GH_TOKEN/GITHUB_TOKEN into the
@@ -1815,7 +1826,56 @@ func bulkDeleteConfirmThreshold() int {
 	return defaultBulkDeleteConfirmThreshold
 }
 
-func cmdOrderSweepTrackingWithOptions(staleAfter time.Duration, includeWisps, dryRun, quiet, confirm bool, orderNames []string, stdout, stderr io.Writer) int {
+// orderTrackingRetentionBudget bounds one sweep-tracking retention pass.
+// maxDelete <= 0 means no count cap; timeBudget <= 0 means derive the time
+// budget from GC_ORDER_DEADLINE when the command runs as an exec order, and
+// run unbounded otherwise.
+type orderTrackingRetentionBudget struct {
+	maxDelete  int
+	timeBudget time.Duration
+}
+
+const (
+	// orderTrackingRetentionMinHeadroom is the least time left between the
+	// retention pass stopping and the exec order being killed: enough for the
+	// in-flight delete (a handful of bd round-trips) and the report.
+	orderTrackingRetentionMinHeadroom = 15 * time.Second
+	// orderTrackingRetentionHeadroomDivisor reserves 1/N of the remaining
+	// order time as headroom when that exceeds the minimum.
+	orderTrackingRetentionHeadroomDivisor = 5
+)
+
+// orderTrackingRetentionDeadline resolves when the retention pass must stop.
+// An explicit timeBudget wins; otherwise an exec order's GC_ORDER_DEADLINE,
+// less headroom, bounds it so the pass ends cleanly and commits its progress
+// instead of being killed at the order timeout. ok=false means unbounded.
+func orderTrackingRetentionDeadline(now time.Time, timeBudget time.Duration, orderDeadline string) (time.Time, bool) {
+	if timeBudget > 0 {
+		return now.Add(timeBudget), true
+	}
+	orderDeadline = strings.TrimSpace(orderDeadline)
+	if orderDeadline == "" {
+		return time.Time{}, false
+	}
+	deadline, err := time.Parse(time.RFC3339Nano, orderDeadline)
+	if err != nil {
+		return time.Time{}, false
+	}
+	left := deadline.Sub(now)
+	headroom := left / orderTrackingRetentionHeadroomDivisor
+	if headroom < orderTrackingRetentionMinHeadroom {
+		headroom = orderTrackingRetentionMinHeadroom
+	}
+	// When the order is already inside its headroom the deadline lands in
+	// the past: the pass deletes nothing and reports the backlog.
+	return deadline.Add(-headroom), true
+}
+
+func cmdOrderSweepTrackingWithOptions(staleAfter time.Duration, includeWisps, dryRun, quiet, confirm bool, orderNames []string, stdout, stderr io.Writer) int { //nolint:unparam // test entry point; production passes quiet through cmdOrderSweepTrackingWithBudget
+	return cmdOrderSweepTrackingWithBudget(staleAfter, includeWisps, dryRun, quiet, confirm, orderNames, orderTrackingRetentionBudget{}, stdout, stderr)
+}
+
+func cmdOrderSweepTrackingWithBudget(staleAfter time.Duration, includeWisps, dryRun, quiet, confirm bool, orderNames []string, budget orderTrackingRetentionBudget, stdout, stderr io.Writer) int {
 	if staleAfter <= 0 {
 		fmt.Fprintln(stderr, "gc order sweep-tracking: --stale-after must be positive") //nolint:errcheck // best-effort stderr
 		return 1
@@ -1853,6 +1913,14 @@ func cmdOrderSweepTrackingWithOptions(staleAfter time.Duration, includeWisps, dr
 		return 1
 	}
 	now := time.Now()
+	// The retention deadline is fixed at command start so the stale-close and
+	// confirm-count phases spend from the same budget as the deletes.
+	retentionCtx := context.Background()
+	if deadline, ok := orderTrackingRetentionDeadline(now, budget.timeBudget, os.Getenv(orderExecDeadlineEnv)); ok {
+		var cancel context.CancelFunc
+		retentionCtx, cancel = context.WithDeadline(retentionCtx, deadline)
+		defer cancel()
+	}
 	var result orderTrackingSweepResult
 	var sweepErr error
 	var retentionResult orderTrackingRetentionSweepResult
@@ -1889,7 +1957,7 @@ func cmdOrderSweepTrackingWithOptions(staleAfter time.Duration, includeWisps, dr
 				eligible, threshold)
 			confirmGateBlocked = true
 		default:
-			retentionResult, retentionErr = sweepClosedOrderTrackingRetentionAcrossStores(stores, now, retentionPolicy, onlyOrders)
+			retentionResult, retentionErr = sweepClosedOrderTrackingRetentionAcrossStoresBudgeted(retentionCtx, stores, now, retentionPolicy, onlyOrders, budget.maxDelete)
 			result.trackingDeleted = retentionResult.deleted
 		}
 	}
@@ -1915,6 +1983,15 @@ func cmdOrderSweepTrackingWithOptions(staleAfter time.Duration, includeWisps, dr
 		} else {
 			fmt.Fprintf(stdout, "%s %d stale order-tracking bead(s)%s\n", verb, result.trackingClosed, deletedClause) //nolint:errcheck // best-effort stdout
 		}
+	}
+	if retentionResult.remaining > 0 {
+		// A budget-limited pass is success, not failure: it kept every delete
+		// it made and the next run resumes the drain. Say so even under
+		// --quiet so an order log shows the backlog shrinking.
+		fmt.Fprintf(stderr, "gc order sweep-tracking: retention budget reached after deleting %d; %d expired closed order-tracking bead(s) remain for the next run\n", retentionResult.deleted, retentionResult.remaining) //nolint:errcheck // best-effort stderr
+	}
+	if retentionResult.alreadyGone > 0 && !quiet {
+		fmt.Fprintf(stderr, "gc order sweep-tracking: skipped %d order-tracking bead(s) already missing from the store\n", retentionResult.alreadyGone) //nolint:errcheck // best-effort stderr
 	}
 	if confirmGateBlocked {
 		return 1

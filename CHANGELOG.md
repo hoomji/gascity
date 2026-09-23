@@ -101,6 +101,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`[[pricing]]` entries keyed to a configured provider alias now price usage
+  rows, so `gc costs` stops reporting $0 for cities whose rate cards name the
+  provider (e.g. `claude-mayor`) rather than the transcript family
+  (`claude`).** The emit-time lookup passed the normalized transcript family to
+  the pricing registry, but operators write the registry key with the provider
+  identity from `city.toml`, so the two never matched and every invocation was
+  recorded `unpriced` (an audit of one city found 174 of 34,899 rows priced).
+  Both the prompt-op seam and the controller-tick sweep now try the configured
+  provider identity first, then the provider_kind/builtin_ancestor/family rungs,
+  and the emitted row records the provider whose rate card actually priced it.
+  A provider/model pair absent from every layer stays explicitly unpriced, never
+  guessed. Pricing remains apply-on-write: changing `[[pricing]]` does not
+  reprice facts already in the append-only log, and no backfill is performed.
+
 - **The OpenCode plugin no longer rewrites the system prompt with a per-turn
   clock line, so the provider prefix cache can grow with the conversation
   instead of resetting at the role prompt every turn.** The plugin prepended

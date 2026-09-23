@@ -25,7 +25,13 @@ gc costs shows nothing local.
 
 Cost is a list-price estimate for decision support, not an authoritative
 charge; invocations with no pricing are flagged "unpriced" and excluded from
-the cost total.`,
+the cost total.
+
+Facts are priced when they are written, using the [[pricing]] layers resolved
+at that moment. Editing city.toml or pack.toml pricing does not reprice facts
+already in the log, and there is no backfill: historical unpriced rows stay
+unpriced. New rows priced from a [[pricing]] entry named by a provider alias
+(e.g. provider = "claude-mayor") record that alias in their provider field.`,
 		Example: "  gc costs",
 		Args:    cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {

@@ -13,6 +13,15 @@
 //
 // Lookups go (city → pack → default), returning the first match for a
 // (provider, model) key.
+//
+// Lookups are keyed by the provider identity recorded on the usage fact. A
+// caller may try several identities for one session (for example the configured
+// provider alias before its normalized family) so an operator can key a
+// [[pricing]] entry to either. Pricing is evaluated when a fact is emitted and
+// the estimate is stored on the fact; because the usage log is an append-only
+// ledger of immutable facts, editing [[pricing]] later does not reprice facts
+// already written and there is no backfill. Historical unpriced rows stay
+// unpriced.
 package pricing
 
 import (
