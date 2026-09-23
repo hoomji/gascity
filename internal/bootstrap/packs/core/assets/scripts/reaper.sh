@@ -764,6 +764,36 @@ $(workflow_root_closeable_select "$candidate_cte")
 SQL
 }
 
+# Candidate ids for one keyset page: the same `id > page_after` ORDER BY id
+# LIMIT batch window workflow_root_ids_query filters for closeability, but
+# unfiltered and without the descendant walk the closeable select needs. The
+# census advances its cursor by the last *candidate* id and keeps paging while
+# the candidate window was full. Deriving either from the filtered closeable
+# rows starves every closeable husk ordered after a window that is full of
+# permanently protected roots: an empty or short closeable page looks like
+# exhaustion, so the husk is never visited and the run still exits 0.
+workflow_root_page_ids_query() {
+    local db="$1"
+    local candidate_cte="$2"
+    local table="$3"
+    local alias="$4"
+    local issue_type_exclusions="$5"
+    local page_limit="$6"
+    local page_after="$7"
+
+    cat <<SQL
+        WITH $(workflow_root_candidate_ctes "$db" "$candidate_cte" "$table" "$alias" "$issue_type_exclusions"),
+        ${candidate_cte}_page(id) AS (
+            SELECT id
+            FROM $candidate_cte
+            WHERE id > $page_after
+            ORDER BY id
+            LIMIT $page_limit
+        )
+        SELECT id FROM ${candidate_cte}_page ORDER BY id
+SQL
+}
+
 workflow_wisp_root_update_query() {
 	local db="$1"
 	local ids="$2"
@@ -775,17 +805,29 @@ SQL
 }
 
 # Purge-protection predicate for a closed wisp root. It mirrors the Step 2
-# close census's direct descendant protection (reaper.sh workflow_root_
-# candidates_cte): a root must not be deleted while any LIVE descendant still
-# references it, whether that child is a wisp or an issue and whether the edge
-# is stamped through gc.root_bead_id or recorded in wisp_dependencies /
-# dependencies. Reusing WORKFLOW_ROOT_LIVE_STATUSES here keeps "protected from
-# closing" and "protected from purging" the same set; the earlier probe tested
-# only wisp children through wisp_dependencies and a narrower status list, so
-# an aged root with a live issue child (or a child in review/testing/blocked/
-# deferred/pinned) was purged and left the child's gc.root_bead_id dangling.
-# The count and the DELETE both splice this one body so they cannot diverge.
-# References the outer `wisps` row by id.
+# close census's protection of descendants that still reference the root: a
+# root must not be deleted while any LIVE descendant still points at it,
+# whether that child is a wisp or an issue and whether the edge is stamped
+# through gc.root_bead_id or recorded in wisp_dependencies / dependencies.
+# Reusing WORKFLOW_ROOT_LIVE_STATUSES here keeps "protected from closing" and
+# "protected from purging" the same set; the earlier probe tested only wisp
+# children through wisp_dependencies and a narrower status list, so an aged
+# root with a live issue child (or a child in review/testing/blocked/deferred/
+# pinned) was purged and left the child's gc.root_bead_id dangling. The count
+# and the DELETE both splice this one body so they cannot diverge. References
+# the outer `wisps` row by id.
+#
+# Chosen approximation: this predicate checks direct, depth-1 references,
+# while the Step 2 census walks the descendant graph transitively. We keep
+# depth-1 here instead of extending the predicate to a recursive walk because:
+# (a) the purge COUNT/DELETE has no bounded candidate set to seed a CTE with --
+# unlike the census's `${candidate_cte}_page` window -- so a transitive
+# traversal would run per outer row over every closed, aged wisp; and (b) every
+# descendant that carries gc.root_bead_id=root.id (the reference that would be
+# left dangling by a purge) is already matched directly by the probes below,
+# regardless of how deep it sits. Only descendants reachable solely through
+# dependency edges whose intermediate node is closed can be missed, and those
+# do not hold a gc.root_bead_id reference to the purged root.
 wisp_purge_protection_predicate() {
     local db="$1"
 
@@ -834,7 +876,8 @@ collect_workflow_root_ids() {
     local issue_type_exclusions="$6"
     local page_after="''"
     local page_ids
-    local page_count
+    local window_ids
+    local window_count
     local last_id
     local ids=""
 
@@ -860,19 +903,34 @@ collect_workflow_root_ids() {
             return 0
         fi
         page_ids=$(printf '%s\n' "$SQL_ROWS_RESULT" | sed '/^[[:space:]]*$/d')
-        if [ -z "$page_ids" ]; then
+        if [ -n "$page_ids" ]; then
+            if [ -n "$ids" ]; then
+                ids="$ids
+$page_ids"
+            else
+                ids="$page_ids"
+            fi
+        fi
+
+        # Advance and terminate on the candidate window, never the closeable
+        # subset. A full window of protected roots yields no closeable ids but
+        # must still move the cursor to the next window; a short candidate
+        # window (or none) is the only real end of the census.
+        get_sql_rows "$db" "$label candidate window after $page_after" "$(workflow_root_page_ids_query "$db" "$candidate_cte" "$table" "$alias" "$issue_type_exclusions" "$WORKFLOW_ROOT_BATCH_SIZE" "$page_after")"
+        if [ "$SQL_ROWS_OK" -ne 1 ]; then
+            record_anomaly "$db" "$label census incomplete: candidate window after $page_after failed"
+            CENSUS_FAILED=1
+            return 0
+        fi
+        window_ids=$(printf '%s\n' "$SQL_ROWS_RESULT" | sed '/^[[:space:]]*$/d')
+        if [ -z "$window_ids" ]; then
             break
         fi
-        if [ -n "$ids" ]; then
-            ids="$ids
-$page_ids"
-        else
-            ids="$page_ids"
-        fi
-        last_id=$(printf '%s\n' "$page_ids" | tail -1)
+        last_id=$(printf '%s\n' "$window_ids" | tail -1)
+        window_count=$(printf '%s\n' "$window_ids" | wc -l | tr -d ' ')
+
         page_after=$(sql_string_literal "$last_id")
-        page_count=$(printf '%s\n' "$page_ids" | wc -l | tr -d ' ')
-        if [ "$page_count" -lt "$WORKFLOW_ROOT_BATCH_SIZE" ]; then
+        if [ "$window_count" -lt "$WORKFLOW_ROOT_BATCH_SIZE" ]; then
             break
         fi
     done
@@ -1588,7 +1646,7 @@ EOF
                 SELECT COUNT(*) FROM \`$CITY_DB\`.issues
                 WHERE id LIKE '$_TYPE_GUARD_LIKE'
                 AND status = 'closed'
-                AND closed_at < DATE_SUB(NOW(), INTERVAL $_TYPE_GUARD_AGE_H HOUR)
+                AND closed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL $_TYPE_GUARD_AGE_H HOUR)
                 AND issue_type != 'session'
             "
             if [ "${ANOMALIES:-}" != "$_TYPE_GUARD_ANOMALIES_BEFORE" ]; then
@@ -1625,13 +1683,13 @@ EOF
             record_anomaly "session" "type-safe SQL path: city database unresolved — skipping"
         else
             if [ -n "$DRY_RUN" ]; then
-                RAW=$(dolt_sql -r csv -q "USE \`${CITY_DB}\`; SELECT COUNT(*) FROM issues WHERE issue_type='session' AND status='closed' AND closed_at < DATE_SUB(NOW(), INTERVAL ${SESSION_AGE_H} HOUR);") 2>/dev/null || RAW=""
+                RAW=$(dolt_sql -r csv -q "USE \`${CITY_DB}\`; SELECT COUNT(*) FROM issues WHERE issue_type='session' AND status='closed' AND closed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL ${SESSION_AGE_H} HOUR);") 2>/dev/null || RAW=""
                 COUNT=$(printf '%s\n' "$RAW" | tail -n +2 | tr -d ',' | grep -v '^$' | head -1)
                 TOTAL_SESSIONS_PRUNED="${COUNT:-0}"
             else
                 TOTAL=0
                 while true; do
-                    RAW=$(dolt_sql -r csv -q "USE \`${CITY_DB}\`; SELECT id FROM issues WHERE issue_type='session' AND status='closed' AND closed_at < DATE_SUB(NOW(), INTERVAL ${SESSION_AGE_H} HOUR) LIMIT 500;") 2>/dev/null || break
+                    RAW=$(dolt_sql -r csv -q "USE \`${CITY_DB}\`; SELECT id FROM issues WHERE issue_type='session' AND status='closed' AND closed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL ${SESSION_AGE_H} HOUR) LIMIT 500;") 2>/dev/null || break
                     BATCH_IDS=$(printf '%s\n' "$RAW" | tail -n +2 | grep -v '^$')
                     BATCH_COUNT=$(printf '%s\n' "$BATCH_IDS" | grep -c . || true)
                     [ "$BATCH_COUNT" -gt 0 ] || break
