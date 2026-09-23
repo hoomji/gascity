@@ -599,3 +599,28 @@ func TestNilStoreIsNoOp(t *testing.T) {
 		t.Errorf("FindIncludingTerminal on nil store = (%+v,%v,%v), want (zero,false,nil)", shadow, ok, err)
 	}
 }
+
+// TestIsTerminalState classifies every nudge lifecycle state the codec can
+// stamp. injected_unobserved is the drained-composer outcome the queued-nudge
+// poller acks on proven delivery; it must classify as terminal so the wait
+// finalizer closes the wait instead of letting the dispatcher re-enqueue the
+// same shadow on the next tick.
+func TestIsTerminalState(t *testing.T) {
+	for _, tc := range []struct {
+		state string
+		want  bool
+	}{
+		{"accepted_for_injection", true},
+		{"injected", true},
+		{"injected_unobserved", true},
+		{"expired", true},
+		{"failed", true},
+		{"superseded", true},
+		{"queued", false},
+		{"", false},
+	} {
+		if got := IsTerminalState(tc.state); got != tc.want {
+			t.Errorf("IsTerminalState(%q) = %v, want %v", tc.state, got, tc.want)
+		}
+	}
+}

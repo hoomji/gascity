@@ -838,7 +838,13 @@ func cmdWaitSetStateResult(waitID, state string, stdout, stderr io.Writer) (wait
 	}
 	if state == waitStateCanceled {
 		if cityPath, err := resolveCity(); err == nil {
-			if err := withdrawQueuedWaitNudges(cityPath, []string{w.NudgeID}); err != nil {
+			// Withdraw both the stamped shadow id and the deterministic id this
+			// wait's nudge is enqueued under. A dispatch that enqueued the nudge
+			// but had not yet stamped nudge_id on the wait leaves the queue item
+			// reachable only by the deterministic id; withdrawing just the
+			// (empty) stamp would strand it for the delivery path to re-inject.
+			nudgeIDs := []string{w.NudgeID, waitNudgeID(w)}
+			if err := withdrawQueuedWaitNudges(cityPath, nudgeIDs); err != nil {
 				fmt.Fprintf(stderr, "gc wait: withdrawing queued nudge: %v\n", err) //nolint:errcheck
 				return result, 1
 			}
@@ -1378,7 +1384,12 @@ func finalizeReadyWaitFromNudge(sessFront *sessionpkg.Store, nudges beads.Nudges
 		return false, err
 	}
 	switch nudge.State {
-	case "injected", "accepted_for_injection":
+	case "injected", "injected_unobserved", "accepted_for_injection":
+		// injected_unobserved is the drained-composer outcome: the provider
+		// accepted the submit and the composer drained, only the busy indicator
+		// was never observed inside the confirm budget. It is proven delivery
+		// (see tryDeliverQueuedNudgesByPoller), so the wait closes instead of
+		// being re-dispatched on the next tick.
 		return true, sessFront.CloseWaitFromNudge(wait.ID, now, nudgeID, nudge.CommitBoundary)
 	case "expired", "failed":
 		return true, sessFront.FailWaitFromNudge(wait.ID, now, nudgeID, nudge.TerminalReason, nudge.CommitBoundary)

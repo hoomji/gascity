@@ -1304,6 +1304,179 @@ func TestPrepareWaitWakeState_FinalizesFromNudge(t *testing.T) {
 	}
 }
 
+// TestPrepareWaitWakeState_FinalizesDeliveredUnobservedNudge guards the wait
+// redelivery loop: a wait nudge the provider accepted but whose busy indicator
+// was never observed inside the confirm budget is acked "injected_unobserved"
+// (proven delivery; see tryDeliverQueuedNudgesByPoller). Before this test the
+// wait finalizer only recognized "injected"/"accepted_for_injection"/"expired"/
+// "failed", so an unobserved delivery left the wait "ready", the next dispatch
+// pass re-enqueued the deterministic shadow, and the same reminder was injected
+// again on every tick.
+func TestPrepareWaitWakeState_FinalizesDeliveredUnobservedNudge(t *testing.T) {
+	store := beads.NewMemStore()
+	sessionBead, err := store.Create(beads.Bead{
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":       "worker",
+			"agent_name":         "worker",
+			"continuation_epoch": "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create session bead: %v", err)
+	}
+	waitBead, err := store.Create(beads.Bead{
+		Type:   waitBeadType,
+		Labels: []string{waitBeadLabel, "session:" + sessionBead.ID},
+		Metadata: map[string]string{
+			"session_id":       sessionBead.ID,
+			"session_name":     "worker",
+			"kind":             "deps",
+			"state":            waitStateReady,
+			"dep_ids":          "gc-1",
+			"dep_mode":         "all",
+			"registered_epoch": "1",
+			"delivery_attempt": "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create wait bead: %v", err)
+	}
+	nudgeID := waitNudgeID(sessionpkg.WaitInfoFromBead(waitBead))
+	nudge, err := store.Create(beads.Bead{
+		Type:   nudgeBeadType,
+		Title:  "nudge:" + nudgeID,
+		Labels: []string{nudgeBeadLabel, "nudge:" + nudgeID},
+		Metadata: map[string]string{
+			"nudge_id":           nudgeID,
+			"state":              "injected_unobserved",
+			"commit_boundary":    "provider-nudge-return",
+			"continuation_epoch": "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create nudge bead: %v", err)
+	}
+	if err := store.Close(nudge.ID); err != nil {
+		t.Fatalf("close nudge bead: %v", err)
+	}
+
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("prepareWaitWakeState: %v", err)
+	}
+	if readyWaitSet[sessionBead.ID] {
+		t.Fatalf("session %s should not remain in ready set after a delivered-unobserved nudge", sessionBead.ID)
+	}
+	updated, err := store.Get(waitBead.ID)
+	if err != nil {
+		t.Fatalf("store.Get(wait): %v", err)
+	}
+	if got := updated.Metadata["state"]; got != waitStateClosed {
+		t.Fatalf("wait state = %q, want %q (injected_unobserved is proven delivery)", got, waitStateClosed)
+	}
+	if updated.Status != "closed" {
+		t.Fatalf("wait status = %q, want closed", updated.Status)
+	}
+}
+
+// TestCanceledWaitDeliversZeroReminders is the regression guard for the
+// reported wait-reminder redelivery: once a wait is canceled, its queued
+// reminder must not reach the session. It pins both halves of the contract:
+// the cancel path withdraws the queue item by the deterministic nudge id even
+// when the wait's nudge_id stamp was never written (the enqueue-before-stamp
+// race), and the delivery gate refuses any wait-sourced nudge whose wait is no
+// longer ready.
+func TestCanceledWaitDeliversZeroReminders(t *testing.T) {
+	clearGCEnv(t)
+	t.Setenv("GC_BEADS", "file")
+
+	cityDir := t.TempDir()
+	t.Setenv("GC_CITY", cityDir)
+	writeCityToml(t, cityDir, "[workspace]\nname = \"wait-cancel\"\n")
+	store, err := openCityStoreAt(cityDir)
+	if err != nil {
+		t.Fatalf("openCityStoreAt: %v", err)
+	}
+
+	sessionBead, err := store.Create(beads.Bead{
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name": "worker",
+			"agent_name":   "worker",
+			"template":     "worker",
+			"state":        string(sessionpkg.StateActive),
+		},
+	})
+	if err != nil {
+		t.Fatalf("create session bead: %v", err)
+	}
+	waitBead, err := store.Create(beads.Bead{
+		Type:        waitBeadType,
+		Labels:      []string{waitBeadLabel, "session:" + sessionBead.ID},
+		Description: "Continue after review closes.",
+		Metadata: map[string]string{
+			"session_id":       sessionBead.ID,
+			"session_name":     "worker",
+			"kind":             "deps",
+			"state":            waitStateReady,
+			"dep_ids":          "gc-1",
+			"dep_mode":         "all",
+			"registered_epoch": "1",
+			"delivery_attempt": "1",
+			// nudge_id deliberately unset: dispatch enqueued the shadow but had
+			// not stamped the wait yet.
+		},
+	})
+	if err != nil {
+		t.Fatalf("create wait bead: %v", err)
+	}
+	nudgeID := waitNudgeID(sessionpkg.WaitInfoFromBead(waitBead))
+	item := newQueuedNudgeWithOptions("worker", "Wait satisfied.", "wait", time.Now().Add(-time.Minute), queuedNudgeOptions{
+		ID:        nudgeID,
+		SessionID: sessionBead.ID,
+		Reference: &nudgeReference{Kind: "bead", ID: waitBead.ID},
+	})
+	if err := enqueueQueuedNudgeWithStore(cityDir, beads.NudgesStore{Store: store}, item); err != nil {
+		t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	if _, code := cmdWaitSetStateResult(waitBead.ID, waitStateCanceled, io.Discard, &stderr); code != 0 {
+		t.Fatalf("cmdWaitSetStateResult(canceled) = %d, stderr=%q", code, stderr.String())
+	}
+	pending, inFlight, _, err := listQueuedNudges(cityDir, "worker", time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudges: %v", err)
+	}
+	if len(pending) != 0 || len(inFlight) != 0 {
+		t.Fatalf("after cancel: pending=%d inFlight=%d, want 0/0: the deterministic nudge id must be withdrawn", len(pending), len(inFlight))
+	}
+
+	// Re-enqueue a wait-sourced nudge that the withdrawal could not have seen
+	// (a dispatch that raced the cancel). The delivery gate must refuse it
+	// rather than inject a reminder for a canceled wait.
+	raced := newQueuedNudgeWithOptions("worker", "Wait satisfied.", "wait", time.Now().Add(-time.Minute), queuedNudgeOptions{
+		ID:        nudgeID + "-raced",
+		SessionID: sessionBead.ID,
+		Reference: &nudgeReference{Kind: "bead", ID: waitBead.ID},
+	})
+	if err := enqueueQueuedNudgeWithStore(cityDir, beads.NudgesStore{Store: store}, raced); err != nil {
+		t.Fatalf("enqueue raced nudge: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	stderr.Reset()
+	// The drain returns 1 when there is nothing deliverable; the assertion is
+	// that no reminder text ever reaches the session.
+	_ = cmdNudgeDrainWithFormat([]string{sessionBead.ID}, false, "", &stdout, &stderr)
+	if strings.Contains(stdout.String(), "Wait satisfied") {
+		t.Fatalf("canceled wait delivered a reminder: %q", stdout.String())
+	}
+}
+
 func TestPrepareWaitWakeState_UsesTargetedLookupForMissingSessionEpoch(t *testing.T) {
 	base := beads.NewMemStore()
 	store := &waitGetSpyStore{Store: base}
