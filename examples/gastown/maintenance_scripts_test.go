@@ -5290,6 +5290,149 @@ exit 0
 	}
 }
 
+// TestReaperWorkflowRootUpdateReassertsCloseabilityPredicate pins the fix for
+// the census->UPDATE race. The census page and the close UPDATE run in separate
+// dolt_sql processes with no shared transaction or lock, so a root can gain a
+// live/recent descendant, pick up an assignee, or otherwise leave the closeable
+// set between them. Here the census offers root-race as a closeable husk, a
+// writer attaches live work as soon as that page returns, and the re-asserted
+// UPDATE must therefore match zero rows. The script must not count the root as
+// closed; it must report the offered-vs-updated gap instead and leave the root
+// open.
+func TestReaperWorkflowRootUpdateReassertsCloseabilityPredicate(t *testing.T) {
+	cityDir := t.TempDir()
+	binDir := t.TempDir()
+	doltLog := filepath.Join(t.TempDir(), "dolt-args.log")
+	gcLog := filepath.Join(t.TempDir(), "gc.log")
+	bdLog := filepath.Join(t.TempDir(), "bd.log")
+	raceMarker := filepath.Join(t.TempDir(), "census-to-update-race")
+
+	writeExecutable(t, filepath.Join(binDir, "dolt"), `#!/bin/sh
+printf '%s\n' "$*" >> "$DOLT_ARGS_LOG"
+case "$*" in
+  *"SHOW TABLES FROM"*"LIKE 'wisps'"*)
+    printf 'Tables_in_db\nwisps\n'
+    ;;
+  *"SHOW DATABASES"*)
+    printf 'Database\nbeads\n'
+    ;;
+  *"SHOW COLUMNS FROM"*"dependencies"*)
+    printf 'Field,Type,Null,Key,Default,Extra\n'
+    printf 'issue_id,varchar,NO,,,\n'
+    printf 'depends_on_issue_id,varchar,YES,,,\n'
+    printf 'depends_on_wisp_id,varchar,YES,,,\n'
+    printf 'depends_on_external,varchar,YES,,,\n'
+    printf 'type,varchar,NO,,,\n'
+    ;;
+  # The close UPDATE re-asserts the census predicate: the offered ids seed the
+  # same candidate page and the same live/recent descendant guards, so once the
+  # root gained live work after the census the UPDATE matches no rows.
+  *"UPDATE "*"wisps SET status='closed'"*"JSON_SET(COALESCE(metadata, JSON_OBJECT())"*)
+    if [ -f "$DOLT_RACE_MARKER" ]; then
+      printf 'ROW_COUNT()\n0\n'
+    else
+      printf 'ROW_COUNT()\n1\n'
+    fi
+    ;;
+  *"workflow_wisp_root_candidates_base"*"LEFT JOIN workflow_wisp_root_candidates"*|*"workflow_issue_root_candidates_base"*"LEFT JOIN workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"WITH workflow_wisp_root_candidates_base"*"SELECT COUNT(*) FROM workflow_wisp_root_candidates"*)
+    printf 'COUNT(*)\n1\n'
+    ;;
+  *"WITH workflow_issue_root_candidates_base"*"SELECT COUNT(*) FROM workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  # Census page: offer root-race, then drop the marker that represents the
+  # writer landing live work under the root before the close UPDATE is issued.
+  *"WITH RECURSIVE workflow_wisp_root_candidates"*"SELECT DISTINCT root.id"*)
+    : > "$DOLT_RACE_MARKER"
+    printf 'id\nroot-race\n'
+    ;;
+  *"WITH RECURSIVE workflow_issue_root_candidates"*"SELECT DISTINCT root.id"*)
+    printf 'id\n'
+    ;;
+  *"SELECT COUNT(*) FROM "*"wisps"*"status IN ('open', 'hooked', 'in_progress')"*"created_at <"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"COUNT("*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"SELECT id"*)
+    printf 'id\n'
+    ;;
+esac
+exit 0
+`)
+	writeExecutable(t, filepath.Join(binDir, "bd"), `#!/bin/sh
+printf '%s\n' "$*" >> "$BD_CALL_LOG"
+exit 0
+`)
+	writeMaintenanceGCStub(t, filepath.Join(binDir, "gc"), `#!/bin/sh
+printf '%s\n' "$*" >> "$GC_CALL_LOG"
+exit 0
+`)
+	writeCityBeadsMetadata(t, cityDir, "beads")
+
+	env := map[string]string{
+		"BD_CALL_LOG":      bdLog,
+		"DOLT_ARGS_LOG":    doltLog,
+		"DOLT_RACE_MARKER": raceMarker,
+		"GC_CALL_LOG":      gcLog,
+		"GC_CITY":          cityDir,
+		"GC_CITY_PATH":     cityDir,
+		"GC_DOLT_HOST":     "127.0.0.1",
+		"GC_DOLT_PORT":     "3307",
+		"GC_DOLT_USER":     "root",
+		"GC_DOLT_PASSWORD": "",
+		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+
+	runScript(t, coreScriptPath("reaper.sh"), env)
+
+	logData, err := os.ReadFile(doltLog)
+	if err != nil {
+		t.Fatalf("ReadFile(dolt log): %v", err)
+	}
+	log := string(logData)
+	// The UPDATE itself must carry the re-assertion, not just trust the census.
+	for _, want := range []string{
+		"reaper_wisp_root_recheck",
+		"SELECT id FROM workflow_wisp_root_candidates",
+		"WHERE id IN ('root-race')",
+		"roots_with_live_descendants",
+		"roots_with_recent_descendants",
+		"workflow_descendants(root_id, id)",
+	} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("workflow-root close UPDATE missing re-assertion %q:\n%s", want, log)
+		}
+	}
+
+	gcData, err := os.ReadFile(gcLog)
+	if err != nil {
+		t.Fatalf("ReadFile(gc log): %v", err)
+	}
+	gcText := string(gcData)
+	if strings.Contains(gcText, "workflow_roots:1") {
+		t.Fatalf("reaper counted the mutated root as closed:\n%s", gcText)
+	}
+	if !strings.Contains(gcText, "workflow_roots:0") {
+		t.Fatalf("reaper did not report zero workflow roots closed:\n%s", gcText)
+	}
+	if !strings.Contains(gcText, "workflow_roots_recheck_skipped:1") {
+		t.Fatalf("reaper did not report the census->update recheck gap:\n%s", gcText)
+	}
+
+	bdData, err := os.ReadFile(bdLog)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(bd log): %v", err)
+	}
+	if strings.Contains(string(bdData), "close root-race") {
+		t.Fatalf("reaper closed the mutated root through bd:\n%s", bdData)
+	}
+}
+
 func TestReaperChunksWorkflowRootIssueCensusBeforeClosing(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
