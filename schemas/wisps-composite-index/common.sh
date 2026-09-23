@@ -6,6 +6,8 @@ STATUS_INDEX_NAME="idx_wisps_status"
 STATUS_INDEX_COLUMNS="status"
 DEFER_UNTIL_INDEX_NAME="idx_wisps_defer_until"
 DEFER_UNTIL_INDEX_COLUMNS="defer_until"
+STATUS_CLOSED_AT_INDEX_NAME="idx_wisps_status_closed_at"
+STATUS_CLOSED_AT_INDEX_COLUMNS="status, closed_at"
 COMMIT_AUTHOR="gascity-builder <builder@gascity.local>"
 
 die() {
@@ -311,6 +313,26 @@ defer_until_index_rows() { index_rows_for "$1" "$DEFER_UNTIL_INDEX_NAME"; }
 
 verify_defer_until_index_definition() {
     verify_single_column_index "$1" "$DEFER_UNTIL_INDEX_NAME" "$DEFER_UNTIL_INDEX_COLUMNS"
+}
+
+status_closed_at_index_rows() { index_rows_for "$1" "$STATUS_CLOSED_AT_INDEX_NAME"; }
+
+verify_status_closed_at_index_definition() {
+    local output="$1"
+    local count
+    local missing=""
+
+    count=$(status_closed_at_index_rows "$output")
+    if [ "$count" -ne 2 ]; then
+        die "index $STATUS_CLOSED_AT_INDEX_NAME has $count column rows; expected exactly 2 for ($STATUS_CLOSED_AT_INDEX_COLUMNS)"
+    fi
+
+    printf '%s\n' "$output" | awk -F, -v idx="$STATUS_CLOSED_AT_INDEX_NAME" 'NR > 1 && $3 == idx && $4 == "1" && $5 == "status" { found = 1 } END { exit found ? 0 : 1 }' || missing="$missing status"
+    printf '%s\n' "$output" | awk -F, -v idx="$STATUS_CLOSED_AT_INDEX_NAME" 'NR > 1 && $3 == idx && $4 == "2" && $5 == "closed_at" { found = 1 } END { exit found ? 0 : 1 }' || missing="$missing closed_at"
+
+    if [ -n "$missing" ]; then
+        die "index $STATUS_CLOSED_AT_INDEX_NAME exists but does not match ($STATUS_CLOSED_AT_INDEX_COLUMNS); missing:$missing"
+    fi
 }
 
 commit_schema_change() {

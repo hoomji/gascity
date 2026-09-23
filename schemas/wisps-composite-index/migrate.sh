@@ -4,6 +4,8 @@
 #   - idx_wisps_type_status_assignee for mail-check lookups
 #   - idx_wisps_status for PrimeWisps status=open reconciliation
 #   - idx_wisps_defer_until for the control-dispatcher readiness probe
+#   - idx_wisps_status_closed_at for the reaper's closed-husk purge scan
+#     (status = 'closed' AND closed_at < cutoff)
 #
 # Connection discovery order:
 #   database: GC_DOLT_DATABASE, BEADS_DOLT_DATABASE, then .beads/metadata.json dolt_database
@@ -72,6 +74,21 @@ fi
 
 indexes=$(show_wisps_indexes)
 verify_defer_until_index_definition "$indexes"
+
+rows=$(status_closed_at_index_rows "$indexes")
+if [ "$rows" -gt 0 ]; then
+    verify_status_closed_at_index_definition "$indexes"
+    info "index $STATUS_CLOSED_AT_INDEX_NAME already exists on wisps($STATUS_CLOSED_AT_INDEX_COLUMNS)"
+else
+    dolt_sql -q "
+        USE \`$DOLT_DB\`;
+        CREATE INDEX $STATUS_CLOSED_AT_INDEX_NAME ON wisps(status, closed_at);
+    " >/dev/null
+    changed=true
+fi
+
+indexes=$(show_wisps_indexes)
+verify_status_closed_at_index_definition "$indexes"
 
 if [ "$changed" = false ]; then
     info "all wisps indexes already exist; no changes needed"
