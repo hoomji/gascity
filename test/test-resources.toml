@@ -10,8 +10,8 @@ version = 2
 [[audit_baseline]]
 scope = "all"
 resource = "subprocess"
-baseline_calls = 673
-baseline_files = 197
+baseline_calls = 674
+baseline_files = 198
 reported_calls = 495
 reported_files = 135
 owner_bead = "ga-cp3hwi"
@@ -51,8 +51,8 @@ expires = "2026-10-01"
 [[debt]]
 scope = "untagged"
 resource = "subprocess"
-baseline_calls = 454
-baseline_files = 132
+baseline_calls = 455
+baseline_files = 133
 reported_calls = 380
 reported_files = 98
 owner_bead = "ga-cp3hwi"
@@ -208,6 +208,17 @@ expires = "2026-10-01"
 # top-level Go test identity. Only matching resources lexically inside that
 # declaration leave the Small-debt census; helper bodies and sibling tests do
 # not inherit a source exemption.
+[[medium]]
+package_dir = "internal/hooks"
+package_name = "hooks"
+owner = "TestMimoCodePluginKeepsSystemPromptByteStableAcrossTurns"
+resources = ["subprocess"]
+owner_bead = "ga-cp3hwi"
+invariant = "the MiMo Code plugin byte-stable-system-prompt proof is a checked Medium subprocess owner"
+resource_owner = "the one node subprocess is confined to TestMimoCodePluginKeepsSystemPromptByteStableAcrossTurns, which exists to run the embedded plugin through two consecutive turns: the plugin is JavaScript, so only a real node process can prove the system prompt bytes are identical while the injected clock changes"
+migration_target = "P0.4b"
+expires = "2026-10-01"
+
 [[medium]]
 package_dir = "internal/hooks"
 package_name = "hooks"

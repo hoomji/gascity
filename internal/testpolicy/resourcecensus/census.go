@@ -125,8 +125,8 @@ var bootstrapPolicy = Ledger{
 		{
 			Scope:           ScopeAll,
 			Resource:        ResourceSubprocess,
-			BaselineCalls:   673,
-			BaselineFiles:   197,
+			BaselineCalls:   674,
+			BaselineFiles:   198,
 			ReportedCalls:   495,
 			ReportedFiles:   135,
 			OwnerBead:       "ga-cp3hwi",
@@ -166,8 +166,8 @@ var bootstrapPolicy = Ledger{
 		{
 			Scope:           ScopeUntagged,
 			Resource:        ResourceSubprocess,
-			BaselineCalls:   454,
-			BaselineFiles:   132,
+			BaselineCalls:   455,
+			BaselineFiles:   133,
 			ReportedCalls:   380,
 			ReportedFiles:   98,
 			OwnerBead:       "ga-cp3hwi",
@@ -321,6 +321,17 @@ var bootstrapPolicy = Ledger{
 		},
 	},
 	Medium: []MediumOwner{
+		{
+			PackageDir:      "internal/hooks",
+			PackageName:     "hooks",
+			Owner:           "TestMimoCodePluginKeepsSystemPromptByteStableAcrossTurns",
+			Resources:       []Resource{ResourceSubprocess},
+			OwnerBead:       "ga-cp3hwi",
+			Invariant:       "the MiMo Code plugin byte-stable-system-prompt proof is a checked Medium subprocess owner",
+			ResourceOwner:   "the one node subprocess is confined to TestMimoCodePluginKeepsSystemPromptByteStableAcrossTurns, which exists to run the embedded plugin through two consecutive turns: the plugin is JavaScript, so only a real node process can prove the system prompt bytes are identical while the injected clock changes",
+			MigrationTarget: "P0.4b",
+			Expires:         "2026-10-01",
+		},
 		{
 			PackageDir:      "internal/hooks",
 			PackageName:     "hooks",
