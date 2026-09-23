@@ -132,10 +132,11 @@ func (h *SessionHandle) recordInvocationTelemetry(ctx context.Context) {
 	// provider two-step, so a wrapped/manifold provider whose raw name does not
 	// itself contain "codex"/"claude" (e.g. "mc-codex-wrap" with builtin_ancestor
 	// "codex") still resolves to its builtin family instead of silently missing
-	// the gate. The normalized family keys the gate, the telemetry label, and the
-	// pricing lookup below, so the recorded provider can never drift from the
-	// family that gated the record — and the prompt-op seam and the
-	// controller-tick sweep resolve family identically.
+	// the gate. The normalized family keys the gate and the telemetry label; the
+	// pricing lookup below additionally tries the configured provider identity
+	// (see pricingProviderIdentities) so an operator's [[pricing]] entry keyed to
+	// the provider alias is honored. The prompt-op seam and the controller-tick
+	// sweep resolve family and provider identically.
 	providerFamily := invocationUsageFamilyFromInfo(info)
 	spec, ok := invocationUsageSpecs[providerFamily]
 	if !ok {
@@ -186,6 +187,7 @@ func (h *SessionHandle) recordInvocationTelemetry(ctx context.Context) {
 	// recording: a sink-only handle (CLI factory path) still emits. Resolved once
 	// per loop because the gate is per-handle.
 	emitFacts := h.usageFactRecordingEnabled()
+	pricingProviders := pricingProviderIdentities(info.Provider, info.ProviderKind, info.BuiltinAncestor, providerFamily)
 	now := time.Now().UTC()
 	for _, u := range pending {
 		labels := telemetry.InvocationLabels{
@@ -196,7 +198,7 @@ func (h *SessionHandle) recordInvocationTelemetry(ctx context.Context) {
 		telemetry.RecordInvocationTokens(ctx, labels,
 			int64(u.InputTokens), int64(u.OutputTokens),
 			int64(u.CacheReadTokens), int64(u.CacheCreationTokens))
-		cost, priced := h.pricing.Estimate(providerFamily, u.Model, pricing.Usage{
+		cost, priced, pricedProvider := estimatePricing(h.pricing, pricingProviders, u.Model, pricing.Usage{
 			PromptTokens:        u.InputTokens,
 			CompletionTokens:    u.OutputTokens,
 			CacheReadTokens:     u.CacheReadTokens,
@@ -206,7 +208,7 @@ func (h *SessionHandle) recordInvocationTelemetry(ctx context.Context) {
 			telemetry.RecordInvocationCostEstimate(ctx, labels, cost)
 		}
 		if emitFacts {
-			h.recordModelUsageFact(modelUsageFact(u, pr.Metadata, id, id, info.SessionName, providerFamily, cost, priced, now))
+			h.recordModelUsageFact(modelUsageFact(u, pr.Metadata, id, id, info.SessionName, modelFactProvider(pricedProvider, providerFamily), cost, priced, now))
 		}
 	}
 	// Best-effort: a failed cursor write means the next prompt op may
@@ -229,10 +231,13 @@ func (h *SessionHandle) recordInvocationTelemetry(ctx context.Context) {
 // StepID note in the body). The dedup identity is the invocation's provider message id (or the
 // transcript entry uuid when none), so the best-effort cursor races noted on
 // recordInvocationTelemetry collapse a re-recorded invocation to one fact at the
-// sink via IdempotencyKey. Unpriced is true exactly when the pricing registry
-// had no entry for the (family, model) pair; cost is then left zero and must be
-// read as "not measured", never as a free invocation.
-func modelUsageFact(u sessionlog.TailUsage, meta map[string]string, beadID, sessionID, worker, providerFamily string, cost float64, priced bool, now time.Time) usage.Fact {
+// sink via IdempotencyKey. Unpriced is true exactly when no provider identity
+// in the session's pricing ladder had an entry for model; cost is then left
+// zero and must be read as "not measured", never as a free invocation. The
+// provider argument is the label stamped on the fact: the rate-card provider
+// that priced the invocation (modelFactProvider), which may be the configured
+// provider alias rather than the normalized family.
+func modelUsageFact(u sessionlog.TailUsage, meta map[string]string, beadID, sessionID, worker, provider string, cost float64, priced bool, now time.Time) usage.Fact {
 	// beadID and sessionID are the session bead id and the run-id fallback — the
 	// same fields the retired ResolveRunID(bead.Metadata, bead.ID, sessionID) read
 	// from the raw bead. At the sole production call site they are equal (the
@@ -255,7 +260,7 @@ func modelUsageFact(u sessionlog.TailUsage, meta map[string]string, beadID, sess
 		Worker:              strings.TrimSpace(worker),
 		Kind:                usage.KindModel,
 		Model:               strings.TrimSpace(u.Model),
-		Provider:            strings.TrimSpace(providerFamily),
+		Provider:            strings.TrimSpace(provider),
 		InputTokens:         u.InputTokens,
 		OutputTokens:        u.OutputTokens,
 		CacheReadTokens:     u.CacheReadTokens,
@@ -325,6 +330,64 @@ func invocationUsageFamily(provider string) string {
 // the prompt-op seam and the controller-tick sweep agree on family.
 func invocationUsageFamilyFromInfo(info sessionpkg.Info) string {
 	return invocationUsageFamily(sessionpkg.ProviderFamilyFromInfo(info, ""))
+}
+
+// pricingProviderIdentities returns the ordered provider labels used to resolve
+// a pricing rate card for a session. Operators key [[pricing]] entries to the
+// configured provider identity (e.g. "claude-mayor"), which is not
+// necessarily the normalized transcript family ("claude") the extraction gate
+// uses, so the configured provider is tried first; the provider-family ladder
+// (provider_kind, builtin_ancestor, then the registered family) follows so a
+// card keyed to the family — including the shipped defaults — still prices an
+// alias session. Blank rungs and duplicates are dropped, preserving order.
+func pricingProviderIdentities(provider, providerKind, builtinAncestor, family string) []string {
+	rungs := []string{provider, providerKind, builtinAncestor, family}
+	out := make([]string, 0, len(rungs))
+	seen := make(map[string]struct{}, len(rungs))
+	for _, r := range rungs {
+		r = strings.TrimSpace(r)
+		if r == "" {
+			continue
+		}
+		if _, dup := seen[r]; dup {
+			continue
+		}
+		seen[r] = struct{}{}
+		out = append(out, r)
+	}
+	return out
+}
+
+// pricingProviderIdentitiesFromMetadata is the session-bead-metadata twin of
+// pricingProviderIdentities, used by the controller-tick sweep which holds the
+// raw metadata rather than a typed session.Info.
+func pricingProviderIdentitiesFromMetadata(meta map[string]string, family string) []string {
+	return pricingProviderIdentities(meta["provider"], meta["provider_kind"], meta["builtin_ancestor"], family)
+}
+
+// estimatePricing tries each provider identity in precedence order and returns
+// the first rate card that prices model, reporting which provider label
+// matched. It returns ("", false) when none of the identities has a rate card
+// for model — the caller must record that as unpriced, never as free usage.
+func estimatePricing(reg *pricing.Registry, providers []string, model string, u pricing.Usage) (cost float64, priced bool, matched string) {
+	for _, provider := range providers {
+		if c, ok := reg.Estimate(provider, model, u); ok {
+			return c, true, provider
+		}
+	}
+	return 0, false, ""
+}
+
+// modelFactProvider is the provider label stamped on an emitted model fact: the
+// rate-card provider that priced the invocation when pricing resolved, so the
+// row names the exact key an operator wrote in [[pricing]] and can be matched
+// against the rate table; otherwise the normalized family, which is the
+// pre-existing label for unpriced rows and keeps them non-empty.
+func modelFactProvider(matched, family string) string {
+	if s := strings.TrimSpace(matched); s != "" {
+		return s
+	}
+	return strings.TrimSpace(family)
 }
 
 // InvocationUsageFamily resolves the provider's invocation-usage family and
@@ -673,9 +736,10 @@ func (f *Factory) sweepResolvedTranscript(ctx context.Context, family, id string
 	}
 	workerName := strings.TrimSpace(meta["session_name"])
 	agentName := sweepAgentName(meta)
+	pricingProviders := pricingProviderIdentitiesFromMetadata(meta, family)
 	lastRecorded := ""
 	for _, u := range pending {
-		cost, priced := registry.Estimate(family, u.Model, pricing.Usage{
+		cost, priced, pricedProvider := estimatePricing(registry, pricingProviders, u.Model, pricing.Usage{
 			PromptTokens:        u.InputTokens,
 			CompletionTokens:    u.OutputTokens,
 			CacheReadTokens:     u.CacheReadTokens,
@@ -683,9 +747,9 @@ func (f *Factory) sweepResolvedTranscript(ctx context.Context, family, id string
 		})
 		// Mirror the prompt-op seam's OTel metrics so the agents this sweep recovers
 		// facts for also get live gc.agent.tokens.* / cost series — the family keys
-		// the label identically to the emitted fact's Provider so metrics and facts
-		// agree. Metrics fire before the sink write: they must be recorded even if the
-		// sink Record below fails.
+		// the label (the emitted fact's Provider may instead name the rate-card
+		// provider alias when one priced it). Metrics fire before the sink write:
+		// they must be recorded even if the sink Record below fails.
 		labels := telemetry.InvocationLabels{
 			AgentName: agentName,
 			Model:     u.Model,
@@ -697,7 +761,7 @@ func (f *Factory) sweepResolvedTranscript(ctx context.Context, family, id string
 		if priced {
 			telemetry.RecordInvocationCostEstimate(ctx, labels, cost)
 		}
-		fact := modelUsageFact(u, meta, id, id, workerName, family, cost, priced, now)
+		fact := modelUsageFact(u, meta, id, id, workerName, modelFactProvider(pricedProvider, family), cost, priced, now)
 		if recErr := sink.Record(ctx, fact); recErr != nil {
 			// Stop at the first failure and advance the cursor only through the last
 			// success, so the next sweep resumes here instead of skipping the gap.
