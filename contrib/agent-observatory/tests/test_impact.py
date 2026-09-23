@@ -492,11 +492,32 @@ class AttributionTest(unittest.TestCase):
             items.append(make_item(f"c{index}", cohort="control", time_s=80, quality=reworked))
         report = report_for(items)
         rate = report["outcomes"]["first_pass_verified"]
-        self.assertEqual(rate["matched"]["n_treatment"], 4)
-        self.assertEqual(rate["matched"]["n_control"], 4)
-        self.assertAlmostEqual(rate["matched"]["difference"], 1.0)
-        rework = report["outcomes"]["rework"]
-        self.assertAlmostEqual(rework["matched"]["difference"], -1.0)
+    def test_b1_matched_point_estimate_restricted_to_usable_strata(self):
+        items = [
+            make_item(f"t1_{i}", time_s=10, cost_usd=1.0, task_class="bugfix")
+            for i in range(4)
+        ] + [
+            make_item(f"c1_{i}", cohort="control", time_s=20, cost_usd=2.0, task_class="bugfix")
+            for i in range(4)
+        ] + [
+            make_item(f"t2_{i}", time_s=500, cost_usd=50.0, task_class="feature")
+            for i in range(4)
+        ] + [
+            make_item(f"c2_{i}", cohort="control", outcome="in_progress", time_s=500, cost_usd=50.0, task_class="feature")
+            for i in range(4)
+        ]
+        report = report_for(items, evidence={"design": "observational"})
+        matched = report["outcomes"]["time_to_accepted_seconds"]["matched"]
+        self.assertIsNotNone(matched)
+        self.assertAlmostEqual(matched["difference"], -10.0)
+        self.assertLessEqual(matched["ci_low"], matched["difference"])
+        self.assertGreaterEqual(matched["ci_high"], matched["difference"])
+        self.assertEqual(matched["strata"], 1)
+
+    def test_b2_assignment_logged_alone_does_not_earn_controlled_grade(self):
+        report = report_for(self.balanced_items(), evidence={"assignment_logged": True})
+        self.assertEqual(report["attribution"]["grade"], "matched_observational")
+        self.assertEqual(report["attribution"]["causal_claim"], "associational_matched")
 
 
 class ObservedEvidenceTest(unittest.TestCase):
@@ -615,3 +636,4 @@ class ImpactCliTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

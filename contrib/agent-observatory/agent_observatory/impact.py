@@ -961,12 +961,9 @@ def _match_outcome(
         naive = sum(treatment_all) / len(treatment_all) - sum(control_all) / len(control_all)
 
     matched = None
-    matched_treatment_values = [
-        value for value in (_outcome_value(item, outcome) for item in matched_treatment) if value is not None
-    ]
-    matched_control_values = [
-        value for value in (_outcome_value(item, outcome) for item in matched_control) if value is not None
-    ]
+    usable_strata = [s for s in strata if s["treatment_values"] and s["control_values"]]
+    matched_treatment_values = [val for s in usable_strata for val in s["treatment_values"]]
+    matched_control_values = [val for s in usable_strata for val in s["control_values"]]
     if matched_treatment_values and matched_control_values:
         difference = sum(matched_treatment_values) / len(matched_treatment_values) - sum(
             matched_control_values
@@ -975,13 +972,13 @@ def _match_outcome(
             "difference": difference,
             "n_treatment": len(matched_treatment_values),
             "n_control": len(matched_control_values),
-            "strata": len(strata),
+            "strata": len(usable_strata),
         }
         ci = _difference_ci_bootstrap(
-            strata,
+            usable_strata,
             resamples=config.bootstrap_resamples,
             confidence=config.confidence,
-            seed_material=canonical_hash(["matched-ci", outcome, [list(stratum["key"]) for stratum in strata]]),
+            seed_material=canonical_hash(["matched-ci", outcome, [list(stratum["key"]) for stratum in usable_strata]]),
         )
         if ci is not None:
             matched.update(ci)
@@ -1282,7 +1279,8 @@ def _attribution(
         grade = "descriptive"
         reasons.append("no_comparison_arm")
     else:
-        randomized = bool(evidence.get("randomized") or evidence.get("assignment_logged"))
+        randomized = bool(evidence.get("randomized"))
+        assignment_logged = bool(evidence.get("assignment_logged"))
         pre_trends = bool(evidence.get("parallel_pre_trends"))
         if matched_n == 0:
             grade = "descriptive"
@@ -1291,7 +1289,7 @@ def _attribution(
             grade = "controlled"
         elif pre_trends:
             grade = "quasi_experimental"
-        elif overlap_ratio >= config.min_overlap:
+        elif assignment_logged or overlap_ratio >= config.min_overlap:
             grade = "matched_observational"
         else:
             grade = "descriptive"
