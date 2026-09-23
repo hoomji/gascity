@@ -5331,6 +5331,15 @@ case "$*" in
   *"workflow_issue_root_candidates_base"*"SELECT COUNT(*) FROM workflow_issue_root_candidates"*)
     printf 'COUNT(*)\n3\n'
     ;;
+  *"WHERE id > ''"*"SELECT id FROM workflow_issue_root_candidates_page"*)
+    printf 'id\nroot-a\nroot-b\n'
+    ;;
+  *"WHERE id > 'root-b'"*"SELECT id FROM workflow_issue_root_candidates_page"*)
+    printf 'id\nroot-c\n'
+    ;;
+  *"SELECT id FROM workflow_wisp_root_candidates_page"*)
+    printf 'id\n'
+    ;;
   *"workflow_issue_root_candidates_base"*"WHERE id > ''"*"SELECT DISTINCT root.id"*)
     printf 'id\nroot-a\nroot-b\n'
     ;;
@@ -5422,6 +5431,120 @@ exit 0
 	}
 }
 
+// TestReaperCensusAdvancesPastProtectedWindow pins the F1 starvation fix: a
+// full keyset window of permanently protected roots must not end the census.
+// The old loop advanced by the last *closeable* id and broke whenever the
+// closeable page came back empty or short, so 50 protected roots with low ids
+// hid a closeable husk with a higher id and the run still exited 0. Here the
+// first (full) window yields no closeable rows, and the census must page past
+// it to close the husk.
+func TestReaperCensusAdvancesPastProtectedWindow(t *testing.T) {
+	cityDir := t.TempDir()
+	binDir := t.TempDir()
+	doltLog := filepath.Join(t.TempDir(), "dolt-args.log")
+	bdLog := filepath.Join(t.TempDir(), "bd.log")
+	gcLog := filepath.Join(t.TempDir(), "gc.log")
+
+	writeExecutable(t, filepath.Join(binDir, "dolt"), `#!/bin/sh
+printf '%s\n' "$*" >> "$DOLT_ARGS_LOG"
+case "$*" in
+  *"SHOW TABLES FROM"*"LIKE 'wisps'"*)
+    printf 'Tables_in_db\nwisps\n'
+    ;;
+  *"SHOW DATABASES"*)
+    printf 'Database\nbeads\n'
+    ;;
+  *"SHOW COLUMNS FROM"*"dependencies"*)
+    printf 'Field,Type,Null,Key,Default,Extra\n'
+    printf 'issue_id,varchar,NO,,,\n'
+    printf 'depends_on_issue_id,varchar,YES,,,\n'
+    printf 'depends_on_wisp_id,varchar,YES,,,\n'
+    printf 'depends_on_external,varchar,YES,,,\n'
+    printf 'type,varchar,NO,,,\n'
+    ;;
+  *"workflow_wisp_root_candidates_base"*"LEFT JOIN workflow_wisp_root_candidates"*|*"workflow_issue_root_candidates_base"*"LEFT JOIN workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"workflow_wisp_root_candidates_base"*"SELECT COUNT(*) FROM workflow_wisp_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"workflow_issue_root_candidates_base"*"SELECT COUNT(*) FROM workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n51\n'
+    ;;
+  *"WHERE id > ''"*"SELECT id FROM workflow_issue_root_candidates_page"*)
+    printf 'id\n'
+    i=1
+    while [ "$i" -le 50 ]; do
+      printf 'root-protected-%s\n' "$i"
+      i=$((i + 1))
+    done
+    ;;
+  *"WHERE id > 'root-protected-50'"*"SELECT id FROM workflow_issue_root_candidates_page"*)
+    printf 'id\nhusk-close\n'
+    ;;
+  *"SELECT id FROM workflow_wisp_root_candidates_page"*)
+    printf 'id\n'
+    ;;
+  *"workflow_issue_root_candidates_base"*"WHERE id > ''"*"SELECT DISTINCT root.id"*)
+    printf 'id\n'
+    ;;
+  *"workflow_issue_root_candidates_base"*"WHERE id > 'root-protected-50'"*"SELECT DISTINCT root.id"*)
+    printf 'id\nhusk-close\n'
+    ;;
+  *"workflow_issue_root_candidates_base"*"SELECT DISTINCT root.id"*)
+    printf 'unbounded workflow-root query\n' >&2
+    exit 43
+    ;;
+  *"SELECT COUNT(*) FROM"*"wisps"*"status IN ('open', 'hooked', 'in_progress')"*"created_at <"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"COUNT("*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"SELECT id"*)
+    printf 'id\n'
+    ;;
+esac
+exit 0
+`)
+	writeExecutable(t, filepath.Join(binDir, "bd"), `#!/bin/sh
+printf '%s\n' "$*" >> "$BD_CALL_LOG"
+exit 0
+`)
+	writeMaintenanceGCStub(t, filepath.Join(binDir, "gc"), `#!/bin/sh
+printf '%s\n' "$*" >> "$GC_CALL_LOG"
+exit 0
+`)
+	writeCityBeadsMetadata(t, cityDir, "beads")
+
+	env := map[string]string{
+		"BD_CALL_LOG":      bdLog,
+		"DOLT_ARGS_LOG":    doltLog,
+		"GC_CALL_LOG":      gcLog,
+		"GC_CITY":          cityDir,
+		"GC_CITY_PATH":     cityDir,
+		"GC_DOLT_HOST":     "127.0.0.1",
+		"GC_DOLT_PORT":     "3307",
+		"GC_DOLT_USER":     "root",
+		"GC_DOLT_PASSWORD": "",
+		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+
+	runScript(t, coreScriptPath("reaper.sh"), env)
+
+	bdData, err := os.ReadFile(bdLog)
+	if err != nil {
+		t.Fatalf("ReadFile(bd log): %v", err)
+	}
+	bdText := string(bdData)
+	if !strings.Contains(bdText, "close husk-close --reason stale inactive workflow root auto-closed by reaper") {
+		t.Fatalf("reaper did not close the husk behind a full protected census window:\n%s", bdText)
+	}
+	if strings.Contains(bdText, "close root-protected-") {
+		t.Fatalf("reaper closed a protected root:\n%s", bdText)
+	}
+}
+
 func TestReaperWorkflowRootPredicateIsGeneratedFromOneHelper(t *testing.T) {
 	data, err := os.ReadFile(coreScriptPath("reaper.sh"))
 	if err != nil {
@@ -5497,6 +5620,29 @@ func TestReaperPurgeProtectionPredicateIsOneSharedBody(t *testing.T) {
 	}
 }
 
+// TestReaperPurgeProtectionDocumentsDepthOneApproximation pins the chosen
+// resolution of the depth-1 purge vs transitive census finding: rather than
+// pay for a per-row recursive traversal on the unbounded COUNT/DELETE path, the
+// predicate keeps direct depth-1 probes and the script states the approximation
+// and why. Any descendant stamped gc.root_bead_id=root.id is still matched
+// directly regardless of depth.
+func TestReaperPurgeProtectionDocumentsDepthOneApproximation(t *testing.T) {
+	data, err := os.ReadFile(coreScriptPath("reaper.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile(reaper.sh): %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"Chosen approximation: this predicate checks direct, depth-1 references,",
+		"the Step 2 census walks the descendant graph transitively",
+		"no bounded candidate set to seed a CTE with",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("purge protection comment is missing the depth-1 approximation rationale %q", want)
+		}
+	}
+}
+
 // TestReaperClosedAtWritesAreUTC pins the low finding that closed_at was
 // written with NOW() (server local zone) but read against UTC_TIMESTAMP(); on
 // an EDT server a row the reaper itself closed looked four hours older and
@@ -5512,6 +5658,25 @@ func TestReaperClosedAtWritesAreUTC(t *testing.T) {
 	}
 	if got := strings.Count(script, "closed_at=UTC_TIMESTAMP()"); got < 2 {
 		t.Fatalf("closed_at=UTC_TIMESTAMP() appears %d times, want the stale-wisp and workflow-root close sites", got)
+	}
+}
+
+// TestReaperClosedAtReadsAreUTC pins the F3 consistency fix: the remaining
+// closed_at age filters compared against NOW(), so on an EDT server a row the
+// reaper closed with UTC_TIMESTAMP() looked four hours younger and escaped the
+// type-scope guard and the type-safe session prune. Every closed_at comparison
+// must read the same UTC clock it is written with.
+func TestReaperClosedAtReadsAreUTC(t *testing.T) {
+	data, err := os.ReadFile(coreScriptPath("reaper.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile(reaper.sh): %v", err)
+	}
+	script := string(data)
+	if strings.Contains(script, "closed_at < DATE_SUB(NOW()") {
+		t.Fatalf("reaper still reads closed_at against NOW(); must use UTC_TIMESTAMP()")
+	}
+	if got := strings.Count(script, "closed_at < DATE_SUB(UTC_TIMESTAMP()"); got < 5 {
+		t.Fatalf("closed_at < DATE_SUB(UTC_TIMESTAMP() appears %d times, want purge count+DELETE, type-scope guard, and both session-prune sites", got)
 	}
 }
 
