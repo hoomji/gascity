@@ -34,8 +34,8 @@ var supported = []string{"claude", "codex", "gemini", "antigravity", "kiro", "op
 
 const (
 	managedPiHookVersion       = 9
-	managedOpenCodeHookVersion = 6
-	managedMimoCodeHookVersion = 2
+	managedOpenCodeHookVersion = 7
+	managedMimoCodeHookVersion = 3
 	managedOmpHookVersion      = 2
 )
 
@@ -353,7 +353,9 @@ func opencodeHookNeedsUpgrade(existing []byte) bool {
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID_REQUIRED") ||
 		// The child's stdin must be closed or gc blocks on it (#5562).
-		!strings.Contains(content, "pending.child.stdin?.end();") {
+		!strings.Contains(content, "pending.child.stdin?.end();") ||
+		// Consumptive queue draining must be scoped to a turn (#5552).
+		!strings.Contains(content, "drainedTurnID") {
 		return true
 	}
 	for _, marker := range []string{
@@ -703,10 +705,14 @@ func upgradeCodexHooks(existing, desired []byte, cityDir string) ([]byte, bool, 
 	hasManagedCommand := codexHookValueHasManagedCommand(root, "")
 	needsPreCompact := codexHookDocCanAddPreCompact(root)
 	changed := upgradeCodexHookValue(root, "", cityDir)
-	if desiredCodexPreCompactHook(desired) != nil && normalizeCodexManagedHookEntries(root, cityDir) {
+	if (desiredCodexPreCompactHook(desired) != nil || desiredCodexPostToolUseHook(desired) != nil) &&
+		normalizeCodexManagedHookEntries(root, cityDir) {
 		changed = true
 	}
 	if addCodexPreCompactHook(root, desired) {
+		changed = true
+	}
+	if addCodexPostToolUseHook(root, desired) {
 		changed = true
 	}
 	data, err := overlay.MarshalCanonicalJSON(root)
@@ -749,9 +755,23 @@ func CodexHooksMissingManagedPreCompact(data []byte) bool {
 	return codexHookDocCanAddPreCompact(root)
 }
 
+// CodexHooksMissingManagedPostToolUse reports whether data is a Gas City
+// managed Codex hooks document that can be upgraded with the tool-boundary
+// PostToolUse context-advisory hook. It is the autonomous-turn half of the
+// managed Codex hook set: a doc written before that hook existed is managed
+// (so safe to upgrade) but incomplete.
+func CodexHooksMissingManagedPostToolUse(data []byte) bool {
+	var root any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return false
+	}
+	return codexHookDocCanAddPostToolUse(root)
+}
+
 // CodexHooksNeedManagedUpgrade reports whether data is a recognizable Gas City
 // managed Codex hooks document that would be upgraded to current managed form
-// for cityDir, including explicit --city rebinding and missing PreCompact.
+// for cityDir, including explicit --city rebinding, missing PreCompact, and a
+// missing PostToolUse context-advisory hook.
 func CodexHooksNeedManagedUpgrade(data []byte, cityDir string) bool {
 	var root any
 	if err := json.Unmarshal(data, &root); err != nil {
@@ -763,6 +783,9 @@ func CodexHooksNeedManagedUpgrade(data []byte, cityDir string) bool {
 func applyCodexManagedHookUpgrade(root any, desired []byte, cityDir string) bool {
 	changed := upgradeCodexHookValue(root, "", cityDir)
 	if addCodexPreCompactHook(root, desired) {
+		changed = true
+	}
+	if addCodexPostToolUseHook(root, desired) {
 		changed = true
 	}
 	return changed
@@ -930,6 +953,8 @@ func codexHookCommandLooksManaged(event, command string) bool {
 		return codexSessionStartArgsMatch(env, args) || codexLegacySessionStartRunArgsMatch(args)
 	case "PreCompact":
 		return codexPreCompactArgsMatch(args)
+	case "PostToolUse":
+		return codexManagedPromptArgsMatch(args, "codex")
 	case "UserPromptSubmit":
 		return codexManagedPromptArgsMatch(args, "codex")
 	default:
@@ -958,7 +983,7 @@ func upgradeCodexHookCommand(event, command, cityDir string) (string, bool) {
 		}
 		desired := preCompactCurrentFormBody(cityDir)
 		return prefix + desired, strings.TrimPrefix(command, prefix) != desired
-	case "UserPromptSubmit":
+	case "PostToolUse", "UserPromptSubmit":
 		return upgradeManagedPromptHookCommand(command, "codex", cityDir)
 	default:
 		if upgraded, ok := upgradeManagedPromptHookCommand(command, "codex", cityDir); ok {
@@ -979,6 +1004,12 @@ func upgradeCodexHookCommand(event, command, cityDir string) (string, bool) {
 func managedPromptHookRunPrefix(cityDir string) string {
 	return `gc ` + codexCityFlag(cityDir) + `hook run --timeout 15s --timeout-exit-code 0 -- `
 }
+
+// managedContextOnlyTarget is the tool-boundary context-advisory target. It is
+// recognized as its own managed shape (not merely nudge drain with an extra
+// flag) so upgrade/dedupe/--city rebinding treat the PostToolUse hook exactly
+// like the other managed Codex events.
+const managedContextOnlyTarget = "nudge drain --inject --context-only"
 
 func upgradeManagedPromptHookCommand(command, hookFormat, cityDir string) (string, bool) {
 	prefix, _, args, ok := parseManagedGCCommand(command)
@@ -1037,6 +1068,10 @@ func codexManagedPromptTarget(body, hookFormat string) bool {
 	if !ok {
 		return false
 	}
+	if len(args) >= 4 && args[0] == "nudge" && args[1] == "drain" && args[2] == "--inject" && args[3] == "--context-only" {
+		_, ok := managedPromptTarget(managedContextOnlyTarget, args[4:], hookFormat)
+		return ok
+	}
 	if len(args) >= 3 && args[0] == "nudge" && args[1] == "drain" && args[2] == "--inject" {
 		_, ok := managedPromptTarget("nudge drain --inject", args[3:], hookFormat)
 		return ok
@@ -1053,6 +1088,9 @@ func codexManagedPromptTarget(body, hookFormat string) bool {
 	}
 	targetArgs := args[7:]
 	switch {
+	case len(targetArgs) >= 4 && targetArgs[0] == "nudge" && targetArgs[1] == "drain" && targetArgs[2] == "--inject" && targetArgs[3] == "--context-only":
+		_, ok := managedPromptTarget(managedContextOnlyTarget, targetArgs[4:], hookFormat)
+		return ok
 	case len(targetArgs) >= 3 && targetArgs[0] == "nudge" && targetArgs[1] == "drain" && targetArgs[2] == "--inject":
 		_, ok := managedPromptTarget("nudge drain --inject", targetArgs[3:], hookFormat)
 		return ok
@@ -1217,6 +1255,9 @@ func codexManagedPromptArgsMatch(args []string, hookFormat string) bool {
 }
 
 func codexManagedPromptTargetArgs(args []string, hookFormat string) (string, bool) {
+	if len(args) >= 4 && args[0] == "nudge" && args[1] == "drain" && args[2] == "--inject" && args[3] == "--context-only" {
+		return managedPromptTarget(managedContextOnlyTarget, args[4:], hookFormat)
+	}
 	if len(args) >= 3 && args[0] == "nudge" && args[1] == "drain" && args[2] == "--inject" {
 		return managedPromptTarget("nudge drain --inject", args[3:], hookFormat)
 	}
@@ -1231,6 +1272,8 @@ func codexManagedPromptTargetArgs(args []string, hookFormat string) (string, boo
 	}
 	targetArgs := args[7:]
 	switch {
+	case len(targetArgs) >= 4 && targetArgs[0] == "nudge" && targetArgs[1] == "drain" && targetArgs[2] == "--inject" && targetArgs[3] == "--context-only":
+		return managedPromptTarget(managedContextOnlyTarget, targetArgs[4:], hookFormat)
 	case len(targetArgs) >= 3 && targetArgs[0] == "nudge" && targetArgs[1] == "drain" && targetArgs[2] == "--inject":
 		return managedPromptTarget("nudge drain --inject", targetArgs[3:], hookFormat)
 	case len(targetArgs) >= 3 && targetArgs[0] == "mail" && targetArgs[1] == "check" && targetArgs[2] == "--inject":
@@ -1240,21 +1283,34 @@ func codexManagedPromptTargetArgs(args []string, hookFormat string) (string, boo
 	}
 }
 
-func addCodexPreCompactHook(root any, desired []byte) bool {
-	if !codexHookDocCanAddPreCompact(root) {
+// addCodexManagedEventHook installs one managed event entry from the desired
+// document onto an already-managed Codex hooks doc that lacks it. PreCompact
+// (installed from the start) and PostToolUse (the tool-boundary context
+// advisory, added later) both flow through here, so a doc that predates either
+// is upgraded without touching user-authored entries.
+func addCodexManagedEventHook(root any, desired []byte, event string) bool {
+	if !codexHookDocCanAddEvent(root, event) {
 		return false
 	}
 	doc := root.(map[string]any)
 	hooksMap := doc["hooks"].(map[string]any)
-	preCompact := desiredCodexPreCompactHook(desired)
-	if preCompact == nil {
+	hook := desiredCodexEventHook(desired, event)
+	if hook == nil {
 		return false
 	}
-	hooksMap["PreCompact"] = preCompact
+	hooksMap[event] = hook
 	return true
 }
 
-func codexHookDocCanAddPreCompact(root any) bool {
+func addCodexPreCompactHook(root any, desired []byte) bool {
+	return addCodexManagedEventHook(root, desired, "PreCompact")
+}
+
+func addCodexPostToolUseHook(root any, desired []byte) bool {
+	return addCodexManagedEventHook(root, desired, "PostToolUse")
+}
+
+func codexHookDocCanAddEvent(root any, event string) bool {
 	doc, ok := root.(map[string]any)
 	if !ok || !codexHookDocLooksManaged(doc) {
 		return false
@@ -1263,10 +1319,18 @@ func codexHookDocCanAddPreCompact(root any) bool {
 	if !ok {
 		return false
 	}
-	if _, exists := hooksMap["PreCompact"]; exists {
+	if _, exists := hooksMap[event]; exists {
 		return false
 	}
 	return true
+}
+
+func codexHookDocCanAddPreCompact(root any) bool {
+	return codexHookDocCanAddEvent(root, "PreCompact")
+}
+
+func codexHookDocCanAddPostToolUse(root any) bool {
+	return codexHookDocCanAddEvent(root, "PostToolUse")
 }
 
 func codexHookDocLooksManaged(doc map[string]any) bool {
@@ -1299,7 +1363,7 @@ func codexHookDocLooksManaged(doc map[string]any) bool {
 	return found
 }
 
-func desiredCodexPreCompactHook(desired []byte) any {
+func desiredCodexEventHook(desired []byte, event string) any {
 	if len(desired) == 0 {
 		var err error
 		desired, err = iofs.ReadFile(core.PackFS, path.Join("overlay", "per-provider", "codex", ".codex", "hooks.json"))
@@ -1313,7 +1377,15 @@ func desiredCodexPreCompactHook(desired []byte) any {
 	if err := json.Unmarshal(desired, &doc); err != nil {
 		return nil
 	}
-	return doc.Hooks["PreCompact"]
+	return doc.Hooks[event]
+}
+
+func desiredCodexPreCompactHook(desired []byte) any {
+	return desiredCodexEventHook(desired, "PreCompact")
+}
+
+func desiredCodexPostToolUseHook(desired []byte) any {
+	return desiredCodexEventHook(desired, "PostToolUse")
 }
 
 func writeManagedFile(fs fsys.FS, dst string, data []byte, policy writeManagedFilePolicy) error {

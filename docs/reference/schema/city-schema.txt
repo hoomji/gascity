@@ -120,6 +120,10 @@
           ],
           "description": "Session overrides the session transport for this agent.\n\"\" (default) uses the city-level session provider (typically tmux).\n\"acp\" uses the Agent Client Protocol (JSON-RPC over stdio).\nThe agent's resolved provider must have supports_acp = true."
         },
+        "runtime": {
+          "type": "string",
+          "description": "Runtime overrides the runtime provider for this agent (e.g. \"ssh:user@host\", \"tmux\", \"k8s\").\nWhen unset, falls back to the city-level session provider."
+        },
         "provider": {
           "type": "string",
           "description": "Provider names the provider preset to use for this agent."
@@ -496,6 +500,10 @@
           "type": "string",
           "description": "Session overrides the session transport (\"acp\")."
         },
+        "runtime": {
+          "type": "string",
+          "description": "Runtime overrides the runtime provider (e.g. \"ssh:user@host\", \"tmux\", \"k8s\")."
+        },
         "provider": {
           "type": "string",
           "description": "Provider overrides the provider name."
@@ -792,6 +800,10 @@
         "session": {
           "type": "string",
           "description": "Session overrides the session transport (\"acp\" or \"tmux\")."
+        },
+        "runtime": {
+          "type": "string",
+          "description": "Runtime overrides the agent's runtime provider (e.g. \"ssh:user@host\", \"tmux\", \"k8s\")."
         },
         "provider": {
           "type": "string",
@@ -1933,7 +1945,7 @@
         },
         "retention_ttl": {
           "type": "string",
-          "description": "RetentionTTL is how long read messages are retained before purge. Empty\nor \"0\" disables read-message retention."
+          "description": "RetentionTTL has two consumers: it is how long read messages are\nretained before purge, and how long a read mail bead stays open before\nthe nudge-mail sweep closes it. Empty or \"0\" disables read-message\npurge. The sweep distinguishes the two: empty leaves it at its own\n60-minute default, while \"0\" disables its mail-close phase."
         }
       },
       "additionalProperties": false,
@@ -2071,6 +2083,13 @@
           },
           "type": "array",
           "description": "FlagAliases are equivalent CLI argument sequences stripped from legacy\nprovider args. Like FlagArgs, they stay server-side only."
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Env are environment variables injected into the provider process when\nthis choice is selected (e.g. {\"GC_EFFORT\": \"low\"}). Unlike FlagArgs,\nthis lets a harness with no effort CLI flag still receive the tier.\nKeys merge in schema declaration order; an explicit choice overrides a\ndefaulted one. json:\"-\" keeps the internal env names off the public DTO."
         }
       },
       "additionalProperties": false,
@@ -2303,6 +2322,13 @@
           },
           "type": "array",
           "description": "Choices are the allowed values; selecting one injects its FlagArgs into the\nagent command line (how the Model axis renders to a harness CLI flag)."
+        },
+        "flag_template": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "FlagTemplate makes this option OPEN: a value that is not one of Choices\nis still honored by substituting it for OptionValuePlaceholder in this\ntemplate. Options with no template are CLOSED — an undeclared value\ncannot be turned into flags at all.\n\nModel ids are an open, fast-moving set: every provider ships new ones\nbetween gc releases. Modeling them as a closed enum meant a pin the\ncatalog had not caught up to produced no FlagArgs and the launch path\nsilently omitted the flag, unpinning the agent onto whatever the CLI\ndefaulted to (ra-jbbv0 for claude-opus-5, ga-fyh for grok-4.6).\nChoices stay as the curated suggestion list for pickers; the template\nis what guarantees an explicit pin is never discarded.\n\njson:\"-\" for the same reason as OptionChoice.FlagArgs: CLI flag shapes\nare server-side only and must not reach the public API DTO."
         },
         "omit": {
           "type": "boolean",

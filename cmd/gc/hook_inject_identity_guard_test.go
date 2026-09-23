@@ -69,7 +69,7 @@ func TestNudgeDrainInjectSilentWithoutManagedIdentity(t *testing.T) {
 	unmanagedInjectEnv(t)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdNudgeDrainWithFormat(nil, true, "", &stdout, &stderr)
+	code := cmdNudgeDrainWithFormat(nil, true, false, "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -110,7 +110,7 @@ func TestInjectGuardLetsManagedSessionsThrough(t *testing.T) {
 	t.Setenv("GC_AGENT", "worker")
 
 	var stdout, stderr bytes.Buffer
-	_ = cmdNudgeDrainWithFormat(nil, true, "", &stdout, &stderr)
+	_ = cmdNudgeDrainWithFormat(nil, true, false, "", &stdout, &stderr)
 	if stdout.String() == "" && stderr.String() == "" {
 		t.Fatal("a managed session must still get hook context; the guard over-suppressed")
 	}

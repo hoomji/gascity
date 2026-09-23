@@ -684,3 +684,26 @@ func TestSnapshotIdle_FailsClosedWhenRouteCannotSnapshot(t *testing.T) {
 		t.Error("SnapshotIdle = true on an unsupported route; must never report idle it could not observe")
 	}
 }
+
+func TestRouteProvider(t *testing.T) {
+	defaultSP := runtime.NewFake()
+	remoteSP := runtime.NewFake()
+	p := New(defaultSP, nil)
+
+	p.RouteProvider("dell-worker", remoteSP)
+	_ = p.Start(context.Background(), "dell-worker", runtime.Config{Command: "test"})
+
+	if !remoteSP.IsRunning("dell-worker") {
+		t.Fatal("session should be running on remote provider")
+	}
+	if defaultSP.IsRunning("dell-worker") {
+		t.Fatal("session should not be running on default provider")
+	}
+
+	if err := p.Stop("dell-worker"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if remoteSP.IsRunning("dell-worker") {
+		t.Fatal("session should be stopped on remote provider")
+	}
+}

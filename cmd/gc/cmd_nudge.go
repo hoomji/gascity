@@ -294,6 +294,7 @@ Defaults to $GC_ALIAS or $GC_SESSION_ID when run inside a session.`,
 func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 	var inject bool
 	var hookFormat string
+	var contextOnly bool
 	cmd := &cobra.Command{
 		Use:    "drain [session]",
 		Short:  "Deliver queued nudges for a session",
@@ -301,13 +302,14 @@ func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 		Args:   cobra.MaximumNArgs(1),
 		Hidden: true,
 		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdNudgeDrainWithFormat(args, inject, hookFormat, stdout, stderr) != 0 {
+			if cmdNudgeDrainWithFormat(args, inject, contextOnly, hookFormat, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&inject, "inject", false, "emit <system-reminder> output for hook injection")
+	cmd.Flags().BoolVar(&contextOnly, "context-only", false, "with --inject, emit only the context-pressure advisory and never drain the nudge queue (tool-boundary hooks)")
 	cmd.Flags().StringVar(&hookFormat, "hook-format", "", "format hook output for a provider")
 	return cmd
 }
@@ -449,7 +451,41 @@ func nonNilQueuedNudges(items []queuedNudge) []queuedNudge {
 	return items
 }
 
-func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
+// cmdNudgeContextOnly emits the context-pressure advisory for a tool-boundary
+// hook (Codex PostToolUse) without touching the nudge queue. It is the
+// autonomous-turn half of the context-warning integration: UserPromptSubmit
+// fires only on user input, so an agent that runs tools for a long stretch
+// would never see the advisory. Reading the payload once and emitting a single
+// provider-formatted document mirrors the prompt path's fail-safe contract —
+// any parse/read problem is silent, never a blocked tool call.
+//
+// The event name comes from the hook payload itself (hookEventNameFromInput):
+// Codex's output schema pins hookSpecificOutput.hookEventName to the emitting
+// event, so a PostToolUse hook must not answer as UserPromptSubmit. Thresholds
+// and window come from the same env-overridable policy as the prompt path.
+func cmdNudgeContextOnly(hookFormat string, stdout io.Writer) {
+	if !hookHasManagedIdentity() {
+		return
+	}
+	hookInput := readHookStdin()
+	line := contextInjectLine(hookInput)
+	if strings.TrimSpace(line) == "" {
+		return
+	}
+	_ = writeProviderHookContextForEvent(stdout, hookFormat, hookEventNameFromInput(hookInput), line)
+}
+
+func cmdNudgeDrainWithFormat(args []string, inject, contextOnly bool, hookFormat string, stdout, stderr io.Writer) int {
+	// --context-only is the tool-boundary lane: emit just the current
+	// context-pressure advisory, tagged with the emitting hook event, and never
+	// claim or ack a queued nudge. It exists because UserPromptSubmit only
+	// fires on user input, so a long autonomous tool loop would otherwise never
+	// receive the advisory (see context_inject.go); draining notifications on
+	// every tool call is what this branch deliberately avoids.
+	if contextOnly {
+		cmdNudgeContextOnly(hookFormat, stdout)
+		return 0
+	}
 	// --inject writes a <system-reminder> straight into a provider's system
 	// prompt, and gc stages the overlays that call it into the session work
 	// directory — commonly a city or rig root — so a human who opens the same
@@ -1787,6 +1823,22 @@ func nudgeDispatcherIsSupervisor(cfg *config.City) bool {
 	return cfg.Daemon.NudgeDispatcherMode() == "supervisor"
 }
 
+// splitQueuedNudgesForTarget partitions claimed nudges into deliverable items
+// and rejects. Items whose fence (SessionID / ContinuationEpoch) does not match
+// the current target's fence are re-fenced in memory to the target's fence and
+// returned as deliverable when the target itself is resolved to a live session
+// bead. Claim already admitted the item: either the SessionID still matches
+// (stale-epoch Leg A) or the fenced session is no longer a live occupant
+// (session-replacement Leg B; see queuedNudgeClaimableForTarget). A stale
+// fence then just marks a prior incarnation of the same seat. Delivering it
+// there is what the seat's nudges were queued for; dead-lettering the whole
+// queue every time a session respawns (fresh wake after a failed spawn bumps
+// ContinuationEpoch; a re-materialization can mint a new SessionID) is the
+// bug this coalesces around (ga-bow, thunderfartcity:gp-u63s, #5816).
+//
+// A target with no resolved session identity (sessionID == "") cannot be
+// re-fenced against and still rejects, matching the pre-existing invariant
+// that fenced items are not delivered to an unresolved target.
 func splitQueuedNudgesForTarget(target nudgeTarget, items []queuedNudge) ([]queuedNudge, []queuedNudge) {
 	if len(items) == 0 {
 		return nil, nil
@@ -1794,10 +1846,16 @@ func splitQueuedNudgesForTarget(target nudgeTarget, items []queuedNudge) ([]queu
 	var deliverable []queuedNudge
 	var rejected []queuedNudge
 	for _, item := range items {
-		if !queuedNudgeMatchesTargetFence(target, item) {
+		if queuedNudgeMatchesTargetFence(target, item) {
+			deliverable = append(deliverable, item)
+			continue
+		}
+		if target.sessionID == "" {
 			rejected = append(rejected, item)
 			continue
 		}
+		item.SessionID = target.sessionID
+		item.ContinuationEpoch = target.continuationEpoch
 		deliverable = append(deliverable, item)
 	}
 	return deliverable, rejected
@@ -2047,7 +2105,72 @@ func queuedNudgeMatchesTargetFence(target nudgeTarget, item queuedNudge) bool {
 	return true
 }
 
-func queuedNudgeClaimableForTarget(target nudgeTarget, item queuedNudge) bool {
+// liveNudgeFenceSessionIDs is a test seam for the session-liveness census
+// used by queuedNudgeClaimableForTarget. When non-nil, claim uses this
+// instead of listing session beads. Tests that replace it must not use
+// t.Parallel.
+var liveNudgeFenceSessionIDs func(cityPath string) map[string]struct{}
+
+func liveNudgeFenceSessionIDsForCity(cityPath string) map[string]struct{} {
+	if liveNudgeFenceSessionIDs != nil {
+		return liveNudgeFenceSessionIDs(cityPath)
+	}
+	return loadLiveNudgeFenceSessionIDsFromCity(cityPath)
+}
+
+// loadLiveNudgeFenceSessionIDsFromCity returns session IDs that still occupy
+// a seat and therefore still own their fenced nudges. A nil result means the
+// census was unavailable; callers must fail closed and leave mismatched
+// SessionID items pending.
+func loadLiveNudgeFenceSessionIDsFromCity(cityPath string) map[string]struct{} {
+	store := openNudgeBeadStore(cityPath)
+	defer closeBeadStoreHandle(store.Store) //nolint:errcheck // best-effort
+	if store.Store == nil {
+		return nil
+	}
+	open, err := loadOpenSessionInfos(cliSessionStore(store.Store, nil, cityPath))
+	if err != nil {
+		return nil
+	}
+	live := make(map[string]struct{})
+	for _, info := range open {
+		if sessionHoldsNudgeFence(info) {
+			live[info.ID] = struct{}{}
+		}
+	}
+	return live
+}
+
+// sessionHoldsNudgeFence reports whether a session still occupies its seat
+// for nudge-fence purposes. Drained, archived, failed-create, and closed
+// sessions are superseded: their queued nudges may rebind to a successor.
+// Asleep, draining, and quarantined sessions still own their fence so a
+// concurrent sibling (or an in-flight drain) is not stolen.
+func sessionHoldsNudgeFence(info session.Info) bool {
+	if info.Closed || strings.TrimSpace(info.ID) == "" {
+		return false
+	}
+	switch info.State {
+	case session.StateDrained, session.StateArchived, session.StateFailedCreate:
+		return false
+	default:
+		return true
+	}
+}
+
+// queuedNudgeClaimableForTarget reports whether this target may claim item.
+// liveSessions is a lazy census of session IDs that still hold a nudge fence;
+// it is invoked only on the session-replacement path so the idle/exact-match
+// claim tick does not list session beads.
+//
+// The two fence predicates agree this way:
+//   - matching fence (same SessionID, including stale epoch) → claimable (Leg A)
+//   - mismatched SessionID whose fenced session is no longer live, and whose
+//     successor target is in the census → claimable (Leg B);
+//     splitQueuedNudgesForTarget re-fences onto the successor
+//   - mismatched SessionID that is still live → not claimable (sibling fence)
+//   - census unavailable, empty, or missing the target → fail closed
+func queuedNudgeClaimableForTarget(target nudgeTarget, item queuedNudge, liveSessions func() map[string]struct{}) bool {
 	if !target.matchesQueueAgent(item.Agent) {
 		return false
 	}
@@ -2055,7 +2178,25 @@ func queuedNudgeClaimableForTarget(target nudgeTarget, item queuedNudge) bool {
 		if target.sessionID == "" {
 			return false
 		}
-		return item.SessionID == target.sessionID
+		if item.SessionID == target.sessionID {
+			return true
+		}
+		if liveSessions == nil {
+			return false
+		}
+		live := liveSessions()
+		if live == nil {
+			return false
+		}
+		if _, targetLive := live[target.sessionID]; !targetLive {
+			// Census did not observe this target (empty city, store
+			// unavailable, or the successor bead is not listed). Fail
+			// closed rather than treating "no live sessions" as a
+			// license to steal sibling fences.
+			return false
+		}
+		_, stillLive := live[item.SessionID]
+		return !stillLive
 	}
 	if item.ContinuationEpoch != "" && target.continuationEpoch == "" {
 		return false
@@ -2126,8 +2267,18 @@ func nudgeQueueHasWork(state *nudgeQueueState) bool {
 }
 
 func claimDueQueuedNudgesForTarget(cityPath string, target nudgeTarget, now time.Time) ([]queuedNudge, error) {
+	var (
+		liveOnce sync.Once
+		liveIDs  map[string]struct{}
+	)
+	liveSessions := func() map[string]struct{} {
+		liveOnce.Do(func() {
+			liveIDs = liveNudgeFenceSessionIDsForCity(cityPath)
+		})
+		return liveIDs
+	}
 	return claimDueQueuedNudgesMatching(cityPath, now, func(item queuedNudge) bool {
-		return queuedNudgeClaimableForTarget(target, item)
+		return queuedNudgeClaimableForTarget(target, item, liveSessions)
 	})
 }
 

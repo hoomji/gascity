@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/agent"
@@ -266,31 +267,97 @@ func resolveSessionTransportProvider(ctx sessionProviderContext, sessionBeads *s
 	if err != nil {
 		return nil, err
 	}
-	// If the city-level provider is not ACP but some agents need ACP, wrap in an
+	// If the city-level provider is not ACP but some agents need ACP, or if any
+	// agents configure an explicit Runtime provider (e.g. "ssh:..."), wrap in an
 	// auto provider that routes per-session.
-	// NOTE: agents comes from loadCityConfig which applies pack overrides, so the
-	// Session field from overrides is already resolved here.
-	// acpRouteNames is computed once and reused for both the requires/needs
-	// checks and the route registration below, instead of recomputing the
-	// (agent + named-session) x provider-resolution walk up to 3x per call.
 	acpRouteNames := configuredACPRouteNames(sessionBeads, ctx.cityName, ctx.cfg)
 	requireACPWrapper := len(acpRouteNames) > 0
 	needsACPWrapper := requireACPWrapper || (ctx.cfg != nil && hasACPProviderTargets(ctx.cfg))
-	if ctx.providerName != "acp" && needsACPWrapper {
-		acpSP, acpErr := buildSessionProviderByName(ctx.cfg, "acp", ctx.sc, ctx.cityName, ctx.cityPath)
-		if acpErr != nil {
-			if requireACPWrapper {
-				return nil, fmt.Errorf("acp provider: %w", acpErr)
+	runtimeRoutes := configuredRuntimeRoutes(sessionBeads, ctx.cityName, ctx.cfg)
+
+	if (ctx.providerName != "acp" && needsACPWrapper) || len(runtimeRoutes) > 0 {
+		var acpSP runtime.Provider
+		if needsACPWrapper {
+			var acpErr error
+			acpSP, acpErr = buildSessionProviderByName(ctx.cfg, "acp", ctx.sc, ctx.cityName, ctx.cityPath)
+			if acpErr != nil {
+				if requireACPWrapper {
+					return nil, fmt.Errorf("acp provider: %w", acpErr)
+				}
+				if len(runtimeRoutes) == 0 {
+					return base, nil
+				}
 			}
-			return base, nil
 		}
+		remoteProviders := make(map[string]runtime.Provider)
+		for _, rtName := range runtimeRoutes {
+			_, ok := remoteProviders[rtName]
+			if !ok {
+				remoteSP, rErr := buildSessionProviderByName(ctx.cfg, rtName, ctx.sc, ctx.cityName, ctx.cityPath)
+				if rErr != nil {
+					return nil, fmt.Errorf("remote runtime %q: %w", rtName, rErr)
+				}
+				remoteProviders[rtName] = remoteSP
+			}
+		}
+		// Resolve fallible backends before constructing the composition. Once
+		// built, the provider must be returned, not discarded on a later error.
 		autoSP := sessionauto.New(base, acpSP)
 		for _, sessName := range acpRouteNames {
 			autoSP.RouteACP(sessName)
 		}
+		for sessName, rtName := range runtimeRoutes {
+			autoSP.RouteProvider(sessName, remoteProviders[rtName])
+		}
 		return autoSP, nil
 	}
 	return base, nil
+}
+
+// configuredRuntimeRoutes discovers sessions that specify an explicit Runtime provider.
+func configuredRuntimeRoutes(snapshot *sessionBeadSnapshot, cityName string, cfg *config.City) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	sessionTemplate := cfg.Workspace.SessionTemplate
+	routes := make(map[string]string)
+	for _, a := range cfg.Agents {
+		rt := strings.TrimSpace(a.Runtime)
+		if rt == "" || rt == cfg.Session.Provider {
+			continue
+		}
+		sessName := agent.SessionNameFor(cityName, a.QualifiedName(), sessionTemplate)
+		if snapshot != nil {
+			if beadName := snapshot.FindSessionNameByTemplate(a.QualifiedName()); beadName != "" {
+				sessName = beadName
+			}
+		}
+		if sessName != "" {
+			routes[sessName] = rt
+		}
+	}
+	for _, named := range cfg.NamedSessions {
+		agentCfg := config.FindAgent(cfg, named.TemplateQualifiedName())
+		if agentCfg == nil {
+			continue
+		}
+		rt := strings.TrimSpace(agentCfg.Runtime)
+		if rt == "" || rt == cfg.Session.Provider {
+			continue
+		}
+		sessionName := config.NamedSessionRuntimeName(cityName, cfg.Workspace, named.QualifiedName())
+		if snapshot != nil {
+			if info, ok := snapshot.FindInfoByNamedIdentity(named.QualifiedName()); ok {
+				if snapName := strings.TrimSpace(info.SessionNameMetadata); snapName != "" {
+					sessionName = snapName
+				}
+			}
+		}
+		if sessionName != "" {
+			routes[sessionName] = rt
+		}
+	}
+	return routes
 }
 
 func agentSessionCreateTransport(cfg *config.City, agentCfg config.Agent) string {
@@ -951,6 +1018,11 @@ func newEventsProviderForName(v, eventsPath string, stderr io.Writer) (events.Pr
 	return newEventsProviderForNameWithConfig(v, eventsPath, stderr, config.EventsConfig{})
 }
 
+// newEventsProviderForNameWithConfig builds the events provider for an
+// already-resolved provider name. On failure it returns a nil provider and an
+// error: the file-backed branch must not hand back the *events.FileRecorder
+// directly, because a failed open boxes a typed nil into the events.Provider
+// interface, where it reads as non-nil to every caller's nil guard.
 func newEventsProviderForNameWithConfig(v, eventsPath string, stderr io.Writer, eventsCfg config.EventsConfig) (events.Provider, error) {
 	if strings.HasPrefix(v, "exec:") {
 		return eventsexec.NewProvider(strings.TrimPrefix(v, "exec:"), stderr), nil
@@ -961,8 +1033,100 @@ func newEventsProviderForNameWithConfig(v, eventsPath string, stderr io.Writer, 
 	case "fail":
 		return events.NewFailFake(), nil
 	default:
-		return newFileEventsRecorder(eventsPath, eventsCfg, stderr)
+		recorder, err := newFileEventsRecorder(eventsPath, eventsCfg, stderr)
+		if err != nil {
+			return nil, err
+		}
+		return recorder, nil
 	}
+}
+
+var (
+	cliFactoryRecordersMu sync.Mutex
+	cliFactoryRecorders   = map[string]events.Recorder{}
+)
+
+// cliFactoryEventsRecorder resolves a live events.Recorder for cityPath,
+// memoized per city path for the process lifetime. worker.Factory is built
+// on every session-reconciliation tick (cmd/gc/session_reconciler.go) as
+// well as per CLI invocation, so opening a fresh events.FileRecorder on
+// every call would leak a file handle and spawn a rotation goroutine each
+// tick; memoizing keeps that a one-time cost per city. This gives the CLI
+// factory path the live recorder the API server already gets for free from
+// its long-lived controllerState.EventProvider() (internal/api/worker_factory.go:21).
+// Falls back to events.Discard when cityPath is empty or the provider
+// cannot be opened — telemetry must never block session lifecycle.
+//
+// A failed open is deliberately NOT memoized: a transient ENOSPC or a
+// mid-rotation rename would otherwise pin this city to events.Discard for the
+// rest of the process, silently disabling the very telemetry this path exists
+// to carry. The next factory construction retries.
+//
+// Wiring this recorder live has one visible side effect on the CLI path:
+// worker's operation telemetry re-enriches session identity after a runtime
+// mutation, so EnrichInfo now issues a trailing IsRunning probe that callers
+// (and tests) see after Start/Stop.
+func cliFactoryEventsRecorder(cityPath string, cfg *config.City) events.Recorder {
+	cityPath = strings.TrimSpace(cityPath)
+	if cityPath == "" {
+		return events.Discard
+	}
+	cliFactoryRecordersMu.Lock()
+	defer cliFactoryRecordersMu.Unlock()
+	if r, ok := cliFactoryRecorders[cityPath]; ok {
+		return r
+	}
+	eventsCfg := config.EventsConfig{}
+	if cfg != nil {
+		eventsCfg = cfg.Events
+	}
+	// The memo key is cityPath alone, but resolution also reads GC_EVENTS and
+	// cfg.Events: a controller hot-reload of [events].provider is not picked
+	// up by an already-memoized city.
+	if v := os.Getenv("GC_EVENTS"); v != "" {
+		eventsCfg.Provider = v
+	}
+	eventsPath := filepath.Join(cityPath, ".gc", "events.jsonl")
+	recorder, err := newCLIFactoryRecorder(eventsCfg, eventsPath)
+	if err != nil || recorder == nil {
+		return events.Discard
+	}
+	cliFactoryRecorders[cityPath] = recorder
+	return recorder
+}
+
+// newCLIFactoryRecorder opens the recorder behind cliFactoryEventsRecorder.
+//
+// The file-backed branch deliberately bypasses newFileEventsRecorder's rotation
+// options: the controller already holds one long-lived rotating recorder on
+// <city>/.gc/events.jsonl (cmd_start.go), and a city must keep exactly one.
+// FileRecorder.rotateLocked is close + rename + reopen on its own handle, so a
+// second rotating writer leaves the first appending into a rotating-* file that
+// gets gzipped away. events.WithMaxSize(0) makes this a secondary writer that
+// never rotates, and events.WithoutStartupSweep keeps it from racing the
+// long-lived recorder mid-rotation — a concurrent sweep can double-gzip the
+// same in-flight rotating-* file through a shared .tmp path. Neither option
+// makes the open free: NewFileRecorder reads the log directory either way, to
+// continue the sequence past the archives.
+//
+// The exec:/fake/fail branches carry no file handle at all, so they stay on the
+// shared newEventsProviderForNameWithConfig resolution.
+func newCLIFactoryRecorder(eventsCfg config.EventsConfig, eventsPath string) (events.Recorder, error) {
+	v := eventsCfg.Provider
+	if strings.HasPrefix(v, "exec:") || v == "fake" || v == "fail" {
+		return newEventsProviderForNameWithConfig(v, eventsPath, io.Discard, eventsCfg)
+	}
+	recorder, err := events.NewFileRecorder(
+		eventsPath,
+		io.Discard,
+		events.WithMaxSize(0),
+		events.WithoutStartupSweep(),
+	)
+	if err != nil {
+		// Never box a typed-nil *events.FileRecorder into events.Recorder.
+		return nil, err
+	}
+	return recorder, nil
 }
 
 // newUsageSinkByName returns a usage.Sink for the resolved provider name.

@@ -59,6 +59,13 @@ type TemplateParams struct {
 	Prompt string
 	// Env is the merged environment (passthrough + provider + agent + passthrough vars).
 	Env map[string]string
+	// OperatorEnv carries only the operator-authored environment layers —
+	// workspace.Env, the resolved provider's Env, and agent.Env — a subset
+	// of Env that excludes passthrough and generated agentEnv plumbing.
+	// Carried to runtime.Config.OperatorEnv (launch-tier fingerprint) so a
+	// resolved config env change drives a warm-box relaunch instead of a
+	// no-op.
+	OperatorEnv map[string]string
 	// Upstream is the selected model-serving endpoint name (a key in [upstreams],
 	// Phase C). Carried to runtime.Config.Upstream (launch-half fingerprint) so a
 	// switch relaunches the warm box; the resolved serving env is already merged
@@ -103,6 +110,8 @@ type TemplateParams struct {
 	// SessionOverride is the per-agent session provider override (e.g., "acp",
 	// "tmux", "exec:..."). Empty means use the city-level default.
 	SessionOverride string
+	// Runtime is the per-agent runtime provider override (e.g., "ssh:dell", "tmux", "k8s").
+	Runtime string
 	// EffectiveSessionProvider is the actual session provider after applying
 	// city-level defaults.
 	EffectiveSessionProvider string
@@ -210,6 +219,11 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	// from EffectiveDefaults["permission_mode"] = "unrestricted").
 	if defaultArgs := resolved.ResolveDefaultArgs(); len(defaultArgs) > 0 {
 		command = command + " " + shellquote.Join(defaultArgs)
+	}
+	if p.stderr != nil {
+		for _, pin := range resolved.UnhonoredOptionPins() {
+			fmt.Fprintln(p.stderr, config.FormatUnhonoredOptionPin(qualifiedName, resolved.Name, pin)) //nolint:errcheck
+		}
 	}
 	sa, err := ensureClaudeSettingsArgs(p.fs, p.cityPath, providerFamily, p.stderr)
 	if err != nil {
@@ -477,6 +491,13 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	processenv.PrependGCBinDirToPATH(env, env["GC_BIN"])
 	env = convergence.ScrubTokenEnv(env)
 
+	// OperatorEnv carries only the operator-authored layers (workspace,
+	// resolved provider, agent) — excluding passthrough and the generated
+	// agentEnv plumbing — so a resolved config env change fingerprints as
+	// Launch-tier identity instead of a no-op.
+	operatorEnv := mergeEnv(expandEnvMap(workspaceEnv), expandEnvMap(resolved.Env), expandEnvMap(cfgAgent.Env))
+	operatorEnv = convergence.ScrubTokenEnv(operatorEnv)
+
 	// Step 10b: Upstream axis (Phase C). Inject the selected upstream's serving
 	// env LAST so it is authoritative for the model-serving keys, and after
 	// ScrubTokenEnv so its credential refs survive — which is exactly why the
@@ -720,6 +741,7 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		Command:          command,
 		Prompt:           prompt,
 		Env:              env,
+		OperatorEnv:      operatorEnv,
 		Upstream:         cfgAgent.Upstream,
 		Hints:            hints,
 		WorkDir:          workDir,
@@ -737,7 +759,12 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		MCPServers:       mcpServers,
 	}
 	params.SessionOverride = cfgAgent.Session
-	params.EffectiveSessionProvider = effectiveSessionProvider(cfgAgent.Session, p.sessionProvider)
+	params.Runtime = strings.TrimSpace(cfgAgent.Runtime)
+	if params.Runtime != "" {
+		params.EffectiveSessionProvider = params.Runtime
+	} else {
+		params.EffectiveSessionProvider = effectiveSessionProvider(cfgAgent.Session, p.sessionProvider)
+	}
 	if p.city != nil {
 		params.CityRuntimes = p.city.Runtimes
 	}
@@ -927,6 +954,7 @@ func templateParamsToConfigWithDelivery(tp TemplateParams) (runtime.Config, prom
 	cfg.PromptSuffix = promptSuffix
 	cfg.PromptFlag = promptFlag
 	cfg.Env = env
+	cfg.OperatorEnv = maps.Clone(tp.OperatorEnv)
 	if tp.IsACP {
 		cfg.MCPServers = tp.MCPServers
 	}

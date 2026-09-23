@@ -77,7 +77,7 @@ func (s *Server) humaHandleSessionCreate(ctx context.Context, input *SessionCrea
 		if len(resolved.OptionsSchema) == 0 {
 			return nil, apierr.InvalidRequest.Msg("agent '" + name + "' does not accept options")
 		}
-		if _, optErr := config.ResolveExplicitOptions(resolved.OptionsSchema, body.Options); optErr != nil {
+		if _, _, optErr := config.ResolveExplicitOptions(resolved.OptionsSchema, body.Options); optErr != nil {
 			if errors.Is(optErr, config.ErrUnknownOption) {
 				return nil, apierr.InvalidRequest.Msg(optErr.Error())
 			}
@@ -254,7 +254,7 @@ func (s *Server) humaCreateProviderSession(_ context.Context, store beads.Sessio
 	}
 	if len(resolved.OptionsSchema) > 0 {
 		var optErr error
-		_, optMeta, optErr = config.ResolveOptions(resolved.OptionsSchema, body.Options, resolved.EffectiveDefaults)
+		_, optMeta, _, optErr = config.ResolveOptions(resolved.OptionsSchema, body.Options, resolved.EffectiveDefaults)
 		if optErr != nil {
 			if errors.Is(optErr, config.ErrUnknownOption) {
 				return nil, apierr.InvalidRequest.Msg(optErr.Error())
@@ -645,7 +645,7 @@ func (s *Server) updateSessionPermissionMode(idRef string, body SessionPermissio
 	}
 
 	mode := strings.TrimSpace(body.PermissionMode)
-	if _, optErr := config.ResolveExplicitOptions(resolved.OptionsSchema, map[string]string{sessionPermissionModeOptionKey: mode}); optErr != nil {
+	if _, _, optErr := config.ResolveExplicitOptions(resolved.OptionsSchema, map[string]string{sessionPermissionModeOptionKey: mode}); optErr != nil {
 		return nil, apierr.InvalidRequest.Msg(optErr.Error())
 	}
 

@@ -537,13 +537,71 @@ func TestCodexHooksMissingManagedPreCompact(t *testing.T) {
 	}
 }
 
+func TestCodexHooksMissingManagedPostToolUse(t *testing.T) {
+	preCompactOnly := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"gc prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"gc handoff --auto --hook-format codex \"context cycle\""}]}]}}`)
+	if !CodexHooksMissingManagedPostToolUse(preCompactOnly) {
+		t.Fatal("managed Codex hooks without PostToolUse were not reported stale")
+	}
+
+	currentManaged := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"gc prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"gc handoff --auto --hook-format codex \"context cycle\""}]}],"PostToolUse":[{"hooks":[{"type":"command","command":"gc hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject --context-only --hook-format codex"}]}]}}`)
+	if CodexHooksMissingManagedPostToolUse(currentManaged) {
+		t.Fatal("managed Codex hooks with PostToolUse were reported stale")
+	}
+
+	customOnly := []byte(`{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"printf custom"}]}]}}`)
+	if CodexHooksMissingManagedPostToolUse(customOnly) {
+		t.Fatal("custom-only Codex hooks were reported stale")
+	}
+
+	if CodexHooksMissingManagedPostToolUse([]byte(`{not-json`)) {
+		t.Fatal("malformed Codex hooks were reported stale")
+	}
+}
+
+// TestInstallCodexUpgradeAddsManagedPostToolUse is the tool-boundary half of
+// the Codex managed-hook lifecycle: an already-managed doc written before the
+// PostToolUse context advisory existed must gain exactly that entry on
+// upgrade, and a second install must then be byte-stable (idempotent) rather
+// than re-adding or duplicating it.
+func TestInstallCodexUpgradeAddsManagedPostToolUse(t *testing.T) {
+	fs := fsys.NewFake()
+	fs.Files["/work/.codex/hooks.json"] = []byte(`{
+  "hooks": {
+    "SessionStart": [{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc prime --hook --hook-format codex"}]}],
+    "PreCompact": [{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc handoff --auto --hook-format codex \"context cycle\""}]}]
+  }
+}`)
+
+	if err := Install(fs, "/city", "/work", []string{"codex"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	got := string(fs.Files["/work/.codex/hooks.json"])
+	if !strings.Contains(got, `"PostToolUse"`) {
+		t.Fatalf("managed upgrade did not add PostToolUse:\n%s", got)
+	}
+	if !strings.Contains(got, "nudge drain --inject --context-only --hook-format codex") {
+		t.Fatalf("PostToolUse entry is not the context-only advisory command:\n%s", got)
+	}
+	if !strings.Contains(got, `--city '/city'`) {
+		t.Fatalf("PostToolUse entry was not rebound to the city:\n%s", got)
+	}
+
+	first := append([]byte(nil), fs.Files["/work/.codex/hooks.json"]...)
+	if err := Install(fs, "/city", "/work", []string{"codex"}); err != nil {
+		t.Fatalf("second Install: %v", err)
+	}
+	if !bytes.Equal(first, fs.Files["/work/.codex/hooks.json"]) {
+		t.Fatalf("second install rewrote the upgraded Codex hooks:\nfirst:\n%s\nsecond:\n%s", first, fs.Files["/work/.codex/hooks.json"])
+	}
+}
+
 func TestCodexHooksNeedManagedUpgrade(t *testing.T) {
 	wrongCity := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc --city /old/city prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city /old/city handoff --auto --hook-format codex \"context cycle\""}]}]}}`)
 	if !CodexHooksNeedManagedUpgrade(wrongCity, "/new city") {
 		t.Fatal("managed Codex hooks with stale city binding were not reported stale")
 	}
 
-	currentCity := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc --city '/old/city' prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city '/old/city' handoff --auto --hook-format codex \"context cycle\""}]}]}}`)
+	currentCity := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc --city '/old/city' prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city '/old/city' handoff --auto --hook-format codex \"context cycle\""}]}],"PostToolUse":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city '/old/city' hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject --context-only --hook-format codex"}]}]}}`)
 	if CodexHooksNeedManagedUpgrade(currentCity, "/old/city") {
 		t.Fatal("managed Codex hooks already bound to requested city were reported stale")
 	}
@@ -1695,6 +1753,12 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	if !strings.Contains(codexHooksText, `gc --city '/city' handoff --auto --hook-format codex \"context cycle\"`) {
 		t.Error("codex PreCompact should use auto handoff with Codex hook output format")
 	}
+	if !strings.Contains(codexHooksText, `"PostToolUse"`) {
+		t.Error("codex hooks should include the tool-boundary PostToolUse context advisory")
+	}
+	if !strings.Contains(codexHooksText, `gc --city '/city' hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject --context-only --hook-format codex`) {
+		t.Error("codex PostToolUse should run the context-only advisory with Codex hook output format")
+	}
 	for _, want := range []string{
 		`gc --city '/city' hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject --hook-format codex`,
 		`gc --city '/city' hook run --timeout 15s --timeout-exit-code 0 -- mail check --inject --hook-format codex`,
@@ -1778,8 +1842,9 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	}
 	opencodeHooks := string(fs.Files["/work/.opencode/plugins/gascity.js"])
 	for _, want := range []string{
-		"const GC_OPENCODE_HOOK_VERSION = 6",
+		"const GC_OPENCODE_HOOK_VERSION = 7",
 		"pending.child.stdin?.end();",
+		"drainedTurnID",
 		`process.env.GC_BIN || "gc"`,
 		`/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`,
 		`"experimental.session.compacting"`,
@@ -1808,7 +1873,7 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	mimocodeHooks := string(fs.Files["/work/.mimocode/plugin/gascity.js"])
 	for _, want := range []string{
 		"Gas City hooks for MiMo Code.",
-		"const GC_MIMOCODE_HOOK_VERSION = 2",
+		"const GC_MIMOCODE_HOOK_VERSION = 3",
 		`process.env.GC_BIN || "gc"`,
 		"process.env.GC_MIMOCODE_TRANSCRIPT_DIR || defaultTranscriptDir()",
 		`path.join(home, ".local", "share", "gascity", "mimocode-transcripts")`,
@@ -2200,8 +2265,9 @@ export default async function gascityPlugin() {
 		t.Fatal("stale OpenCode managed plugin was preserved; expected managed upgrade")
 	}
 	for _, want := range []string{
-		"const GC_OPENCODE_HOOK_VERSION = 6",
+		"const GC_OPENCODE_HOOK_VERSION = 7",
 		"pending.child.stdin?.end();",
+		"drainedTurnID",
 		`process.env.GC_BIN || "gc"`,
 		`/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`,
 		`"experimental.session.compacting"`,
@@ -2223,7 +2289,7 @@ export default async function gascityPlugin() {
 
 func TestOpenCodeHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 	current := []byte(`// Gas City hooks for OpenCode.
-const GC_OPENCODE_HOOK_VERSION = 6;
+const GC_OPENCODE_HOOK_VERSION = 7;
 const GC_BIN = process.env.GC_BIN || "gc";
 const PATH_PREFIX =
   "/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:";
@@ -2238,9 +2304,10 @@ output.context.push(handoff);
 GC_PROVIDER_SESSION_ID;
 GC_PROVIDER_SESSION_ID_REQUIRED;
 pending.child.stdin?.end();
+let drainedTurnID = null;
 `)
-	stale := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 6"), []byte("GC_OPENCODE_HOOK_VERSION = 5"), 1)
-	future := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 6"), []byte("GC_OPENCODE_HOOK_VERSION = 7"), 1)
+	stale := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 7"), []byte("GC_OPENCODE_HOOK_VERSION = 6"), 1)
+	future := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 7"), []byte("GC_OPENCODE_HOOK_VERSION = 8"), 1)
 	missingStderrLog := bytes.Replace(current, []byte("logRunStderr(stderr);\n"), nil, 1)
 	openStdin := bytes.Replace(current, []byte("pending.child.stdin?.end();\n"), nil, 1)
 
@@ -2281,14 +2348,14 @@ func TestInstallOpenCodeHookPreservesUserAuthoredPlugin(t *testing.T) {
 
 func TestMimoCodeHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 	current := []byte(`// Gas City hooks for MiMo Code.
-const GC_MIMOCODE_HOOK_VERSION = 2;
+const GC_MIMOCODE_HOOK_VERSION = 3;
 const GC_BIN = process.env.GC_BIN || "gc";
 `)
 	versionless := []byte(`// Gas City hooks for MiMo Code.
 const GC_BIN = process.env.GC_BIN || "gc";
 `)
-	stale := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 2"), []byte("GC_MIMOCODE_HOOK_VERSION = 1"), 1)
-	future := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 2"), []byte("GC_MIMOCODE_HOOK_VERSION = 3"), 1)
+	stale := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 3"), []byte("GC_MIMOCODE_HOOK_VERSION = 2"), 1)
+	future := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 3"), []byte("GC_MIMOCODE_HOOK_VERSION = 4"), 1)
 
 	if !mimocodeHookNeedsUpgrade(versionless) {
 		t.Fatal("versionless managed MiMo Code hook did not request upgrade")
@@ -2321,7 +2388,7 @@ export default async function gascityPlugin() {
 	if data == string(legacy) {
 		t.Fatal("stale MiMo Code managed plugin was preserved; expected managed upgrade")
 	}
-	if !strings.Contains(data, "const GC_MIMOCODE_HOOK_VERSION = 2") {
+	if !strings.Contains(data, "const GC_MIMOCODE_HOOK_VERSION = 3") {
 		t.Errorf("upgraded MiMo Code plugin missing version marker:\n%s", data)
 	}
 	backup := string(fs.Files["/work/.mimocode/plugin/gascity.js.bak"])

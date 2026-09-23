@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/beadmeta"
@@ -12,7 +13,10 @@ import (
 // Call at config load time to catch misconfigured providers early.
 func ValidateOptionsSchema(schema []ProviderOption) error {
 	for _, opt := range schema {
-		if opt.Default != "" && findChoice(opt.Choices, opt.Default) == nil {
+		if opt.Default == "" {
+			continue
+		}
+		if _, ok := OptionFlagArgs(opt, opt.Default); !ok {
 			return fmt.Errorf("option %q: default %q is not a valid choice", opt.Key, opt.Default)
 		}
 	}
@@ -28,7 +32,7 @@ func ValidateOptionDefaults(schema []ProviderOption, defaults map[string]string)
 		if opt == nil {
 			return fmt.Errorf("option_defaults key %q is not in the options schema", key)
 		}
-		if findChoice(opt.Choices, value) == nil {
+		if _, ok := OptionFlagArgs(*opt, value); !ok {
 			return fmt.Errorf("option_defaults key %q: value %q is not a valid choice", key, value)
 		}
 	}
@@ -67,28 +71,30 @@ func ComputeEffectiveDefaults(schema []ProviderOption, providerDefaults, agentDe
 // ResolveOptions validates user-specified options against a provider's schema
 // and produces extra CLI args to inject into the command. Options not specified
 // by the user fall back to effectiveDefaults (then schema Default). Returns the
-// extra args and metadata entries (opt_<key>=<value>) for bead persistence.
+// extra args, metadata entries (opt_<key>=<value>) for bead persistence, and the
+// merged Env of every chosen (explicit or defaulted) choice.
 //
 // Args are emitted in schema declaration order for deterministic command lines.
-func ResolveOptions(schema []ProviderOption, options map[string]string, effectiveDefaults map[string]string) (extraArgs []string, metadata map[string]string, err error) {
+func ResolveOptions(schema []ProviderOption, options map[string]string, effectiveDefaults map[string]string) (extraArgs []string, metadata map[string]string, env map[string]string, err error) {
 	metadata = make(map[string]string)
 
 	// Validate user-specified option keys and values up front.
 	for key, value := range options {
 		opt := findOption(schema, key)
 		if opt == nil {
-			return nil, nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
+			return nil, nil, nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
 		}
-		if findChoice(opt.Choices, value) == nil {
-			return nil, nil, fmt.Errorf("invalid value for %s: %s", key, value)
+		if _, ok := OptionFlagArgs(*opt, value); !ok {
+			return nil, nil, nil, fmt.Errorf("invalid value for %s: %s", key, value)
 		}
 	}
 
 	// Iterate in schema declaration order for deterministic arg ordering.
 	for _, opt := range schema {
 		if value, ok := options[opt.Key]; ok {
-			choice := findChoice(opt.Choices, value)
-			extraArgs = append(extraArgs, choice.FlagArgs...)
+			flagArgs, _ := OptionFlagArgs(opt, value)
+			extraArgs = append(extraArgs, flagArgs...)
+			env = mergeChoiceEnv(env, findChoice(opt.Choices, value))
 			metadata[beadmeta.OptionMetadataPrefix+opt.Key] = value
 		} else {
 			// Use effective default, falling back to schema default.
@@ -96,17 +102,15 @@ func ResolveOptions(schema []ProviderOption, options map[string]string, effectiv
 			if defValue == "" {
 				defValue = opt.Default
 			}
-			if defValue != "" {
-				choice := findChoice(opt.Choices, defValue)
-				if choice != nil {
-					extraArgs = append(extraArgs, choice.FlagArgs...)
-				}
+			if flagArgs, ok := OptionFlagArgs(opt, defValue); ok {
+				extraArgs = append(extraArgs, flagArgs...)
+				env = mergeChoiceEnv(env, findChoice(opt.Choices, defValue))
 			}
 			// Defaults are NOT written to metadata -- only explicit choices are persisted.
 		}
 	}
 
-	return extraArgs, metadata, nil
+	return extraArgs, metadata, env, nil
 }
 
 // ResolveExplicitOptions validates user-specified options against a provider's
@@ -115,20 +119,21 @@ func ResolveOptions(schema []ProviderOption, options map[string]string, effectiv
 // present in the overrides map generate flags. This is used for template_overrides
 // where agent sessions already have their own base CLI flags from config.
 //
+// Returns the args and the merged Env of every chosen override.
 // Args are emitted in schema declaration order for deterministic command lines.
-func ResolveExplicitOptions(schema []ProviderOption, overrides map[string]string) (extraArgs []string, err error) {
+func ResolveExplicitOptions(schema []ProviderOption, overrides map[string]string) (extraArgs []string, env map[string]string, err error) {
 	if len(overrides) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Validate override keys and values up front.
 	for key, value := range overrides {
 		opt := findOption(schema, key)
 		if opt == nil {
-			return nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
+			return nil, nil, fmt.Errorf("%w: %s", ErrUnknownOption, key)
 		}
-		if findChoice(opt.Choices, value) == nil {
-			return nil, fmt.Errorf("invalid value for %s: %s", key, value)
+		if _, ok := OptionFlagArgs(*opt, value); !ok {
+			return nil, nil, fmt.Errorf("invalid value for %s: %s", key, value)
 		}
 	}
 
@@ -138,11 +143,27 @@ func ResolveExplicitOptions(schema []ProviderOption, overrides map[string]string
 		if !ok {
 			continue
 		}
-		choice := findChoice(opt.Choices, value)
-		extraArgs = append(extraArgs, choice.FlagArgs...)
+		flagArgs, _ := OptionFlagArgs(opt, value)
+		extraArgs = append(extraArgs, flagArgs...)
+		env = mergeChoiceEnv(env, findChoice(opt.Choices, value))
 	}
 
-	return extraArgs, nil
+	return extraArgs, env, nil
+}
+
+// mergeChoiceEnv folds one choice's Env into the accumulated map. Later
+// choices win for a shared key, matching the schema-order arg behavior.
+func mergeChoiceEnv(env map[string]string, choice *OptionChoice) map[string]string {
+	if choice == nil || len(choice.Env) == 0 {
+		return env
+	}
+	if env == nil {
+		env = make(map[string]string, len(choice.Env))
+	}
+	for key, value := range choice.Env {
+		env[key] = value
+	}
+	return env
 }
 
 func completeResumeCommandDefaults(command, resumeFlag, resumeStyle string, schema []ProviderOption, effectiveDefaults map[string]string) string {
@@ -204,11 +225,11 @@ func missingDefaultArgsForCommand(command string, schema []ProviderOption, effec
 		if value == "" {
 			continue
 		}
-		choice := findChoice(opt.Choices, value)
-		if choice == nil || len(choice.FlagArgs) == 0 {
+		flagArgs, ok := OptionFlagArgs(opt, value)
+		if !ok || len(flagArgs) == 0 {
 			continue
 		}
-		missing = append(missing, choice.FlagArgs...)
+		missing = append(missing, flagArgs...)
 	}
 	return missing
 }
@@ -323,6 +344,10 @@ func assignmentPrefix(token string) (string, bool) {
 func ReplaceSchemaFlags(command string, schema []ProviderOption, overrideArgs []string) string {
 	allFlags := CollectAllSchemaFlags(schema)
 	stripped := StripFlags(command, allFlags)
+	// Exact-match stripping only knows declared choices, so a value honored
+	// through an open option's FlagTemplate survives it. Strip by shape too,
+	// or appending overrideArgs below would emit the option twice.
+	stripped = stripShapes(stripped, CollectOpenOptionShapes(schema))
 	if len(overrideArgs) > 0 {
 		stripped = stripped + " " + shellquote.Join(overrideArgs)
 	}
@@ -348,6 +373,69 @@ func CollectAllSchemaFlags(schema []ProviderOption) [][]string {
 		}
 	}
 	return flags
+}
+
+// CollectOpenOptionShapes gathers the raw FlagTemplate of every open option in
+// the schema, placeholder intact. The result feeds stripShapes, which matches
+// a rendered value positionally rather than by literal equality.
+//
+// CollectAllSchemaFlags cannot cover these: it walks Choices only, so a value
+// outside the curated list — exactly what an open option exists to honor —
+// leaves no literal flag sequence to match (ga-fyh).
+func CollectOpenOptionShapes(schema []ProviderOption) [][]string {
+	var shapes [][]string
+	seen := make(map[string]bool)
+	for _, opt := range schema {
+		if !IsOpenOption(opt) {
+			continue
+		}
+		key := strings.Join(opt.FlagTemplate, "\x00")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		shapes = append(shapes, cloneStrings(opt.FlagTemplate))
+	}
+	return shapes
+}
+
+// stripShapes removes every token run matching one of the given flag shapes.
+//
+// A shape is a FlagTemplate: its leading flag matches literally, and the
+// OptionValuePlaceholder token matches any single rendered value —
+// tokenSequenceShapeMatchesAt already refuses an empty token, a "-"-prefixed
+// token and an unrendered "{{...}}" template, so a flag whose value is missing
+// or still templated is left alone. A placeholder inside an assignment token
+// (codex's "model_reasoning_effort={value}") matches on the "key=" prefix.
+//
+// Run this after StripFlags, never instead of it: exact matching must consume
+// curated multi-flag groups (pi's "--provider ollama-cloud --model gpt-oss:20b")
+// as units first, before the shape pass can claim their "--model" half alone.
+func stripShapes(command string, shapes [][]string) string {
+	if len(shapes) == 0 {
+		return command
+	}
+	tokens := shellquote.Split(command)
+	result := make([]string, 0, len(tokens))
+	i := 0
+	for i < len(tokens) {
+		matched := false
+		for _, seq := range shapes {
+			if len(seq) == 0 {
+				continue
+			}
+			if tokenSequenceShapeMatchesAt(tokens, i, seq, nil) {
+				i += len(seq)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			result = append(result, tokens[i])
+			i++
+		}
+	}
+	return shellquote.Join(result)
 }
 
 func choiceFlagSequences(choice OptionChoice) [][]string {
@@ -660,6 +748,52 @@ func findOption(schema []ProviderOption, key string) *ProviderOption {
 	return nil
 }
 
+// OptionValuePlaceholder is the token substituted with the pinned value when
+// rendering ProviderOption.FlagTemplate.
+const OptionValuePlaceholder = "{value}"
+
+// IsOpenOption reports whether the option honors values outside its declared
+// Choices by rendering ProviderOption.FlagTemplate.
+func IsOpenOption(opt ProviderOption) bool {
+	return len(opt.FlagTemplate) > 0
+}
+
+// OptionFlagArgs resolves one option value to the CLI args that pin it.
+//
+// A declared choice always wins, so curated entries keep their exact flag
+// shape (including forms that are not a plain "--flag value", such as an
+// alias that expands to a different id or codex's -c assignment). A value
+// with no matching choice resolves only when the option is open, by
+// rendering FlagTemplate.
+//
+// The second return is false when the value cannot be honored at all. Callers
+// must never treat that as success: omitting the flag silently unpins the
+// agent onto the provider default (ga-fyh).
+func OptionFlagArgs(opt ProviderOption, value string) ([]string, bool) {
+	// A declared choice wins even when it is the empty "Default" entry, which
+	// several schemas expose as an explicitly selectable "leave unset" value.
+	if choice := findChoice(opt.Choices, value); choice != nil {
+		return cloneStrings(choice.FlagArgs), true
+	}
+	if value == "" || !IsOpenOption(opt) {
+		return nil, false
+	}
+	return renderFlagTemplate(opt.FlagTemplate, value), true
+}
+
+// renderFlagTemplate substitutes value for every OptionValuePlaceholder token.
+// Substitution is whole-token: a template entry is either the literal flag or
+// the placeholder, never a concatenation, except that a placeholder embedded
+// in a longer token (codex's "model_reasoning_effort={value}") is expanded in
+// place.
+func renderFlagTemplate(template []string, value string) []string {
+	out := make([]string, len(template))
+	for i, tok := range template {
+		out[i] = strings.ReplaceAll(tok, OptionValuePlaceholder, value)
+	}
+	return out
+}
+
 func findChoice(choices []OptionChoice, value string) *OptionChoice {
 	for i := range choices {
 		if choices[i].Value == value {
@@ -667,4 +801,96 @@ func findChoice(choices []OptionChoice, value string) *OptionChoice {
 		}
 	}
 	return nil
+}
+
+// Unhonored pin reasons. Launch used to skip these silently (ra-jbbv0 / ga-fyh).
+const (
+	UnhonoredPinUnknownOption = "unknown_option"
+	UnhonoredPinUnknownValue  = "unknown_value"
+)
+
+// UnhonoredOptionPin is an EffectiveDefaults entry that cannot be turned into
+// FlagArgs. Callers must surface these — omitting the flag without a warning
+// silently unpins the agent onto the provider default.
+type UnhonoredOptionPin struct {
+	Key    string
+	Value  string
+	Reason string
+	Valid  []string
+}
+
+// UnhonoredOptionPins reports EffectiveDefaults that ResolveDefaultArgs will
+// not emit as flags: unknown option keys, and known keys whose value is not
+// a declared choice. Empty values are unset, not unhonored.
+func (rp *ResolvedProvider) UnhonoredOptionPins() []UnhonoredOptionPin {
+	if rp == nil {
+		return nil
+	}
+	var pins []UnhonoredOptionPin
+	seen := make(map[string]bool, len(rp.OptionsSchema))
+	for _, opt := range rp.OptionsSchema {
+		seen[opt.Key] = true
+		value := rp.EffectiveDefaults[opt.Key]
+		if value == "" {
+			continue
+		}
+		if _, ok := OptionFlagArgs(opt, value); ok {
+			continue
+		}
+		pins = append(pins, UnhonoredOptionPin{
+			Key:    opt.Key,
+			Value:  value,
+			Reason: UnhonoredPinUnknownValue,
+			Valid:  nonEmptyChoiceValues(opt),
+		})
+	}
+	var extra []string
+	for key, value := range rp.EffectiveDefaults {
+		if value == "" || seen[key] {
+			continue
+		}
+		extra = append(extra, key)
+	}
+	sort.Strings(extra)
+	for _, key := range extra {
+		pins = append(pins, UnhonoredOptionPin{
+			Key:    key,
+			Value:  rp.EffectiveDefaults[key],
+			Reason: UnhonoredPinUnknownOption,
+		})
+	}
+	return pins
+}
+
+// FormatUnhonoredOptionPin names the agent, rejected value, and valid set so
+// a stale enum cannot unpin a session without a loud startup warning.
+func FormatUnhonoredOptionPin(agentName, providerName string, pin UnhonoredOptionPin) string {
+	agent := strings.TrimSpace(agentName)
+	if agent == "" {
+		agent = "(unknown)"
+	}
+	provider := strings.TrimSpace(providerName)
+	if provider == "" {
+		provider = "(unknown)"
+	}
+	switch pin.Reason {
+	case UnhonoredPinUnknownOption:
+		return fmt.Sprintf("WARNING: agent %q: option_defaults %s=%q is not in the %q provider schema; flag omitted", agent, pin.Key, pin.Value, provider)
+	default:
+		valid := strings.Join(pin.Valid, ", ")
+		if valid == "" {
+			valid = "(none)"
+		}
+		return fmt.Sprintf("WARNING: agent %q: option_defaults %s=%q is not a valid choice for provider %q (valid: %s); flag omitted", agent, pin.Key, pin.Value, provider, valid)
+	}
+}
+
+func nonEmptyChoiceValues(opt ProviderOption) []string {
+	var out []string
+	for _, c := range opt.Choices {
+		if c.Value != "" {
+			out = append(out, c.Value)
+		}
+	}
+	return out
 }

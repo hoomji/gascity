@@ -21,7 +21,8 @@ type Provider struct {
 	acpSP     runtime.Provider
 
 	mu     sync.RWMutex
-	routes map[string]bool // true = ACP
+	routes map[string]bool             // true = ACP
+	custom map[string]runtime.Provider // session name -> custom Provider
 }
 
 var (
@@ -45,6 +46,7 @@ func New(defaultSP, acpSP runtime.Provider) *Provider {
 		defaultSP: defaultSP,
 		acpSP:     acpSP,
 		routes:    make(map[string]bool),
+		custom:    make(map[string]runtime.Provider),
 	}
 }
 
@@ -56,19 +58,36 @@ func (p *Provider) RouteACP(name string) {
 	p.mu.Unlock()
 }
 
+// RouteProvider registers a session name to use a specific backend provider (e.g. an SSH runtime).
+func (p *Provider) RouteProvider(name string, sp runtime.Provider) {
+	p.mu.Lock()
+	if p.custom == nil {
+		p.custom = make(map[string]runtime.Provider)
+	}
+	p.custom[name] = sp
+	p.mu.Unlock()
+}
+
 // Unroute removes a session's routing entry. Called on Stop to avoid
 // leaking entries for destroyed sessions.
 func (p *Provider) Unroute(name string) {
 	p.mu.Lock()
 	delete(p.routes, name)
+	if p.custom != nil {
+		delete(p.custom, name)
+	}
 	p.mu.Unlock()
 }
 
 func (p *Provider) route(name string) runtime.Provider {
 	p.mu.RLock()
-	isACP := p.routes[name]
-	p.mu.RUnlock()
-	if isACP {
+	defer p.mu.RUnlock()
+	if p.custom != nil {
+		if sp, ok := p.custom[name]; ok && sp != nil {
+			return sp
+		}
+	}
+	if p.routes[name] && p.acpSP != nil {
 		return p.acpSP
 	}
 	return p.defaultSP
@@ -112,7 +131,7 @@ func (p *Provider) Stop(name string) error {
 	otherLabel := "acp"
 	primaryRunning := primary.IsRunning(name)
 	p.mu.RLock()
-	primaryExplicitRoute := p.routes[name]
+	primaryExplicitRoute := p.routes[name] || (p.custom != nil && p.custom[name] != nil)
 	p.mu.RUnlock()
 	err := primary.Stop(name)
 	if err == nil && primaryRunning {
@@ -122,14 +141,26 @@ func (p *Provider) Stop(name string) error {
 	// Fall through to the other backend in case the route is stale.
 	var other runtime.Provider
 	p.mu.RLock()
-	if p.routes[name] {
+	switch {
+	case p.custom != nil && p.custom[name] != nil:
+		primaryLabel = "custom"
+		otherLabel = "default"
+		other = p.defaultSP
+	case p.routes[name]:
 		primaryLabel = "acp"
 		otherLabel = "default"
 		other = p.defaultSP
-	} else {
+	default:
 		other = p.acpSP
 	}
 	p.mu.RUnlock()
+	if other == nil {
+		if err == nil {
+			p.Unroute(name)
+			return nil
+		}
+		return err
+	}
 	otherRunning := other.IsRunning(name)
 	if err == nil {
 		if primaryExplicitRoute {
