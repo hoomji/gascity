@@ -136,8 +136,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session-cached `gc prime --hook` context; the clock, queued nudges, and
   unread mail are appended to the newest user message, after the stable prefix,
   so only the new tail is a cache miss. This ports the OpenCode fix (#22) to
-  the mimocode fork without touching the opencode plugin. Existing managed
-  plugins upgrade on the next reconcile (`GC_MIMOCODE_HOOK_VERSION = 3`).
+  the mimocode fork without touching the opencode plugin. The port also closes
+  the child `gc`'s stdin pipe, so `gc nudge drain --inject` returns instead of
+  blocking in `io.ReadAll` until the plugin's 30 s timeout silently kills it and
+  the clock/nudge injection never lands. Existing managed plugins upgrade on the
+  next reconcile (`GC_MIMOCODE_HOOK_VERSION = 4`).
 - **A closed binding row now supersedes its retained frozen twin in the
   one-live-workflow-per-source-bead guard, so a converged city stops refusing a
   sling whose only live root is gone.** A storage migration copies rows into the

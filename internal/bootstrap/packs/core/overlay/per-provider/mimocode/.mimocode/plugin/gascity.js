@@ -30,7 +30,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const GC_MIMOCODE_HOOK_VERSION = 3;
+const GC_MIMOCODE_HOOK_VERSION = 4;
 const GC_BIN = process.env.GC_BIN || "gc";
 // GC_BIN is the explicit override. The fallback order matches Pi hooks so
 // sibling providers resolve the same installed gc before developer-local bins.
@@ -39,7 +39,13 @@ const PATH_PREFIX =
 
 async function runCommand(directory, args, warnOnFailure, extraEnv = {}) {
   try {
-    const { stdout, stderr } = await execFileAsync(GC_BIN, args, {
+    // execFile always gives the child a stdin pipe and never closes it, so a
+    // gc subcommand that reads hook stdin waits for an EOF that never arrives
+    // and is killed when the timeout expires. Close it immediately: these
+    // calls send nothing on stdin. (`stdio` is not an execFile option — it is
+    // honored by spawn and execFileSync, which is why the pi hook can pass
+    // stdio: ["ignore", ...] instead.)
+    const pending = execFileAsync(GC_BIN, args, {
       cwd: directory,
       encoding: "utf-8",
       timeout: 30000,
@@ -49,6 +55,8 @@ async function runCommand(directory, args, warnOnFailure, extraEnv = {}) {
         PATH: PATH_PREFIX + (process.env.PATH || ""),
       },
     });
+    pending.child.stdin?.end();
+    const { stdout, stderr } = await pending;
     logRunStderr(stderr);
     return stdout.trim();
   } catch (err) {

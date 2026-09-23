@@ -1812,7 +1812,8 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	mimocodeHooks := string(fs.Files["/work/.mimocode/plugin/gascity.js"])
 	for _, want := range []string{
 		"Gas City hooks for MiMo Code.",
-		"const GC_MIMOCODE_HOOK_VERSION = 3",
+		"const GC_MIMOCODE_HOOK_VERSION = 4",
+		"pending.child.stdin?.end();",
 		`process.env.GC_BIN || "gc"`,
 		"process.env.GC_MIMOCODE_TRANSCRIPT_DIR || defaultTranscriptDir()",
 		`path.join(home, ".local", "share", "gascity", "mimocode-transcripts")`,
@@ -2316,7 +2317,7 @@ func TestInstallOpenCodeHookPreservesUserAuthoredPlugin(t *testing.T) {
 
 func TestMimoCodeHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 	current := []byte(`// Gas City hooks for MiMo Code.
-const GC_MIMOCODE_HOOK_VERSION = 3;
+const GC_MIMOCODE_HOOK_VERSION = 4;
 const GC_BIN = process.env.GC_BIN || "gc";
 const PATH_PREFIX =
   "/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:";
@@ -2327,6 +2328,7 @@ logRunFailure;
 logRunStderr(stderr);
 GC_PROVIDER_SESSION_ID;
 GC_PROVIDER_SESSION_ID_REQUIRED;
+pending.child.stdin?.end();
 buildSystemContext;
 buildVolatileInjection;
 output.parts.push({
@@ -2334,8 +2336,9 @@ output.parts.push({
 	versionless := []byte(`// Gas City hooks for MiMo Code.
 const GC_BIN = process.env.GC_BIN || "gc";
 `)
-	stale := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 3"), []byte("GC_MIMOCODE_HOOK_VERSION = 2"), 1)
-	future := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 3"), []byte("GC_MIMOCODE_HOOK_VERSION = 4"), 1)
+	stale := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 4"), []byte("GC_MIMOCODE_HOOK_VERSION = 3"), 1)
+	future := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 4"), []byte("GC_MIMOCODE_HOOK_VERSION = 5"), 1)
+	openStdin := bytes.Replace(current, []byte("pending.child.stdin?.end();\n"), nil, 1)
 	missingStableContext := bytes.Replace(current, []byte("buildSystemContext;\n"), nil, 1)
 	missingVolatileTail := bytes.Replace(current, []byte("output.parts.push({\n"), nil, 1)
 	stillFoldsVolatile := bytes.Replace(current, []byte("buildVolatileInjection;\n"), []byte("buildPrefix();\n"), 1)
@@ -2351,6 +2354,9 @@ const GC_BIN = process.env.GC_BIN || "gc";
 	}
 	if mimocodeHookNeedsUpgrade(future) {
 		t.Fatal("newer MiMo Code hook version requested downgrade")
+	}
+	if !mimocodeHookNeedsUpgrade(openStdin) {
+		t.Fatal("MiMo Code hook leaving child stdin open did not request upgrade")
 	}
 	if !mimocodeHookNeedsUpgrade(missingStableContext) {
 		t.Fatal("MiMo Code hook without a byte-stable system context did not request upgrade")
@@ -2380,7 +2386,7 @@ export default async function gascityPlugin() {
 	if data == string(legacy) {
 		t.Fatal("stale MiMo Code managed plugin was preserved; expected managed upgrade")
 	}
-	if !strings.Contains(data, "const GC_MIMOCODE_HOOK_VERSION = 3") {
+	if !strings.Contains(data, "const GC_MIMOCODE_HOOK_VERSION = 4") {
 		t.Errorf("upgraded MiMo Code plugin missing version marker:\n%s", data)
 	}
 	backup := string(fs.Files["/work/.mimocode/plugin/gascity.js.bak"])

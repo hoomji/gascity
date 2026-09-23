@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"context"
 	"encoding/json"
 	iofs "io/fs"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/bootstrap/packs/core"
 )
@@ -22,9 +24,16 @@ const mimoCodePluginPackPath = "overlay/per-provider/mimocode/.mimocode/plugin/g
 // current-time line on every call, exactly like the real consumptive hook;
 // `mail check --inject` returns nothing. It is CommonJS (.cjs) so the staged
 // plugin's package.json module type cannot reinterpret it.
+//
+// Every invocation first reads hook stdin to EOF, mirroring the real gc hooks:
+// `gc nudge drain --inject` blocks in io.ReadAll until stdin closes, and
+// `gc prime --hook` burns its bounded read timeout otherwise. The plugin must
+// close execFile's stdin pipe or this read never returns and each call is
+// killed at the plugin's 30 s timeout.
 const fakeMimoCodeGCDriver = `#!/usr/bin/env node
 const fs = require("node:fs");
 const command = process.argv.slice(2).join(" ");
+fs.readFileSync(0, "utf8");
 if (command === "prime --hook") {
   process.stdout.write("PRIME-CONTEXT-STABLE\n");
 } else if (command === "nudge drain --inject") {
@@ -100,12 +109,28 @@ type mimoCodeTurn struct {
 	Parts         []string `json:"parts"`
 }
 
+const (
+	// mimoCodePluginRunBudget hard-caps the node driver so a plugin that leaves
+	// the child gc's stdin pipe open fails instead of stalling the suite through
+	// the plugin's per-call 30 s timeouts.
+	mimoCodePluginRunBudget = 20 * time.Second
+	// mimoCodePluginPromptBudget is the prompt-completion assertion. Real gc
+	// calls return in milliseconds; the plugin's own per-call timeout is 30 s,
+	// so completing well under that proves the stdin pipe was closed rather than
+	// timing out.
+	mimoCodePluginPromptBudget = 10 * time.Second
+)
+
 // TestMimoCodePluginKeepsSystemPromptByteStableAcrossTurns executes the
 // embedded plugin under node with a fake gc whose current-time line changes on
-// every call. Two consecutive turns must build a byte-identical system prompt
-// (and byte-identical per-message system override), while the volatile clock
-// must land in the newest user message's parts. A per-turn clock in the system
-// prompt is what caps the DeepSeek prefix cache at the role prompt.
+// every call and which reads hook stdin to EOF. Two consecutive turns must
+// build a byte-identical system prompt (and byte-identical per-message system
+// override), while the volatile clock must land in the newest user message's
+// parts. A per-turn clock in the system prompt is what caps the DeepSeek prefix
+// cache at the role prompt. Because the fake gc consumes stdin, the test also
+// proves the plugin closes execFile's stdin pipe: a plugin that does not leaves
+// every `gc nudge drain --inject` (and `gc prime --hook`) blocked until the 30 s
+// timeout, so the clock/nudge injection never reaches the user-message tail.
 func TestMimoCodePluginKeepsSystemPromptByteStableAcrossTurns(t *testing.T) {
 	nodeBin, err := exec.LookPath("node")
 	if err != nil {
@@ -137,15 +162,29 @@ func TestMimoCodePluginKeepsSystemPromptByteStableAcrossTurns(t *testing.T) {
 	}
 	counterFile := filepath.Join(gcDir, "counter")
 
-	cmd := exec.Command(nodeBin, driverPath, filepath.Join(stage, "gascity.js"), stage, gcPath)
+	// The fake gc blocks on stdin until EOF, so the harness budget fails the
+	// test promptly if the plugin ever stops closing the child's stdin pipe.
+	ctx, cancel := context.WithTimeout(context.Background(), mimoCodePluginRunBudget)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, nodeBin, driverPath, filepath.Join(stage, "gascity.js"), stage, gcPath)
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Env = []string{
 		"HOME=" + stage,
 		"PATH=" + os.Getenv("PATH"),
 		"GC_FAKE_COUNTER=" + counterFile,
 	}
+	start := time.Now()
 	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
 	if err != nil {
+		if ctx.Err() != nil {
+			t.Fatalf("node plugin driver did not finish within %s; the plugin must close the child gc's stdin pipe (pending.child.stdin?.end()): %v\noutput:\n%s", mimoCodePluginRunBudget, err, out)
+		}
 		t.Fatalf("node plugin driver: %v\noutput:\n%s", err, out)
+	}
+	if elapsed >= mimoCodePluginPromptBudget {
+		t.Fatalf("plugin gc calls took %s, want under %s: the fake gc reads stdin to EOF, so prompt completion proves the plugin closed execFile's stdin pipe instead of blocking until the 30 s timeout", elapsed, mimoCodePluginPromptBudget)
 	}
 
 	var got struct {

@@ -35,7 +35,7 @@ var supported = []string{"claude", "codex", "gemini", "antigravity", "kiro", "op
 const (
 	managedPiHookVersion       = 9
 	managedOpenCodeHookVersion = 7
-	managedMimoCodeHookVersion = 3
+	managedMimoCodeHookVersion = 4
 	managedOmpHookVersion      = 2
 )
 
@@ -406,6 +406,8 @@ func mimocodeHookNeedsUpgrade(existing []byte) bool {
 		!strings.Contains(content, "logRunStderr(stderr);") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID_REQUIRED") ||
+		// The child's stdin must be closed or gc blocks on it (#5562).
+		!strings.Contains(content, "pending.child.stdin?.end();") ||
 		// Volatile injections must go to the newest user message, leaving the
 		// system prompt byte-stable so the provider prefix cache can grow.
 		!strings.Contains(content, "buildSystemContext") ||
