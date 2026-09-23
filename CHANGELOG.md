@@ -101,6 +101,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The MiMo Code plugin no longer rewrites the system prompt with a per-turn
+  clock line, so the provider prefix cache can grow with the conversation
+  instead of resetting at the role prompt every turn.** The plugin prepended
+  `gc nudge drain --inject` (whose first line is the current epoch) and unread
+  mail to `output.system` on every turn, leaving the whole conversation after
+  the role prompt uncached. The system prompt now carries only the
+  session-cached `gc prime --hook` context; the clock, queued nudges, and
+  unread mail are appended to the newest user message, after the stable prefix,
+  so only the new tail is a cache miss. This ports the OpenCode fix (#22) to
+  the mimocode fork without touching the opencode plugin. Existing managed
+  plugins upgrade on the next reconcile (`GC_MIMOCODE_HOOK_VERSION = 3`).
+
 - **A closed binding row now supersedes its retained frozen twin in the
   one-live-workflow-per-source-bead guard, so a converged city stops refusing a
   sling whose only live root is gone.** A storage migration copies rows into the
