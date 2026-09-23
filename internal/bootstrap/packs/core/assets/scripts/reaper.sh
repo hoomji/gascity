@@ -175,6 +175,7 @@ TOTAL_WOULD_EXPIRE=0
 TOTAL_PURGED=0
 TOTAL_MAIL_WISPS=0
 TOTAL_WORKFLOW_ROOTS_CLOSED=0
+TOTAL_WORKFLOW_ROOTS_RECHECK_SKIPPED=0
 TOTAL_WOULD_CLOSE_WORKFLOW_ROOTS=0
 TOTAL_WORKFLOW_ROOTS_STORE_REF_SKIPPED=0
 TOTAL_WORKFLOW_ISSUE_ROOTS_SKIPPED=0
@@ -635,15 +636,24 @@ workflow_root_candidates_cte() {
     local issue_type_exclusions="$5"
     local page_limit="$6"
     local page_after="$7"
+    local page_source="${8:-}"
+
+    # $8 overrides the keyset page body. The close UPDATE passes the offered
+    # census ids here so the recursive descendant walk and the live/recent
+    # guards are re-run against the current rows inside the UPDATE itself,
+    # instead of trusting a census that ran in earlier, unshared statements.
+    if [ -z "$page_source" ]; then
+        page_source="            SELECT id
+            FROM $candidate_cte
+            WHERE id > $page_after
+            ORDER BY id
+            LIMIT $page_limit"
+    fi
 
     cat <<SQL
         WITH RECURSIVE $(workflow_root_candidate_ctes "$db" "$candidate_cte" "$table" "$alias" "$issue_type_exclusions"),
         ${candidate_cte}_page(id) AS (
-            SELECT id
-            FROM $candidate_cte
-            WHERE id > $page_after
-            ORDER BY id
-            LIMIT $page_limit
+$page_source
         ),
         workflow_descendants(root_id, id) AS (
             SELECT root.id, child_wisp.id
@@ -794,13 +804,30 @@ workflow_root_page_ids_query() {
 SQL
 }
 
+# Build the workflow wisp-root close UPDATE. The census that produced $ids ran in
+# earlier, separate dolt_sql processes with no shared transaction or lock, so a
+# root can gain a live/recent descendant, pick up an assignee, or otherwise leave
+# the closeable set before this UPDATE lands. The WHERE therefore re-asserts the
+# census predicate inside the UPDATE: the offered ids seed the same candidate
+# page, so the same candidate conditions (status/assignee/age/kind/store ref) and
+# the same transitive descendant-liveness guard are re-evaluated against current
+# rows. A root that changed after the census no longer matches and is left open.
+# The caller compares ROW_COUNT() (rows actually updated) against the number of
+# ids the census offered to surface any roots the re-assertion skipped.
 workflow_wisp_root_update_query() {
 	local db="$1"
 	local ids="$2"
 
     cat <<SQL
+        $(workflow_root_candidates_cte "$db" "workflow_wisp_root_candidates" "wisps" "w" "'message'" "" "" "            SELECT id
+            FROM workflow_wisp_root_candidates
+            WHERE id IN ($ids)")
         UPDATE \`$db\`.wisps SET status='closed', closed_at=UTC_TIMESTAMP(), metadata = JSON_SET(COALESCE(metadata, JSON_OBJECT()), '$."gc.outcome"', 'skipped', '$."close_reason"', '$WORKFLOW_ROOT_CLOSE_REASON')
-        WHERE id IN ($ids)
+        WHERE id IN (
+            SELECT id FROM (
+$(workflow_root_closeable_select "workflow_wisp_root_candidates")
+            ) reaper_wisp_root_recheck
+        )
 SQL
 }
 
@@ -1078,6 +1105,7 @@ while IFS= read -r DB; do
     DB_CLOSED_WISPS=0
     DB_PURGED=0
     DB_WORKFLOW_ROOTS_CLOSED=0
+    DB_WORKFLOW_ROOTS_RECHECK_SKIPPED=0
     while [ "$STALE_WISP_COUNT" -gt 0 ] && [ "$CLOSE_WISP_COUNT" -lt "$STALE_WISP_COUNT" ]; do
         get_sql_count "$DB" "schema-safe stale wisp" "
             SELECT COUNT(DISTINCT w.id) FROM \`$DB\`.wisps w
@@ -1166,8 +1194,18 @@ while IFS= read -r DB; do
             if [ -n "$WORKFLOW_WISP_ROOT_SQL_IDS" ]; then
                 if run_sql_change "$DB" "closing stale inactive workflow wisp roots" "$(workflow_wisp_root_update_query "$DB" "$WORKFLOW_WISP_ROOT_SQL_IDS")"; then
                     WORKFLOW_WISP_ROOT_ROWS=$SQL_CHANGE_ROWS_RESULT
+                    # Rows offered by the census minus rows the re-asserted
+                    # UPDATE actually matched: roots that gained live/recent
+                    # descendants, an assignee, or otherwise left the closeable
+                    # set in the census->update window. Counted, not escalated.
+                    WORKFLOW_WISP_ROOT_RECHECK_SKIPPED=$((WORKFLOW_WISP_ROOT_COUNT - WORKFLOW_WISP_ROOT_ROWS))
+                    if [ "$WORKFLOW_WISP_ROOT_RECHECK_SKIPPED" -lt 0 ]; then
+                        WORKFLOW_WISP_ROOT_RECHECK_SKIPPED=0
+                    fi
                     DB_WORKFLOW_ROOTS_CLOSED=$((DB_WORKFLOW_ROOTS_CLOSED + WORKFLOW_WISP_ROOT_ROWS))
                     TOTAL_WORKFLOW_ROOTS_CLOSED=$((TOTAL_WORKFLOW_ROOTS_CLOSED + WORKFLOW_WISP_ROOT_ROWS))
+                    DB_WORKFLOW_ROOTS_RECHECK_SKIPPED=$((DB_WORKFLOW_ROOTS_RECHECK_SKIPPED + WORKFLOW_WISP_ROOT_RECHECK_SKIPPED))
+                    TOTAL_WORKFLOW_ROOTS_RECHECK_SKIPPED=$((TOTAL_WORKFLOW_ROOTS_RECHECK_SKIPPED + WORKFLOW_WISP_ROOT_RECHECK_SKIPPED))
                     DB_MUTATIONS=$((DB_MUTATIONS + WORKFLOW_WISP_ROOT_ROWS))
                 else
                     WORKFLOW_ROOT_CLOSE_FAILED=1
@@ -1740,7 +1778,7 @@ if [ -n "$ANOMALIES" ]; then
         --message "$ANOMALIES" 2>/dev/null || true
 fi
 
-SUMMARY="reaper — stale_wisps:$TOTAL_STALE_WISPS, closed_wisps:$TOTAL_CLOSED_WISPS, workflow_roots:$TOTAL_WORKFLOW_ROOTS_CLOSED, skipped_cross_store_workflow_roots:$TOTAL_WORKFLOW_ROOTS_STORE_REF_SKIPPED, skipped_non_city_workflow_issue_roots:$TOTAL_WORKFLOW_ISSUE_ROOTS_SKIPPED, purged:$TOTAL_PURGED, sessions-pruned:$TOTAL_SESSIONS_PRUNED, closed:$TOTAL_ISSUES_CLOSED, expired:$TOTAL_EXPIRED_ISSUES_CLOSED, expired_skipped:$TOTAL_EXPIRED_ISSUES_SKIPPED, skipped_non_city_issues:$TOTAL_STALE_ISSUES_SKIPPED, mail_wisps:$TOTAL_MAIL_WISPS"
+SUMMARY="reaper — stale_wisps:$TOTAL_STALE_WISPS, closed_wisps:$TOTAL_CLOSED_WISPS, workflow_roots:$TOTAL_WORKFLOW_ROOTS_CLOSED, workflow_roots_recheck_skipped:$TOTAL_WORKFLOW_ROOTS_RECHECK_SKIPPED, skipped_cross_store_workflow_roots:$TOTAL_WORKFLOW_ROOTS_STORE_REF_SKIPPED, skipped_non_city_workflow_issue_roots:$TOTAL_WORKFLOW_ISSUE_ROOTS_SKIPPED, purged:$TOTAL_PURGED, sessions-pruned:$TOTAL_SESSIONS_PRUNED, closed:$TOTAL_ISSUES_CLOSED, expired:$TOTAL_EXPIRED_ISSUES_CLOSED, expired_skipped:$TOTAL_EXPIRED_ISSUES_SKIPPED, skipped_non_city_issues:$TOTAL_STALE_ISSUES_SKIPPED, mail_wisps:$TOTAL_MAIL_WISPS"
 if [ -n "$DRY_RUN" ]; then
     SUMMARY="$SUMMARY, would_close_wisps:$TOTAL_WOULD_CLOSE_WISPS, would_close_workflow_roots:$TOTAL_WOULD_CLOSE_WORKFLOW_ROOTS, would_expire:$TOTAL_WOULD_EXPIRE (dry run)"
 fi
