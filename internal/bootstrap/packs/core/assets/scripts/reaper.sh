@@ -184,6 +184,16 @@ TOTAL_EXPIRED_ISSUES_CLOSED=0
 TOTAL_EXPIRED_ISSUES_SKIPPED=0
 TOTAL_SESSIONS_PRUNED=0
 SESSION_PRUNE_ATTEMPTED=0
+# Set when Step 3's husk purge fails. The final exit code is derived from this
+# so the order fails visibly instead of the controller seeing a clean
+# `order.completed` every 30m while nothing is ever purged.
+PURGE_FAILED=0
+# Set when Step 2's paged workflow-root census fails (a candidate count or any
+# page query). The census is fail-closed — no root is closed from a partial
+# census — and the nonzero exit below makes the incomplete census fail the
+# order instead of hiding behind a clean `order.completed`, the exact silent
+# stall that let the husk backlog grow.
+CENSUS_FAILED=0
 ANOMALIES=""
 
 sanitize_output() {
@@ -776,6 +786,7 @@ collect_workflow_root_ids() {
     get_sql_count "$db" "$label candidate" "$(workflow_root_candidate_count_query "$db" "$candidate_cte" "$table" "$alias" "$issue_type_exclusions")"
     if [ "$SQL_COUNT_OK" -ne 1 ]; then
         record_anomaly "$db" "$label census incomplete: candidate count failed"
+        CENSUS_FAILED=1
         return 0
     fi
     candidate_count=$SQL_COUNT_RESULT
@@ -784,6 +795,7 @@ collect_workflow_root_ids() {
         get_sql_rows "$db" "$label page at offset $page_offset" "$(workflow_root_ids_query "$db" "$candidate_cte" "$table" "$alias" "$issue_type_exclusions" "$WORKFLOW_ROOT_BATCH_SIZE" "$page_offset")"
         if [ "$SQL_ROWS_OK" -ne 1 ]; then
             record_anomaly "$db" "$label census incomplete: page at offset $page_offset failed"
+            CENSUS_FAILED=1
             return 0
         fi
         if [ -n "$SQL_ROWS_RESULT" ]; then
@@ -1066,15 +1078,21 @@ while IFS= read -r DB; do
         fi
     fi
 
-    # Step 3: Purge — delete closed wisps past purge_age.
+    # Step 3: Purge — delete closed wisps past purge_age. The protection
+    # predicate is NOT EXISTS rather than NOT IN so the correlated
+    # wisp_dependencies probe is evaluated per outer row and never degrades to
+    # an all-or-nothing NULL comparison. closed_at is stored in UTC, so the
+    # boundary is computed with UTC_TIMESTAMP(); NOW() follows the server's
+    # local zone (EDT here) and skewed eligibility four hours late.
     get_sql_count "$DB" "closed wisp purge" "
         SELECT COUNT(*) FROM \`$DB\`.wisps
         WHERE status = 'closed'
-        AND closed_at < DATE_SUB(NOW(), INTERVAL $PURGE_AGE_H HOUR)
-        AND id NOT IN (
-            SELECT DISTINCT d.depends_on_wisp_id FROM \`$DB\`.wisp_dependencies d
+        AND closed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL $PURGE_AGE_H HOUR)
+        AND NOT EXISTS (
+            SELECT 1 FROM \`$DB\`.wisp_dependencies d
             INNER JOIN \`$DB\`.wisps child_wisp ON d.issue_id = child_wisp.id
-            WHERE d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
+            WHERE d.depends_on_wisp_id = wisps.id
+            AND d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
             AND child_wisp.status IN ('open', 'hooked', 'in_progress')
         )
     "
@@ -1084,11 +1102,12 @@ while IFS= read -r DB; do
         if run_sql_change "$DB" "purging closed wisps" "
             DELETE FROM \`$DB\`.wisps
             WHERE status = 'closed'
-            AND closed_at < DATE_SUB(NOW(), INTERVAL $PURGE_AGE_H HOUR)
-            AND id NOT IN (
-                SELECT DISTINCT d.depends_on_wisp_id FROM \`$DB\`.wisp_dependencies d
+            AND closed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL $PURGE_AGE_H HOUR)
+            AND NOT EXISTS (
+                SELECT 1 FROM \`$DB\`.wisp_dependencies d
                 INNER JOIN \`$DB\`.wisps child_wisp ON d.issue_id = child_wisp.id
-                WHERE d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
+                WHERE d.depends_on_wisp_id = wisps.id
+                AND d.type IN ($WISP_PURGE_PROTECT_EDGE_TYPES)
                 AND child_wisp.status IN ('open', 'hooked', 'in_progress')
             )
         "; then
@@ -1096,6 +1115,8 @@ while IFS= read -r DB; do
             DB_PURGED=$((DB_PURGED + PURGED_ROWS))
             TOTAL_PURGED=$((TOTAL_PURGED + PURGED_ROWS))
             DB_MUTATIONS=$((DB_MUTATIONS + PURGED_ROWS))
+        else
+            PURGE_FAILED=1
         fi
     fi
 
@@ -1599,3 +1620,12 @@ fi
 
 maintenance_done "$SUMMARY"
 echo "reaper: $SUMMARY"
+
+# A failed long-running step must fail the order, not just record an anomaly.
+# The controller only sees this process's exit status, so exiting 0 after a
+# failed Step 2 census or Step 3 purge left the husk backlog growing silently
+# while every tick reported `order.completed`. Exit after the report and
+# escalation so the failure is still observable.
+if [ "$PURGE_FAILED" -ne 0 ] || [ "$CENSUS_FAILED" -ne 0 ]; then
+    exit 1
+fi

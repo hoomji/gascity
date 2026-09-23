@@ -3999,7 +3999,7 @@ exit 0
 		"SHOW COLUMNS FROM `beads`.dependencies",
 		"SHOW COLUMNS FROM `beads`.wisp_dependencies",
 		"FROM `beads`.wisp_dependencies d",
-		"SELECT DISTINCT d.depends_on_wisp_id",
+		"d.depends_on_wisp_id = wisps.id",
 	} {
 		if !strings.Contains(log, want) {
 			t.Errorf("reaper SQL missing %q:\n%s", want, log)
@@ -4030,7 +4030,8 @@ exit 0
 		purgeSQL := log[purgeIdx:]
 		if !strings.Contains(purgeSQL, "child_wisp.status IN ('open', 'hooked', 'in_progress')") ||
 			!containsReaperPurgeProtectEdgePredicate(purgeSQL) ||
-			!strings.Contains(purgeSQL, "SELECT DISTINCT d.depends_on_wisp_id") {
+			!strings.Contains(purgeSQL, "NOT EXISTS") ||
+			!strings.Contains(purgeSQL, "d.depends_on_wisp_id = wisps.id") {
 			t.Errorf("reaper purge can delete closed parents with non-closed children:\n%s", purgeSQL)
 		}
 	}
@@ -5376,7 +5377,13 @@ exit 0
 				"PATH":                               binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 			}
 
-			runScript(t, coreScriptPath("reaper.sh"), env)
+			out, runErr := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+			if tc.failSecondPage && runErr == nil {
+				t.Fatalf("reaper exited 0 after an incomplete root census:\n%s", out)
+			}
+			if !tc.failSecondPage && runErr != nil {
+				t.Fatalf("reaper failed on a complete root census: %v\n%s", runErr, out)
+			}
 
 			bdData, err := os.ReadFile(bdLog)
 			if err != nil && !os.IsNotExist(err) {
@@ -5738,7 +5745,10 @@ exit 0
 		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
 
-	runScript(t, coreScriptPath("reaper.sh"), env)
+	out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+	if err == nil {
+		t.Fatalf("reaper exited 0 after an injected purge failure:\n%s", out)
+	}
 
 	gcData, err := os.ReadFile(gcLog)
 	if err != nil {
@@ -5805,7 +5815,10 @@ exit 0
 		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
 
-	runScript(t, coreScriptPath("reaper.sh"), env)
+	out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+	if err == nil {
+		t.Fatalf("reaper exited 0 after an injected purge failure:\n%s", out)
+	}
 
 	gcData, err := os.ReadFile(gcLog)
 	if err != nil {
@@ -5877,7 +5890,10 @@ exit 0
 		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
 
-	runScript(t, coreScriptPath("reaper.sh"), env)
+	out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+	if err == nil {
+		t.Fatalf("reaper exited 0 after an injected purge failure:\n%s", out)
+	}
 
 	gcData, err := os.ReadFile(gcLog)
 	if err != nil {
@@ -5960,7 +5976,10 @@ exit 0
 		"PATH":              binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
 
-	runScript(t, coreScriptPath("reaper.sh"), env)
+	out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+	if err == nil {
+		t.Fatalf("reaper exited 0 after an injected purge failure:\n%s", out)
+	}
 
 	logData, err := os.ReadFile(doltLog)
 	if err != nil {
@@ -6323,8 +6342,9 @@ func TestReaperClosesNudgeBeadWithElapsedExpiresAt(t *testing.T) {
 	bdLog := filepath.Join(t.TempDir(), "bd.log")
 	gcLog := filepath.Join(t.TempDir(), "gc.log")
 
-	// The Step 3 close query is the only one that compares against
-	// UTC_TIMESTAMP(); the gc:nudge-scoped anomaly pre-scan ends in IS NULL.
+	// The Step 4 nudge close query is the only *row-returning* query that
+	// compares against UTC_TIMESTAMP(); the purge count also uses
+	// UTC_TIMESTAMP() but is answered with an explicit closed_at case below.
 	// Returning a row from the close query exercises the positive TTL-expiry
 	// path: an elapsed nudge bead is closed with reason "ttl:expired by reaper"
 	// and counted in the summary as expired:1.
@@ -6336,6 +6356,9 @@ case "$*" in
     ;;
   *"SHOW DATABASES"*)
     printf 'Database\ncitydb\n'
+    ;;
+  *"status = 'closed'"*"closed_at <"*)
+    printf 'COUNT(*)\n0\n'
     ;;
   *"UTC_TIMESTAMP()"*)
     printf 'id\nga-expired\n'
