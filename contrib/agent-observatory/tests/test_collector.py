@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 import support  # noqa: F401  (puts the package root on sys.path)
 
@@ -26,6 +27,7 @@ from agent_observatory.collector import (
     collector_status,
     drain_queue,
     enqueue_sessions,
+    ensure_collector_schema,
     metadata_state,
     set_kill_switch,
 )
@@ -248,6 +250,62 @@ class CollectTests(CollectorTestCase):
         self.assertEqual(run.by_status, {"debounced": 1})
         self.assertIn("waits for", reason)
 
+    def test_pending_clock_resets_when_the_source_is_replaced(self):
+        # Finding 1: a deferred source's starvation clock must not carry over to
+        # a *different* change. A file that replaces an oversized one long after
+        # the clock expired is a new change and must be debounced, not imported
+        # mid-write the instant it appears.
+        path = self.claude_source()
+        start = 1_000_000.0
+        with ObservatoryStore(self.db) as store:
+            os.utime(path, (start, start))
+            run = self.collect(store, clock=lambda: start, debounce_seconds=0, max_source_bytes=100)
+            self.assertEqual(run.by_status, {"deferred": 1})
+            # Replace the oversized transcript with a fresh, small one, then run
+            # the next pass 5s later while the old clock is far past max_debounce.
+            replaced = start + 10_000
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(EXTRA_LINE)
+            os.utime(path, (replaced, replaced))
+            run = self.collect(
+                store,
+                clock=lambda: replaced + 5,
+                debounce_seconds=30,
+                max_debounce_seconds=600,
+            )
+            status, reason = self.statuses(store)["sess.jsonl"]
+        self.assertEqual(run.by_status, {"debounced": 1})
+        self.assertEqual(status, "debounced")
+        self.assertIn("waits for", reason)
+
+    def test_pending_clock_continues_only_for_the_same_change(self):
+        # The anchor decides continuation: growth of the same file keeps the
+        # clock (so a live transcript still starves), a truncation starts over.
+        from agent_observatory.collector import _pending_change_since
+
+        path = os.path.join(self.tmp, "anchor.jsonl")
+        with open(path, "wb") as handle:
+            handle.write(b"x" * 100)
+        anchor = os.stat(path)
+        start = 1_000.0
+        prev = {
+            "status": "deferred",
+            "pending_since": start,
+            "pending_raw_size": anchor.st_size,
+            "pending_mtime": anchor.st_mtime,
+            "pending_dev": anchor.st_dev,
+            "pending_ino": anchor.st_ino,
+        }
+        self.assertEqual(_pending_change_since(prev, anchor, start + 5_000), (start, True))
+        with open(path, "ab") as handle:
+            handle.write(b"y" * 10)
+        grown = os.stat(path)
+        self.assertEqual(_pending_change_since(prev, grown, start + 5_000), (start, True))
+        with open(path, "wb") as handle:
+            handle.write(b"z")
+        shrunk = os.stat(path)
+        self.assertEqual(_pending_change_since(prev, shrunk, start + 5_000), (start + 5_000, False))
+
     def test_source_cap_defers_but_first_source_always_progresses(self):
         self.claude_source("a.jsonl")
         self.claude_source("b.jsonl")
@@ -316,6 +374,94 @@ class CollectTests(CollectorTestCase):
             self.assertEqual(store.event_count(), 0)
         self.assertEqual(run.by_status, {"deferred": 1})
         self.assertIn("per-source cap", reason)
+
+    @unittest.skipUnless(shutil.which("zstd"), "zstd binary is not available")
+    def test_unchanged_oversized_stream_is_not_re_decompressed(self):
+        # Finding 2: once a .zstd stream is known to expand past the cap, an
+        # unchanged stat must not be read and re-decompressed on every pass.
+        session_dir = os.path.join(self.root, ".dsh", "sessions", "--tmp--", "session-big")
+        os.makedirs(session_dir)
+        plain = os.path.join(self.tmp, "big.jsonl")
+        with open(plain, "w", encoding="utf-8") as handle:
+            handle.write(
+                '{"type":"user/message","seq":1,"time":1790000000,"data":{"content":'
+                '[{"type":"text","text":"' + "x" * 200_000 + '"}]}}\n'
+            )
+        target = os.path.join(session_dir, "session.v3.jsonl.zstd")
+        _compress_zstd(plain, target)
+        cap = os.path.getsize(target) + 500
+        with ObservatoryStore(self.db) as store:
+            from agent_observatory import collector
+
+            real = collector.load_source_data
+            calls = []
+
+            def counting(*args, **kwargs):
+                calls.append(args)
+                return real(*args, **kwargs)
+
+            with mock.patch.object(collector, "load_source_data", counting):
+                first = self.collect(store, max_source_bytes=cap, debounce_seconds=0)
+                second = self.collect(store, max_source_bytes=cap)
+                third = self.collect(store, max_source_bytes=cap)
+        self.assertEqual(first.by_status, {"deferred": 1})
+        self.assertEqual(second.by_status, {"deferred": 1})
+        self.assertEqual(third.by_status, {"deferred": 1})
+        self.assertEqual(len(calls), 1, "unchanged oversized stream was re-read")
+
+    @unittest.skipUnless(shutil.which("zstd"), "zstd binary is not available")
+    def test_cap_deferral_refunds_the_per_run_slot(self):
+        # Finding 3: a stream that expands past the cap imports nothing and must
+        # not consume a per-run slot, so a healthy source sorted behind it still
+        # imports in the same pass instead of being wedged forever.
+        big_dir = os.path.join(self.root, ".dsh", "sessions", "aaa-big")
+        ok_dir = os.path.join(self.root, ".dsh", "sessions", "zzz-ok")
+        os.makedirs(big_dir)
+        os.makedirs(ok_dir)
+        plain = os.path.join(self.tmp, "big.jsonl")
+        with open(plain, "w", encoding="utf-8") as handle:
+            handle.write(
+                '{"type":"user/message","seq":1,"time":1790000000,"data":{"content":'
+                '[{"type":"text","text":"' + "x" * 200_000 + '"}]}}\n'
+            )
+        _compress_zstd(plain, os.path.join(big_dir, "session.v3.jsonl.zstd"))
+        _compress_zstd(
+            os.path.join(HERE, "fixtures", "adapters", "dsh", "sample.jsonl"),
+            os.path.join(ok_dir, "session.v3.jsonl.zstd"),
+        )
+        with ObservatoryStore(self.db) as store:
+            run = self.collect(
+                store, max_source_bytes=10_000, max_sources_per_run=1, debounce_seconds=0
+            )
+            healthy = store.conn.execute(
+                "SELECT status FROM collector_sources WHERE path LIKE ?", ("%zzz-ok%",)
+            ).fetchone()
+        self.assertEqual(run.by_status, {"deferred": 1, "imported": 1}, run.by_status)
+        self.assertEqual(healthy["status"], "imported")
+
+    def test_schema_migration_tolerates_a_concurrent_duplicate_column(self):
+        # Finding 4: two first-start processes can both pass the column check and
+        # both ALTER; the loser must degrade to the existing column, not crash.
+        with ObservatoryStore(self.db) as store:
+            ensure_collector_schema(store.conn)
+
+            class _StaleColumns:
+                """Report the pre-migration column set while forwarding DDL."""
+
+                def __init__(self, conn):
+                    self._conn = conn
+
+                def execute(self, sql, *args):
+                    if sql.startswith("PRAGMA table_info"):
+                        return [{"name": "realpath"}, {"name": "source_id"}]
+                    return self._conn.execute(sql, *args)
+
+            # The real columns already exist, so every additive ALTER this stale
+            # column set provokes is a lost race and must be tolerated.
+            ensure_collector_schema(_StaleColumns(store.conn))
+            names = {row["name"] for row in store.conn.execute("PRAGMA table_info(collector_sources)")}
+        self.assertIn("pending_since", names)
+        self.assertIn("deferral_terminal", names)
 
     def test_kill_switch_file_and_env_stop_collection(self):
         self.claude_source()

@@ -19,12 +19,16 @@ Guarantees:
   work (``deferred`` with a reason) rather than dropping it. At least one
   changed source makes progress per run, so a byte cap cannot wedge the
   backlog; a per-source cap keeps files too large to parse in memory out
-  entirely, visible as ``deferred``.
+  entirely, visible as ``deferred``. A source deferred because of its own size
+  is retried only when its stat changes (or the cap is raised), so an oversized
+  compressed stream is not re-decompressed on every pass.
 * **Debounce.** A file modified within ``debounce_seconds`` is still being
   written; it is ``debounced`` and picked up on a later run. A file that never
   goes quiet is read anyway once ``max_debounce_seconds`` have passed since its
   pending change was first seen; the adapters hold back a partial trailing line,
-  so a live transcript is collected incrementally.
+  so a live transcript is collected incrementally. A replacement or truncation
+  at the same path is a *new* change and starts a fresh clock, so an expired
+  clock is never inherited by a file written moments ago.
 * **Kill switch.** When the switch file exists (or the environment variable
   :data:`KILL_SWITCH_ENV` is ``1``) collection and draining stop without
   touching the city.
@@ -44,6 +48,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sqlite3
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -143,7 +148,13 @@ _COLLECTOR_SCHEMA = (
         first_seen_at REAL NOT NULL,
         last_seen_at REAL NOT NULL,
         last_imported_at REAL,
-        pending_since REAL
+        pending_since REAL,
+        pending_raw_size INTEGER,
+        pending_mtime REAL,
+        pending_dev INTEGER,
+        pending_ino INTEGER,
+        deferral_terminal INTEGER,
+        deferral_cap INTEGER
     )
     """,
     """
@@ -183,11 +194,30 @@ def ensure_collector_schema(conn: Any) -> None:
 
     for statement in _COLLECTOR_SCHEMA:
         conn.execute(statement)
-    # ``pending_since`` was added after the first M4 release; add it in place for
-    # databases created by the earlier schema rather than rebuilding the table.
+    # ``pending_since``, the stat anchor that qualifies it and the
+    # terminal-deferral marker were added after the first M4 release; add them in
+    # place for databases created by the earlier schema rather than rebuilding
+    # the table. Two processes can race this migration before the advisory locks
+    # are taken (callers run ``ensure_collector_schema`` first), so a duplicate
+    # column error means the other process already added it: degrade to the
+    # existing column instead of crashing the loser of the race.
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(collector_sources)")}
-    if "pending_since" not in columns:
-        conn.execute("ALTER TABLE collector_sources ADD COLUMN pending_since REAL")
+    for name, column_type in (
+        ("pending_since", "REAL"),
+        ("pending_raw_size", "INTEGER"),
+        ("pending_mtime", "REAL"),
+        ("pending_dev", "INTEGER"),
+        ("pending_ino", "INTEGER"),
+        ("deferral_terminal", "INTEGER"),
+        ("deferral_cap", "INTEGER"),
+    ):
+        if name in columns:
+            continue
+        try:
+            conn.execute(f"ALTER TABLE collector_sources ADD COLUMN {name} {column_type}")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
 
 # -- configuration ---------------------------------------------------------
@@ -399,8 +429,8 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
                 _save_source(store, row, "unreadable", f"cannot stat source: {exc}", run)
                 continue
 
-            if _stat_unchanged(prev, stat):
-                if prev["status"] in {"error", "unreadable"}:
+            if _stat_unchanged(prev, stat, config.max_source_bytes):
+                if prev["status"] in {"error", "unreadable", "deferred"}:
                     _save_source(store, row, prev["status"], prev["reason"], run)
                 else:
                     _save_source(store, row, "unchanged", "size and mtime match the checkpoint", run)
@@ -408,10 +438,22 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
             # Record the observed stat so lag is measurable while the file waits.
             # A waiting status is never ``unchanged``-eligible, and generation
             # decisions use the last imported content hash, not this stat. The
-            # starvation clock runs from when this pending change was first
-            # observed, not from the last import, so a file that was quiet for
-            # longer than max_debounce is not read the instant it is written.
-            pending_since = _pending_change_since(prev, now)
+            # starvation clock runs from when *this* pending change was first
+            # observed, not from the last import and not from an earlier, already
+            # expired change: a file that was quiet for longer than max_debounce
+            # is not read the instant it is written again.
+            pending_since, continues = _pending_change_since(prev, stat, now)
+            if not continues:
+                # Anchor the clock to the stat it started on. A later pass only
+                # inherits it while the observed file still looks like the same
+                # in-progress change (same file, not truncated): a replacement
+                # after the clock expired starts over and is debounced.
+                row.update(
+                    pending_raw_size=stat.st_size,
+                    pending_mtime=stat.st_mtime,
+                    pending_dev=stat.st_dev,
+                    pending_ino=stat.st_ino,
+                )
             row.update(raw_size=stat.st_size, mtime=stat.st_mtime, pending_since=pending_since)
             quiet_for = now - stat.st_mtime
             starved = now - pending_since >= config.max_debounce_seconds
@@ -426,12 +468,18 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
                 continue
             deferral = _deferral_reason(store, config, processed, run.bytes_read, stat.st_size)
             if deferral is not None:
-                _save_source(store, row, "deferred", deferral, run)
+                reason, terminal = deferral
+                # A size-cap deferral is intrinsic to the source, so it is
+                # retried only when the stat changes (or the cap is raised); a
+                # budget deferral is retried on the next run.
+                row["deferral_terminal"] = 1 if terminal else 0
+                row["deferral_cap"] = config.max_source_bytes if terminal else None
+                _save_source(store, row, "deferred", reason, run)
                 continue
 
             processed += 1
             run.bytes_read += stat.st_size
-            _import_source(
+            refunded = _import_source(
                 store,
                 context,
                 source,
@@ -444,6 +492,13 @@ def _collect_locked(store: ObservatoryStore, config: CollectorConfig, run: Colle
                 config.enqueue,
                 config.max_source_bytes,
             )
+            if refunded:
+                # A compressed stream that expands past the cap imported
+                # nothing and must not consume a per-run slot or byte budget:
+                # otherwise an oversized source could wedge every healthy source
+                # sorted behind it.
+                processed -= 1
+                run.bytes_read -= stat.st_size
 
         for record in unreadable:
             realpath = str(record.get("realpath") or record.get("path"))
@@ -478,25 +533,32 @@ def _deferral_reason(
     processed: int,
     bytes_read: int,
     size: int,
-) -> str | None:
+) -> tuple[str, bool] | None:
+    """Return ``(reason, terminal)`` when this source must wait, else ``None``.
+
+    ``terminal`` marks a deferral that is intrinsic to the source's own size:
+    the work cannot succeed until the file changes, so it is retried only when
+    the stat changes rather than on every pass.
+    """
+
     if config.max_db_bytes is not None and store.path != ":memory:":
         with contextlib.suppress(OSError):
             db_size = os.path.getsize(store.path)
             if db_size >= config.max_db_bytes:
-                return f"projection size {db_size} bytes reached the storage cap {config.max_db_bytes}"
+                return f"projection size {db_size} bytes reached the storage cap {config.max_db_bytes}", False
     # Adapters parse a whole source in memory (peak RSS is several times the
     # file size), so an oversized file waits for a streaming reader instead of
     # riding the first-source exemption below.
     if config.max_source_bytes is not None and size > config.max_source_bytes:
-        return f"source is {size} bytes, above the per-source cap {config.max_source_bytes}"
+        return f"source is {size} bytes, above the per-source cap {config.max_source_bytes}", True
     # The first changed source always proceeds so one large file cannot wedge
     # the backlog behind a byte cap it alone exceeds.
     if processed == 0:
         return None
     if config.max_sources_per_run is not None and processed >= config.max_sources_per_run:
-        return f"per-run source cap reached ({processed}/{config.max_sources_per_run})"
+        return f"per-run source cap reached ({processed}/{config.max_sources_per_run})", False
     if config.max_bytes_per_run is not None and bytes_read + size > config.max_bytes_per_run:
-        return f"per-run byte cap would be exceeded ({bytes_read + size}/{config.max_bytes_per_run})"
+        return f"per-run byte cap would be exceeded ({bytes_read + size}/{config.max_bytes_per_run})", False
     return None
 
 
@@ -512,24 +574,35 @@ def _import_source(
     touched: set[tuple[str, str, str, str]],
     enqueue: bool = True,
     max_source_bytes: int | None = None,
-) -> None:
+) -> bool:
+    """Import one changed source; return whether the caller must refund its budget.
+
+    A :class:`SourceSizeExceeded` deferral imported nothing and read only up to
+    the cap, so the caller rolls back the per-run slot and byte charge.
+    """
+
     try:
         adapter, data, digest = load_source_data(
             source.path, provider=source.provider, max_bytes=max_source_bytes
         )
     except SourceSizeExceeded as exc:
         # A compressed source can expand past the cap even when its st_size is
-        # small. It is deferred, not failed, so it stays visible and unread.
+        # small. It is deferred, not failed, so it stays visible and unread. The
+        # deferral is terminal for the current stat: an unchanged oversized
+        # stream is not re-read and re-decompressed on every pass, while a later
+        # change still retries it.
+        row["deferral_terminal"] = 1
+        row["deferral_cap"] = max_source_bytes
         _save_source(store, row, "deferred", str(exc), run)
-        return
+        return True
     except AdapterError as exc:
         _save_source(store, row, "unreadable", str(exc), run)
-        return
+        return False
     except OSError as exc:
         # I/O trouble may clear on its own: drop the stat so the next run retries.
         row.update(mtime=None)
         _save_source(store, row, "unreadable", str(exc), run)
-        return
+        return False
 
     manifest_prev = None
     if prev and prev.get("content_sha256"):
@@ -558,7 +631,7 @@ def _import_source(
         records = validated_records(result.records, source.path, result)
     except AdapterError as exc:
         _save_source(store, row, "error", str(exc), run)
-        return
+        return False
 
     spool_path = os.path.join(spool_dir, f"{row['source_id']}.jsonl")
     try:
@@ -568,7 +641,7 @@ def _import_source(
         # A store-side failure says nothing about the file: always retry it.
         row.update(mtime=None)
         _save_source(store, row, "error", f"import failed: {exc}", run)
-        return
+        return False
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(spool_path)
@@ -593,6 +666,8 @@ def _import_source(
         adapter_errors=len(result.errors),
         last_imported_at=row["last_seen_at"],
         pending_since=None,
+        deferral_terminal=0,
+        deferral_cap=None,
     )
     reason = f"{change} generation {generation}: {imported.inserted} new, {imported.duplicates} duplicate events"
     if imported.skipped_conflicts:
@@ -600,33 +675,76 @@ def _import_source(
     if result.partial_trailing_line:
         reason += "; partial trailing line held for the next pass"
     _save_source(store, row, "imported", reason, run)
+    return False
 
 
-def _stat_unchanged(prev: dict[str, Any] | None, stat: os.stat_result) -> bool:
-    return (
-        prev is not None
-        and prev.get("status") in _STAT_SKIP_STATUSES
-        and prev.get("raw_size") == stat.st_size
-        and prev.get("mtime") == stat.st_mtime
-    )
+def _stat_unchanged(
+    prev: dict[str, Any] | None, stat: os.stat_result, max_source_bytes: int | None
+) -> bool:
+    if prev is None:
+        return False
+    if prev.get("raw_size") != stat.st_size or prev.get("mtime") != stat.st_mtime:
+        return False
+    if prev.get("status") in _STAT_SKIP_STATUSES:
+        return True
+    # A deferred source whose own size is the obstacle (for example a .zstd
+    # stream that expands past the cap) is stat-qualified: an unchanged stream
+    # is not re-read and re-decompressed on every pass. Raising the cap retries
+    # it because the recorded cap no longer matches.
+    if prev.get("status") == "deferred" and prev.get("deferral_terminal"):
+        return prev.get("deferral_cap") == max_source_bytes
+    return False
 
 
-def _pending_change_since(prev: dict[str, Any] | None, now: float) -> float:
-    """Return when the change currently on disk was first observed.
+def _pending_change_since(
+    prev: dict[str, Any] | None, stat: os.stat_result, now: float
+) -> tuple[float, bool]:
+    """Return ``(pending_since, continues)`` for the change on disk now.
 
     A change is pending from the first pass that sees it until it is imported.
     The starvation clock must run from that moment, not from ``first_seen_at``
     or ``last_imported_at``: a file that has been quiet for a long time would
     otherwise look starved the instant it was written again and be read
-    mid-write. A pass that already held the same pending change keeps the
-    original clock; any other status starts a fresh one.
+    mid-write.
+
+    A pass that observes a *continuation* of the same pending change keeps the
+    original clock, so a live transcript is still read after ``max_debounce``
+    without waiting for quiet. A replacement or truncation is a new change and
+    starts a fresh clock: without that, a source deferred long ago (its clock
+    already past ``max_debounce``) would be read the instant a fresh file
+    appeared at its path.
     """
 
     if prev is not None and prev.get("status") in _PENDING_CHANGE_STATUSES:
         pending_since = prev.get("pending_since")
-        if pending_since is not None:
-            return pending_since
-    return now
+        if pending_since is not None and _continues_pending_change(prev, stat):
+            return pending_since, True
+    return now, False
+
+
+def _continues_pending_change(prev: dict[str, Any], stat: os.stat_result) -> bool:
+    """Whether *stat* looks like the same pending change the clock started on.
+
+    Growth (an append) continues; a different file identity, a shrink or an
+    mtime that moved backwards is a new change. The anchor is the stat captured
+    when ``pending_since`` was set; rows written before the anchor existed are
+    treated as new changes so a stale clock can never be inherited.
+    """
+
+    anchor_size = prev.get("pending_raw_size")
+    if anchor_size is None:
+        return False
+    anchor_dev = prev.get("pending_dev")
+    anchor_ino = prev.get("pending_ino")
+    if anchor_dev is not None and anchor_ino is not None and stat.st_ino:
+        if (anchor_dev, anchor_ino) != (stat.st_dev, stat.st_ino):
+            return False
+    if stat.st_size < anchor_size:
+        return False
+    anchor_mtime = prev.get("pending_mtime")
+    if anchor_mtime is not None and stat.st_mtime < anchor_mtime:
+        return False
+    return True
 
 
 def _base_row(
@@ -652,6 +770,12 @@ def _base_row(
         "adapter_errors": None,
         "last_imported_at": None,
         "pending_since": None,
+        "pending_raw_size": None,
+        "pending_mtime": None,
+        "pending_dev": None,
+        "pending_ino": None,
+        "deferral_terminal": None,
+        "deferral_cap": None,
     }
     row.update(provider=provider, root=root, path=path, last_seen_at=now)
     return row
@@ -678,6 +802,12 @@ _SOURCE_COLUMNS = (
     "last_seen_at",
     "last_imported_at",
     "pending_since",
+    "pending_raw_size",
+    "pending_mtime",
+    "pending_dev",
+    "pending_ino",
+    "deferral_terminal",
+    "deferral_cap",
 )
 
 

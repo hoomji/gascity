@@ -492,8 +492,8 @@ reason:
 | --- | --- |
 | `imported` | Read this pass; the reason names `new`/`appended`/`rewritten`, the generation and new/duplicate event counts. |
 | `unchanged` | Size and mtime match the checkpoint; not re-read. |
-| `debounced` | Modified within `--debounce-seconds`; read on a later pass. A file that never goes quiet is read anyway after `--max-debounce-seconds` since the pending change was first seen. |
-| `deferred` | A per-run source/byte cap, the per-source cap or the projection storage cap was reached. The work waits; it is not dropped. |
+| `debounced` | Modified within `--debounce-seconds`; read on a later pass. A file that never goes quiet is read anyway after `--max-debounce-seconds` since the pending change was first seen; a replacement or truncation at the same path starts a fresh clock. |
+| `deferred` | A per-run source/byte cap, the per-source cap or the projection storage cap was reached. The work waits; it is not dropped. A source deferred because of its own size is retried when its stat changes or the cap is raised, so an oversized `.zstd` stream is not re-read and re-decompressed every pass. |
 | `error` | The adapter or import refused the source; the reason carries `path:line`. |
 | `unreadable` | The file or directory could not be read or listed. |
 | `unsupported` | A known provider without an adapter (OpenCode, pi). |

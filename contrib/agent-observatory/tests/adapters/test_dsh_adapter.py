@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import unittest
 from unittest import mock
 
@@ -367,6 +368,36 @@ class DshAdapterTest(unittest.TestCase):
             handle.write(b"this is not a zstd stream")
         with self.assertRaises(AdapterError):
             read_source(path, provider="dsh", context=support.CONTEXT)
+
+    def test_binary_reader_drains_stderr_so_it_cannot_deadlock(self):
+        # Finding 5: the stub writes far more than a pipe buffer to stderr after
+        # flushing a little stdout. A reader that only drains stderr after
+        # wait() blocks forever on stdout while the child blocks on stderr.
+        stub = os.path.join(self.tmp.name, "noisy-zstd")
+        with open(stub, "w", encoding="utf-8") as handle:
+            handle.write(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stdout.buffer.write(b'hello')\n"
+                "sys.stdout.buffer.flush()\n"
+                "sys.stderr.buffer.write(b'E' * (512 * 1024))\n"
+                "sys.stderr.buffer.flush()\n"
+            )
+        os.chmod(stub, 0o755)
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            try:
+                result["data"] = dsh_module._decompress_zstd_binary(stub, b"raw", "x.zstd", None)
+            except BaseException as exc:  # noqa: BLE001 - surfaced through the assert
+                result["error"] = exc
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=20)
+        self.assertFalse(worker.is_alive(), "binary reader blocked on stderr backpressure")
+        self.assertNotIn("error", result, result.get("error"))
+        self.assertEqual(result.get("data"), b"hello")
 
 
 if __name__ == "__main__":

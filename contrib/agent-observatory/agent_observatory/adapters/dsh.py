@@ -106,13 +106,20 @@ def _looks_like_dsh_transcript(path: Path) -> bool:
     return False
 
 
+# Keep only a bounded prefix of a child's stderr for the failure message; the
+# reader must still drain the whole pipe so a chatty child cannot block on it.
+_STDERR_PREFIX_BYTES = 64 * 1024
+
+
 def _decompress_zstd_binary(binary: str, raw: bytes, source_path: str, max_bytes: int | None) -> bytes:
     """Decompress *raw* with the ``zstd`` binary, bounded by *max_bytes*.
 
     The child's stdout is read in chunks and the process is killed the moment the
     logical output passes the cap, so a small compressed stream cannot expand
-    into unbounded memory. A helper thread drains stdin so neither pipe can
-    deadlock the other.
+    into unbounded memory. Helper threads drain stdin and stderr: a child that
+    fills the stderr pipe would otherwise block on write while stdout never
+    EOFs, hanging the read loop forever (and, in the collector, holding the
+    projection lock until the process is killed).
     """
 
     process = subprocess.Popen(
@@ -133,8 +140,29 @@ def _decompress_zstd_binary(binary: str, raw: bytes, source_path: str, max_bytes
                 with contextlib.suppress(OSError):
                     process.stdin.close()
 
+    stderr_chunks: list[bytes] = []
+    stderr_bytes = 0
+
+    def drain_stderr() -> None:
+        nonlocal stderr_bytes
+        if process.stderr is None:
+            return
+        try:
+            while True:
+                chunk = process.stderr.read(65536)
+                if not chunk:
+                    break
+                if stderr_bytes < _STDERR_PREFIX_BYTES:
+                    keep = chunk[: _STDERR_PREFIX_BYTES - stderr_bytes]
+                    stderr_chunks.append(keep)
+                    stderr_bytes += len(keep)
+        except (OSError, ValueError):
+            pass
+
     writer = threading.Thread(target=feed, daemon=True)
     writer.start()
+    stderr_reader = threading.Thread(target=drain_stderr, daemon=True)
+    stderr_reader.start()
     limit = None if max_bytes is None else max_bytes + 1
     chunks: list[bytes] = []
     total = 0
@@ -155,10 +183,8 @@ def _decompress_zstd_binary(binary: str, raw: bytes, source_path: str, max_bytes
     finally:
         writer.join(timeout=5)
         process.wait()
-    stderr = b""
-    if process.stderr is not None:
-        with contextlib.suppress(OSError):
-            stderr = process.stderr.read()
+        stderr_reader.join(timeout=5)
+    stderr = b"".join(stderr_chunks)
     for stream in (process.stdout, process.stderr):
         if stream is not None:
             with contextlib.suppress(OSError):
