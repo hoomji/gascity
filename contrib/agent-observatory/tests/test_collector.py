@@ -7,27 +7,34 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 import support  # noqa: F401  (puts the package root on sys.path)
 
 from agent_observatory.cli import main
 from agent_observatory.collector import (
+    DEFAULT_MAX_SOURCE_BYTES,
     KILL_SWITCH_ENV,
     CollectorConfig,
     _collector_lock,
+    _drain_lock,
     collect_once,
     collect_watch,
     collector_status,
     drain_queue,
     enqueue_sessions,
+    ensure_collector_schema,
     metadata_state,
     set_kill_switch,
+    text_state,
 )
 from agent_observatory.errors import ObservatoryError
 from agent_observatory.inventory import SourceRoot
+from agent_observatory.jev import REQUEST_BYTE_CAP
 from agent_observatory.store import ObservatoryStore
 from agent_observatory.taxonomy import load_taxonomy
 from agent_observatory.transport import Budget, ClassifyResult, TransportConfig, TransportError
@@ -47,6 +54,21 @@ NO_ENV: dict[str, str] = {}
 
 def _later(seconds: float = 3600.0):
     return lambda: time.time() + seconds
+
+
+def _compress_zstd(source: str, target: str) -> None:
+    """Compress *source* to *target* with the ``zstd`` binary, or skip."""
+
+    binary = shutil.which("zstd")
+    if binary is None:
+        raise unittest.SkipTest("zstd binary is not available")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(source, "rb") as reader, open(target, "wb") as writer:
+        process = subprocess.run(
+            [binary, "-q", "-c"], stdin=reader, stdout=writer, stderr=subprocess.PIPE, check=False
+        )
+    if process.returncode != 0:
+        raise RuntimeError(process.stderr.decode("utf-8", "replace"))
 
 
 class CollectorTestCase(unittest.TestCase):
@@ -210,6 +232,82 @@ class CollectTests(CollectorTestCase):
             run = self.collect(store, clock=lambda: start + 101, max_debounce_seconds=60)
         self.assertEqual(run.by_status, {"imported": 1})
 
+    def test_debounce_clock_starts_when_the_change_was_first_seen(self):
+        # A file quiet for longer than max_debounce, then written once, must be
+        # debounced: the starvation clock runs from the first sighting of the
+        # pending change, not from the last import.
+        path = self.claude_source()
+        start = 1_000_000.0
+        with ObservatoryStore(self.db) as store:
+            os.utime(path, (start, start))
+            run = self.collect(store, clock=lambda: start, debounce_seconds=0)
+            self.assertEqual(run.by_status, {"imported": 1})
+            events = store.event_count()
+            os.utime(path, (start + 10_000, start + 10_000))
+            run = self.collect(
+                store, clock=lambda: start + 10_000, debounce_seconds=30, max_debounce_seconds=600
+            )
+            self.assertEqual(store.event_count(), events)
+            reason = self.statuses(store)["sess.jsonl"][1]
+        self.assertEqual(run.by_status, {"debounced": 1})
+        self.assertIn("waits for", reason)
+
+    def test_pending_clock_resets_when_the_source_is_replaced(self):
+        # Finding 1: a deferred source's starvation clock must not carry over to
+        # a *different* change. A file that replaces an oversized one long after
+        # the clock expired is a new change and must be debounced, not imported
+        # mid-write the instant it appears.
+        path = self.claude_source()
+        start = 1_000_000.0
+        with ObservatoryStore(self.db) as store:
+            os.utime(path, (start, start))
+            run = self.collect(store, clock=lambda: start, debounce_seconds=0, max_source_bytes=100)
+            self.assertEqual(run.by_status, {"deferred": 1})
+            # Replace the oversized transcript with a fresh, small one, then run
+            # the next pass 5s later while the old clock is far past max_debounce.
+            replaced = start + 10_000
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(EXTRA_LINE)
+            os.utime(path, (replaced, replaced))
+            run = self.collect(
+                store,
+                clock=lambda: replaced + 5,
+                debounce_seconds=30,
+                max_debounce_seconds=600,
+            )
+            status, reason = self.statuses(store)["sess.jsonl"]
+        self.assertEqual(run.by_status, {"debounced": 1})
+        self.assertEqual(status, "debounced")
+        self.assertIn("waits for", reason)
+
+    def test_pending_clock_continues_only_for_the_same_change(self):
+        # The anchor decides continuation: growth of the same file keeps the
+        # clock (so a live transcript still starves), a truncation starts over.
+        from agent_observatory.collector import _pending_change_since
+
+        path = os.path.join(self.tmp, "anchor.jsonl")
+        with open(path, "wb") as handle:
+            handle.write(b"x" * 100)
+        anchor = os.stat(path)
+        start = 1_000.0
+        prev = {
+            "status": "deferred",
+            "pending_since": start,
+            "pending_raw_size": anchor.st_size,
+            "pending_mtime": anchor.st_mtime,
+            "pending_dev": anchor.st_dev,
+            "pending_ino": anchor.st_ino,
+        }
+        self.assertEqual(_pending_change_since(prev, anchor, start + 5_000), (start, True))
+        with open(path, "ab") as handle:
+            handle.write(b"y" * 10)
+        grown = os.stat(path)
+        self.assertEqual(_pending_change_since(prev, grown, start + 5_000), (start, True))
+        with open(path, "wb") as handle:
+            handle.write(b"z")
+        shrunk = os.stat(path)
+        self.assertEqual(_pending_change_since(prev, shrunk, start + 5_000), (start + 5_000, False))
+
     def test_source_cap_defers_but_first_source_always_progresses(self):
         self.claude_source("a.jsonl")
         self.claude_source("b.jsonl")
@@ -254,6 +352,119 @@ class CollectTests(CollectorTestCase):
         self.assertEqual(run.by_status, {"deferred": 1})
         self.assertIn("per-source cap", reason)
 
+    def test_max_source_bytes_default_is_a_real_cap(self):
+        self.assertIsNotNone(self.config().max_source_bytes)
+        self.assertEqual(self.config().max_source_bytes, DEFAULT_MAX_SOURCE_BYTES)
+
+    def test_compressed_source_deferred_when_decompressed_exceeds_cap(self):
+        # The compressed st_size is tiny, but the .zstd stream expands well past
+        # the cap. The bounded reader must defer it without materializing it.
+        session_dir = os.path.join(self.root, ".dsh", "sessions", "--tmp--", "session-big")
+        os.makedirs(session_dir)
+        plain = os.path.join(self.tmp, "big.jsonl")
+        with open(plain, "w", encoding="utf-8") as handle:
+            handle.write(
+                '{"type":"user/message","seq":1,"time":1790000000,"data":{"content":'
+                '[{"type":"text","text":"' + "x" * 200_000 + '"}]}}\n'
+            )
+        target = os.path.join(session_dir, "session.v3.jsonl.zstd")
+        _compress_zstd(plain, target)
+        self.assertLess(os.path.getsize(target), 5_000)
+        with ObservatoryStore(self.db) as store:
+            run = self.collect(store, max_source_bytes=1_000)
+            reason = self.statuses(store)["session.v3.jsonl.zstd"][1]
+            self.assertEqual(store.event_count(), 0)
+        self.assertEqual(run.by_status, {"deferred": 1})
+        self.assertIn("per-source cap", reason)
+
+    @unittest.skipUnless(shutil.which("zstd"), "zstd binary is not available")
+    def test_unchanged_oversized_stream_is_not_re_decompressed(self):
+        # Finding 2: once a .zstd stream is known to expand past the cap, an
+        # unchanged stat must not be read and re-decompressed on every pass.
+        session_dir = os.path.join(self.root, ".dsh", "sessions", "--tmp--", "session-big")
+        os.makedirs(session_dir)
+        plain = os.path.join(self.tmp, "big.jsonl")
+        with open(plain, "w", encoding="utf-8") as handle:
+            handle.write(
+                '{"type":"user/message","seq":1,"time":1790000000,"data":{"content":'
+                '[{"type":"text","text":"' + "x" * 200_000 + '"}]}}\n'
+            )
+        target = os.path.join(session_dir, "session.v3.jsonl.zstd")
+        _compress_zstd(plain, target)
+        cap = os.path.getsize(target) + 500
+        with ObservatoryStore(self.db) as store:
+            from agent_observatory import collector
+
+            real = collector.load_source_data
+            calls = []
+
+            def counting(*args, **kwargs):
+                calls.append(args)
+                return real(*args, **kwargs)
+
+            with mock.patch.object(collector, "load_source_data", counting):
+                first = self.collect(store, max_source_bytes=cap, debounce_seconds=0)
+                second = self.collect(store, max_source_bytes=cap)
+                third = self.collect(store, max_source_bytes=cap)
+        self.assertEqual(first.by_status, {"deferred": 1})
+        self.assertEqual(second.by_status, {"deferred": 1})
+        self.assertEqual(third.by_status, {"deferred": 1})
+        self.assertEqual(len(calls), 1, "unchanged oversized stream was re-read")
+
+    @unittest.skipUnless(shutil.which("zstd"), "zstd binary is not available")
+    def test_cap_deferral_refunds_the_per_run_slot(self):
+        # Finding 3: a stream that expands past the cap imports nothing and must
+        # not consume a per-run slot, so a healthy source sorted behind it still
+        # imports in the same pass instead of being wedged forever.
+        big_dir = os.path.join(self.root, ".dsh", "sessions", "aaa-big")
+        ok_dir = os.path.join(self.root, ".dsh", "sessions", "zzz-ok")
+        os.makedirs(big_dir)
+        os.makedirs(ok_dir)
+        plain = os.path.join(self.tmp, "big.jsonl")
+        with open(plain, "w", encoding="utf-8") as handle:
+            handle.write(
+                '{"type":"user/message","seq":1,"time":1790000000,"data":{"content":'
+                '[{"type":"text","text":"' + "x" * 200_000 + '"}]}}\n'
+            )
+        _compress_zstd(plain, os.path.join(big_dir, "session.v3.jsonl.zstd"))
+        _compress_zstd(
+            os.path.join(HERE, "fixtures", "adapters", "dsh", "sample.jsonl"),
+            os.path.join(ok_dir, "session.v3.jsonl.zstd"),
+        )
+        with ObservatoryStore(self.db) as store:
+            run = self.collect(
+                store, max_source_bytes=10_000, max_sources_per_run=1, debounce_seconds=0
+            )
+            healthy = store.conn.execute(
+                "SELECT status FROM collector_sources WHERE path LIKE ?", ("%zzz-ok%",)
+            ).fetchone()
+        self.assertEqual(run.by_status, {"deferred": 1, "imported": 1}, run.by_status)
+        self.assertEqual(healthy["status"], "imported")
+
+    def test_schema_migration_tolerates_a_concurrent_duplicate_column(self):
+        # Finding 4: two first-start processes can both pass the column check and
+        # both ALTER; the loser must degrade to the existing column, not crash.
+        with ObservatoryStore(self.db) as store:
+            ensure_collector_schema(store.conn)
+
+            class _StaleColumns:
+                """Report the pre-migration column set while forwarding DDL."""
+
+                def __init__(self, conn):
+                    self._conn = conn
+
+                def execute(self, sql, *args):
+                    if sql.startswith("PRAGMA table_info"):
+                        return [{"name": "realpath"}, {"name": "source_id"}]
+                    return self._conn.execute(sql, *args)
+
+            # The real columns already exist, so every additive ALTER this stale
+            # column set provokes is a lost race and must be tolerated.
+            ensure_collector_schema(_StaleColumns(store.conn))
+            names = {row["name"] for row in store.conn.execute("PRAGMA table_info(collector_sources)")}
+        self.assertIn("pending_since", names)
+        self.assertIn("deferral_terminal", names)
+
     def test_kill_switch_file_and_env_stop_collection(self):
         self.claude_source()
         with ObservatoryStore(self.db) as store:
@@ -289,6 +500,14 @@ class CollectTests(CollectorTestCase):
                 self.assertTrue(acquired)
                 run = self.collect(store)
         self.assertEqual(run.status, "locked")
+
+    def test_advisory_lock_keys_on_realpath_not_the_symlink_spelling(self):
+        link = os.path.join(self.tmp, "obs-link.db")
+        os.symlink(self.db, link)
+        with _collector_lock(link) as first:
+            self.assertTrue(first)
+            with _collector_lock(self.db) as second:
+                self.assertFalse(second)
 
     def test_config_validation(self):
         with self.assertRaises(ObservatoryError):
@@ -413,6 +632,41 @@ class QueueTests(CollectorTestCase):
         self.assertEqual(result.status, "stopped")
         self.assertEqual(self.queue()[0]["last_failure_class"], "transport_error")
 
+    def test_transport_error_charges_an_attempt_and_parks_after_max(self):
+        result, _ = self.drain([("raise", None)], max_attempts=1, retry_backoff_seconds=0)
+        self.assertEqual(result.status, "stopped")
+        item = self.queue()[0]
+        self.assertEqual(item["status"], "unknown")
+        self.assertEqual(item["attempts"], 1)
+        self.assertEqual(item["last_failure_class"], "transport_error")
+
+    def test_overlapping_drain_is_locked_out(self):
+        with _drain_lock(self.db) as acquired:
+            self.assertTrue(acquired)
+            result, calls = self.drain([("classified", None)])
+        self.assertEqual(result.status, "locked")
+        self.assertEqual(calls, [])
+        self.assertEqual(self.queue()[0]["status"], "pending")
+
+    def test_drain_request_byte_cap_is_charged_not_raised(self):
+        from agent_observatory.jev import REQUEST_BYTE_CAP
+
+        def oversized(store, key):
+            return {"state_kind": "session_metadata", "padding": "x" * (REQUEST_BYTE_CAP + 1)}
+
+        result, calls = self.drain(
+            [("classified", None)],
+            state_builder=oversized,
+            max_attempts=2,
+            retry_backoff_seconds=10,
+        )
+        self.assertEqual(calls, [])
+        item = self.queue()[0]
+        self.assertEqual(item["status"], "pending")
+        self.assertEqual(item["attempts"], 1)
+        self.assertEqual(item["last_failure_class"], "request_byte_cap")
+        self.assertEqual(result.retry_scheduled, 1)
+
     def test_changed_session_supersedes_stale_item(self):
         path = os.path.join(self.claude_dir, "sess.jsonl")
         with open(path, "a", encoding="utf-8") as handle:
@@ -439,6 +693,83 @@ class QueueTests(CollectorTestCase):
         self.assertGreater(state["events"], 0)
         _, calls = self.drain([("classified", None)])
         self.assertNotIn("Please fix the bug", json.dumps(calls[0].body))
+
+    def test_metadata_mode_keeps_raw_snapshot_identity(self):
+        key = self.store.session_keys()[0]
+        raw = self.store.session_snapshot(key)
+        result, calls = self.drain([("classified", None)])
+        self.assertEqual(result.items[0]["state_mode"], "metadata")
+        self.assertEqual(calls[0].snapshot_hash, raw)
+        self.assertEqual(result.items[0]["request_snapshot_hash"], raw)
+
+    def test_text_state_carries_redacted_transcript_text(self):
+        key = self.store.session_keys()[0]
+        state = text_state(self.store, key)
+        self.assertEqual(state["state_kind"], "session_transcript")
+        self.assertTrue(state["text_mode"]["enabled"])
+        self.assertTrue(state["text_mode"]["redacted"])
+        encoded = json.dumps(state)
+        self.assertIn("Please fix the bug", encoded)
+        self.assertIn("[REDACTED]", encoded)
+        self.assertNotIn("supersecretvalue", encoded)
+
+    def test_text_drain_sends_redacted_text_and_distinct_snapshot(self):
+        key = self.store.session_keys()[0]
+        raw = self.store.session_snapshot(key)
+        result, calls = self.drain([("classified", None)], state_mode="text")
+        self.assertEqual(result.attempted, 1)
+        request = calls[0]
+        body = json.dumps(request.body)
+        self.assertIn("Please fix the bug", body)
+        self.assertNotIn("supersecretvalue", body)
+        self.assertIn("[REDACTED]", body)
+        self.assertEqual(request.body["state"]["state_kind"], "session_transcript")
+        # Text mode is a distinct data scope: it must not share the metadata
+        # subject snapshot (which would collide in ``classifications``).
+        self.assertNotEqual(request.snapshot_hash, raw)
+        self.assertEqual(result.items[0]["state_mode"], "text")
+        self.assertEqual(result.items[0]["snapshot_hash"], raw)
+        self.assertEqual(result.items[0]["request_snapshot_hash"], request.snapshot_hash)
+
+    def test_text_mode_respects_the_request_byte_cap(self):
+        path = os.path.join(self.claude_dir, "big.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            for index in range(40):
+                handle.write(
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "uuid": f"u-big-{index}",
+                            "sessionId": "claude-sess-1",
+                            "session_id": "claude-parent-0",
+                            "timestamp": f"2026-09-21T11:00:{index:02d}.000Z",
+                            "message": {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": f"line-{index} api_key=supersecret{index} " + "x" * 4000,
+                                    }
+                                ],
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+        self.collect(self.store)
+        result, calls = self.drain([("classified", None)], state_mode="text")
+        self.assertEqual(result.attempted, 1)
+        request = calls[0]
+        self.assertLessEqual(request.byte_length, REQUEST_BYTE_CAP)
+        state = request.body["state"]
+        self.assertGreaterEqual(state["text_mode"]["request_dropped_excerpts"], 1)
+        self.assertLessEqual(len(state["excerpts"]), state["events"])
+        self.assertTrue(any("line-" in excerpt["text"] for excerpt in state["excerpts"]))
+        self.assertNotIn("supersecret", json.dumps(state))
+
+    def test_drain_rejects_unknown_state_mode(self):
+        with self.assertRaises(ObservatoryError):
+            self.drain([("classified", None)], state_mode="bogus")
 
     def test_enqueue_ignores_unknown_session(self):
         self.assertEqual(enqueue_sessions(self.store, [("c", "h", "p", "nope")]), (0, 0))
@@ -486,6 +817,14 @@ class StatusAndCliTests(CollectorTestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out.count('"status": "ok"'), 2)
 
+    def test_cli_collect_defaults_max_source_bytes(self):
+        from agent_observatory.cli import build_parser
+
+        args = build_parser().parse_args(
+            ["collect", "--db", self.db, "--root", self.root, "--city", "c", "--host", "h"]
+        )
+        self.assertEqual(args.max_source_bytes, DEFAULT_MAX_SOURCE_BYTES)
+
     def test_cli_queue_drain_requires_request_ceiling(self):
         code, _, err = self.run_cli("queue-drain", "--db", self.db)
         self.assertEqual(code, 1)
@@ -509,6 +848,18 @@ class StatusAndCliTests(CollectorTestCase):
         with ObservatoryStore(self.db) as store:
             row = store.conn.execute("SELECT status, attempts FROM collector_queue").fetchone()
         self.assertEqual((row["status"], row["attempts"]), ("pending", 0))
+
+    def test_cli_queue_drain_text_state_flag_opts_in(self):
+        self.claude_source()
+        common = ["--db", self.db, "--kill-switch", self.kill]
+        self.run_cli("collect", *common, "--root", self.root, "--city", "c", "--host", "h", "--debounce-seconds", "0")
+        saved = {name: os.environ.pop(name) for name in ("TYPESAFE_API_KEY", "JEV_API_KEY", "JEV_KEY_FILE") if name in os.environ}
+        self.addCleanup(os.environ.update, saved)
+        code, out, _ = self.run_cli("queue-drain", *common, "--max-requests", "1", "--text-state")
+        self.assertEqual(code, 1)  # no credential: execution outcome, not a crash
+        item = json.loads(out)["items"][0]
+        self.assertEqual(item["state_mode"], "text")
+        self.assertTrue(item["text_mode"]["enabled"])
 
 
 if __name__ == "__main__":

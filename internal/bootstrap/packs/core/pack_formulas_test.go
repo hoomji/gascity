@@ -1,12 +1,25 @@
 package core
 
 import (
+	"encoding/json"
+	"errors"
 	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 )
+
+// formulaRetry is the inline retry table a step may carry. It matters for
+// teardown work: max_attempts > 1 turns one refusal into repeated deletion
+// attempts and a hard_fail.
+type formulaRetry struct {
+	MaxAttempts int    `toml:"max_attempts"`
+	OnExhausted string `toml:"on_exhausted"`
+}
 
 // formulaFile is the subset of a formula TOML these tests inspect. Steps carry
 // the agent-facing instructions, so asserting on a step description is how the
@@ -14,9 +27,10 @@ import (
 type formulaFile struct {
 	Formula string `toml:"formula"`
 	Steps   []struct {
-		ID          string `toml:"id"`
-		Title       string `toml:"title"`
-		Description string `toml:"description"`
+		ID          string        `toml:"id"`
+		Title       string        `toml:"title"`
+		Description string        `toml:"description"`
+		Retry       *formulaRetry `toml:"retry"`
 	} `toml:"steps"`
 }
 
@@ -357,4 +371,519 @@ func TestMolScopedWorkResolvesRepoBeforeRemovingWorktree(t *testing.T) {
 	if guardAt > removeAt {
 		t.Error("cleanup-worktree runs rm -rf before the linked-worktree check; the check must gate the delete, not follow it")
 	}
+}
+
+// TestMolScopedWorkCleanupWorktreeNoOpAndSalvage pins the teardown hardening
+// that stops cleanup/teardown lanes from flooding the mayor with BLOCKED mail.
+//
+// A work bead with no work_dir is the normal outcome when a molecule never
+// created a worktree. The old snippet skipped its removal block silently, so
+// the lane went looking for another work_dir, found the cleanup bead's own
+// gc.work_dir -- the rig root, i.e. the shared main checkout -- and escalated
+// rather than closing. The step must instead state that this is a successful
+// no-op, must never consult its own gc.work_dir, and must not retry a refusal
+// into a hard_fail. It also has to salvage untracked *-report.md review
+// artifacts before removal; git worktree remove --force otherwise destroys the
+// only copy (see memory walled-lanes-strand-uncommitted-work).
+func TestMolScopedWorkCleanupWorktreeNoOpAndSalvage(t *testing.T) {
+	f := readFormula(t, "mol-scoped-work.toml")
+	step := formulaStep(t, f, "cleanup-worktree")
+
+	// An empty work_dir is an explicit success, not a refusal a lane can
+	// escalate into a BLOCKED mail.
+	if !strings.Contains(step, "successful no-op") && !strings.Contains(step, "SUCCESSFUL NO-OP") {
+		t.Error("cleanup-worktree must state that an empty work_dir on the work bead is a successful no-op")
+	}
+	if !strings.Contains(step, "nothing to remove") {
+		t.Error("cleanup-worktree must say there is nothing to remove on the no-op path")
+	}
+
+	// The fallback that caused the escalation: reading the cleanup bead's own
+	// gc.work_dir resolves to the rig root (the shared main checkout). The step
+	// must document that it never does this, and name what the fallback would
+	// resolve to.
+	if !strings.Contains(step, "fall back") {
+		t.Error("cleanup-worktree must document that it never falls back to its own gc.work_dir")
+	}
+	if !strings.Contains(step, "rig root") {
+		t.Error("cleanup-worktree must name the rig root as the path a fallback to its own gc.work_dir would resolve to")
+	}
+	if !strings.Contains(step, "shared main checkout") {
+		t.Error("cleanup-worktree must name the shared main checkout as what the own-work_dir fallback resolves to")
+	}
+
+	// A path this molecule did not create must never be force-deleted: only a
+	// linked worktree's .git is a file.
+	if !strings.Contains(step, `[ ! -f "$WORKTREE/.git" ]`) {
+		t.Error("cleanup-worktree must refuse a path that is not a linked worktree before any removal")
+	}
+
+	// Review artifacts live only in the worktree; removal must copy them out
+	// and name the destination.
+	if !strings.Contains(step, "*-report.md") {
+		t.Error("cleanup-worktree must salvage untracked *-report.md files before removing a worktree")
+	}
+	if !strings.Contains(step, "backups") {
+		t.Error("cleanup-worktree must copy salvaged reports to the city backups directory")
+	}
+	if !strings.Contains(step, "SALVAGED") {
+		t.Error("cleanup-worktree must report where salvaged reports went so the close reason can name the destination")
+	}
+	if !strings.Contains(step, "SALVAGE_FAILED") {
+		t.Error("cleanup-worktree must preserve the worktree when a report cannot be salvaged, instead of deleting the only copy")
+	}
+
+	// A FAILED body must not get a destructive removal: branch on the root
+	// outcome stamped by workflow-finalize and preserve the tree.
+	if !strings.Contains(step, "FAILED body") {
+		t.Error("cleanup-worktree must not fire a destructive removal on a FAILED body")
+	}
+	if !strings.Contains(step, "ROOT_OUTCOME") || !strings.Contains(step, "canceled") {
+		t.Error("cleanup-worktree must branch on the workflow root outcome (fail/canceled) before removing")
+	}
+
+	// A failed body leaves uncommitted work that exists only in the worktree;
+	// cleanup must preserve it rather than remove the tree.
+	if !strings.Contains(step, "uncommitted work") {
+		t.Error("cleanup-worktree must refuse to remove a worktree that still holds uncommitted work from a failed body")
+	}
+
+	// No retry after a refusal: max_attempts 3 turns one refusal into three
+	// deletion attempts and a hard_fail.
+	var cleanupRetry *formulaRetry
+	for _, s := range f.Steps {
+		if s.ID == "cleanup-worktree" {
+			cleanupRetry = s.Retry
+		}
+	}
+	if cleanupRetry == nil {
+		t.Fatal("cleanup-worktree must declare a retry spec")
+	}
+	if cleanupRetry.MaxAttempts != 1 {
+		t.Errorf("cleanup-worktree max_attempts = %d, want 1 (do not retry after a refusal)", cleanupRetry.MaxAttempts)
+	}
+}
+
+// cleanupConvoyID, cleanupWorkBead, and cleanupRootBead are the fixed identities
+// the executable cleanup test substitutes into the formula snippet.
+const (
+	cleanupConvoyID = "convoy-cleanup-test"
+	cleanupWorkBead = "gl-cleanup-work"
+	cleanupRootBead = "gl-cleanup-root"
+)
+
+// cleanupFakeGCBody is the dispatch body for the `gc` shim. fakeGCBin logs argv
+// and then runs it. The snippet only needs convoy status, bd show, and bd
+// update; each bd show reads the fixture for the requested bead id.
+const cleanupFakeGCBody = `case "$1 $2" in
+  "convoy status")
+    printf '{"children":[{"id":"%s"}]}\n' "$GC_FAKE_WORK_BEAD"
+    exit 0
+    ;;
+  "bd show")
+    cat "$GC_FAKE_BEAD_DIR/$3.json"
+    exit 0
+    ;;
+  "bd update")
+    exit 0
+    ;;
+esac
+printf 'fake gc: unexpected argv: %s\n' "$*" >&2
+exit 1
+`
+
+// cleanupFixture is one isolated execution of the cleanup-worktree snippet: a
+// real git repo plus linked worktree, a fake gc on PATH, and fixture bead JSON.
+type cleanupFixture struct {
+	t        *testing.T
+	root     string
+	repo     string
+	worktree string
+	beadDir  string
+	backups  string
+	binDir   string
+	gcLog    string
+	snippet  string
+}
+
+// requireCleanupTools skips (rather than fails) when the snippet's runtime
+// dependencies are unavailable, so the behavioral test does not turn a machine
+// without jq/bash/git into a red suite.
+func requireCleanupTools(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{"bash", "git", "jq"} {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skipf("%s is required to execute the cleanup snippet: %v", name, err)
+		}
+	}
+}
+
+// cleanupEnv merges overrides over the current environment, dropping any
+// inherited key an override owns so a live Gas City session's GC_* values
+// cannot leak into the snippet's fake gc.
+func cleanupEnv(overrides map[string]string) []string {
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, entry := range os.Environ() {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if _, overridden := overrides[key]; overridden {
+				continue
+			}
+		}
+		env = append(env, entry)
+	}
+	for key, value := range overrides {
+		env = append(env, key+"="+value)
+	}
+	return env
+}
+
+// runCleanupGit runs a git command in dir with a hermetic identity and no
+// ambient global/system config.
+func runCleanupGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = cleanupEnv(map[string]string{
+		"GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_CONFIG_GLOBAL":   os.DevNull,
+		"GIT_AUTHOR_NAME":     "cleanup test",
+		"GIT_AUTHOR_EMAIL":    "cleanup@example.invalid",
+		"GIT_COMMITTER_NAME":  "cleanup test",
+		"GIT_COMMITTER_EMAIL": "cleanup@example.invalid",
+	})
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+	}
+}
+
+// writeCleanupFile writes content, creating parent directories.
+func writeCleanupFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// cleanupSnippet extracts the bash block embedded in the cleanup-worktree step
+// and binds {{convoy_id}} to the fixed test convoy.
+func cleanupSnippet(t *testing.T) string {
+	t.Helper()
+	step := formulaStep(t, readFormula(t, "mol-scoped-work.toml"), "cleanup-worktree")
+	const fence = "```bash\n"
+	start := strings.Index(step, fence)
+	if start < 0 {
+		t.Fatal("cleanup-worktree step has no ```bash block")
+	}
+	rest := step[start+len(fence):]
+	end := strings.Index(rest, "```")
+	if end < 0 {
+		t.Fatal("cleanup-worktree ```bash block is not closed")
+	}
+	return strings.ReplaceAll(rest[:end], "{{convoy_id}}", cleanupConvoyID)
+}
+
+func newCleanupFixture(t *testing.T) *cleanupFixture {
+	t.Helper()
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runCleanupGit(t, repo, "-c", "init.defaultBranch=main", "init", "-q")
+	writeCleanupFile(t, filepath.Join(repo, "README.md"), "base\n")
+	runCleanupGit(t, repo, "add", "README.md")
+	runCleanupGit(t, repo, "commit", "-q", "-m", "base")
+
+	binDir, gcLog := fakeGCBin(t, cleanupFakeGCBody)
+	f := &cleanupFixture{
+		t:        t,
+		root:     root,
+		repo:     repo,
+		worktree: filepath.Join(repo, "worktrees", cleanupWorkBead),
+		beadDir:  filepath.Join(root, "beads"),
+		backups:  filepath.Join(root, "backups"),
+		binDir:   binDir,
+		gcLog:    gcLog,
+		snippet:  cleanupSnippet(t),
+	}
+	if err := os.MkdirAll(f.beadDir, 0o755); err != nil {
+		t.Fatalf("mkdir beads: %v", err)
+	}
+	if err := os.MkdirAll(f.backups, 0o755); err != nil {
+		t.Fatalf("mkdir backups: %v", err)
+	}
+	return f
+}
+
+// addWorktree creates the linked worktree at the exact path workspace-setup
+// uses: "$(pwd)/worktrees/<work-bead>".
+func (f *cleanupFixture) addWorktree() {
+	f.t.Helper()
+	runCleanupGit(f.t, f.repo, "worktree", "add", "--detach", f.worktree)
+}
+
+func (f *cleanupFixture) writeBead(id string, metadata map[string]string) {
+	f.t.Helper()
+	data, err := json.Marshal([]map[string]any{{"id": id, "status": "closed", "metadata": metadata}})
+	if err != nil {
+		f.t.Fatalf("marshal bead %s: %v", id, err)
+	}
+	if err := os.WriteFile(filepath.Join(f.beadDir, id+".json"), data, 0o644); err != nil {
+		f.t.Fatalf("write bead %s: %v", id, err)
+	}
+}
+
+// run executes the extracted snippet with the fake gc first on PATH.
+func (f *cleanupFixture) run() (string, int) {
+	f.t.Helper()
+	cmd := exec.Command("bash", "-c", f.snippet)
+	cmd.Dir = f.root
+	cmd.Env = cleanupEnv(map[string]string{
+		"PATH":                f.binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"GC_FAKE_WORK_BEAD":   cleanupWorkBead,
+		"GC_FAKE_BEAD_DIR":    f.beadDir,
+		"GC_CITY_BACKUPS":     f.backups,
+		"GC_ROOT_BEAD_ID":     "",
+		"GC_BEAD_ID":          "",
+		"GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_CONFIG_GLOBAL":   os.DevNull,
+	})
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return string(out), 0
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return string(out), exit.ExitCode()
+	}
+	f.t.Fatalf("run cleanup snippet: %v\n%s", err, out)
+	return "", -1
+}
+
+func (f *cleanupFixture) exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func (f *cleanupFixture) gcCalls() string {
+	f.t.Helper()
+	data, err := os.ReadFile(f.gcLog)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ""
+		}
+		f.t.Fatalf("read gc log: %v", err)
+	}
+	return string(data)
+}
+
+func (f *cleanupFixture) assertUnset() {
+	f.t.Helper()
+	if !strings.Contains(f.gcCalls(), "--unset-metadata work_dir") {
+		f.t.Errorf("teardown must clear work_dir on the work bead; calls:\n%s", f.gcCalls())
+	}
+}
+
+func (f *cleanupFixture) assertNoUnset() {
+	f.t.Helper()
+	if strings.Contains(f.gcCalls(), "--unset-metadata") {
+		f.t.Errorf("a preserved tree must keep work_dir so recovery can find it; calls:\n%s", f.gcCalls())
+	}
+}
+
+func (f *cleanupFixture) backup(name string) (string, bool) {
+	data, err := os.ReadFile(filepath.Join(f.backups, name))
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
+}
+
+// TestMolScopedWorkCleanupWorktreeExecutesSnippet closes the gap the string
+// assertions in TestMolScopedWorkCleanupWorktreeNoOpAndSalvage leave open: the
+// hardening lives in shell, so prose that is intact but behaviorally wrong (an
+// inverted outcome case, a cp to the wrong destination) still passed. This test
+// extracts the real snippet, runs it under bash against a real git repo, a
+// linked worktree, and a fake gc shim, and pins each branch:
+//
+//   - empty and already-gone work_dir are successful no-ops;
+//   - the rig root (a main checkout) and a foreign linked worktree are refused
+//     without deleting anything;
+//   - a failed body salvages reports and preserves the tree;
+//   - uncommitted non-report work preserves the tree;
+//   - a successful teardown salvages every report class (ignored, untracked,
+//     tracked-modified) without clobbering basename collisions, then removes
+//     the worktree.
+func TestMolScopedWorkCleanupWorktreeExecutesSnippet(t *testing.T) {
+	requireCleanupTools(t)
+
+	t.Run("empty work_dir is a successful no-op", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		f.writeBead(cleanupWorkBead, map[string]string{})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		if !strings.Contains(out, "successful no-op") || !strings.Contains(out, "nothing to remove") {
+			t.Errorf("empty work_dir must announce a successful no-op:\n%s", out)
+		}
+		f.assertNoUnset()
+	})
+
+	t.Run("already gone work_dir is a successful no-op", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		f.writeBead(cleanupWorkBead, map[string]string{"work_dir": f.worktree})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		if !strings.Contains(out, "already gone") {
+			t.Errorf("a work_dir whose directory is gone must be a successful no-op:\n%s", out)
+		}
+		f.assertUnset()
+	})
+
+	t.Run("rig root is refused without delete", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		f.writeBead(cleanupWorkBead, map[string]string{"work_dir": f.repo})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		if !strings.Contains(out, "not a linked worktree") {
+			t.Errorf("the rig root must be refused as a non-linked worktree:\n%s", out)
+		}
+		if !f.exists(filepath.Join(f.repo, ".git")) {
+			t.Error("refusal must not delete the main checkout")
+		}
+		f.assertNoUnset()
+	})
+
+	t.Run("foreign linked worktree is refused without delete", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		foreign := filepath.Join(f.root, "foreign", "linked")
+		if err := os.MkdirAll(filepath.Dir(foreign), 0o755); err != nil {
+			t.Fatalf("mkdir foreign parent: %v", err)
+		}
+		runCleanupGit(t, f.repo, "worktree", "add", "--detach", foreign)
+		f.writeBead(cleanupWorkBead, map[string]string{"work_dir": foreign})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		if !strings.Contains(out, "not the worktree this molecule created") {
+			t.Errorf("a foreign linked worktree must fail the ownership check:\n%s", out)
+		}
+		if !f.exists(foreign) {
+			t.Error("refusal must not delete a foreign linked worktree")
+		}
+		f.assertNoUnset()
+	})
+
+	t.Run("failed body salvages reports and preserves the tree", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		writeCleanupFile(t, filepath.Join(f.repo, ".gitignore"), "lens-report.md\n")
+		runCleanupGit(t, f.repo, "add", ".gitignore")
+		runCleanupGit(t, f.repo, "commit", "-q", "-m", "ignore lens reports")
+		f.addWorktree()
+		writeCleanupFile(t, filepath.Join(f.worktree, "lens-report.md"), "unreviewed lens\n")
+		f.writeBead(cleanupWorkBead, map[string]string{"work_dir": f.worktree, "gc.outcome": "fail"})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		if got, ok := f.backup("lens-report.md"); !ok || got != "unreviewed lens\n" {
+			t.Errorf("a failed body must salvage its ignored report, got %q ok=%v:\n%s", got, ok, out)
+		}
+		if !f.exists(f.worktree) {
+			t.Error("a failed body's worktree must be preserved")
+		}
+		f.assertNoUnset()
+	})
+
+	t.Run("failed workflow root preserves the tree", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		f.addWorktree()
+		f.writeBead(cleanupWorkBead, map[string]string{"work_dir": f.worktree, "gc.root_bead_id": cleanupRootBead})
+		f.writeBead(cleanupRootBead, map[string]string{"gc.outcome": "fail"})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		if !strings.Contains(out, "workflow root") || !strings.Contains(out, "fail") {
+			t.Errorf("a failed workflow root must preserve the tree:\n%s", out)
+		}
+		if !f.exists(f.worktree) {
+			t.Error("a failed workflow root's worktree must be preserved")
+		}
+		f.assertNoUnset()
+	})
+
+	t.Run("uncommitted non-report work preserves the tree", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		f.addWorktree()
+		writeCleanupFile(t, filepath.Join(f.worktree, "wip.txt"), "work in progress\n")
+		f.writeBead(cleanupWorkBead, map[string]string{"work_dir": f.worktree})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		if !strings.Contains(out, "uncommitted work") {
+			t.Errorf("non-report dirt must preserve the tree:\n%s", out)
+		}
+		if !f.exists(f.worktree) {
+			t.Error("a worktree with uncommitted non-report work must be preserved")
+		}
+		f.assertNoUnset()
+	})
+
+	t.Run("success salvages every report class then removes", func(t *testing.T) {
+		f := newCleanupFixture(t)
+		writeCleanupFile(t, filepath.Join(f.repo, ".gitignore"), "lens-report.md\n")
+		runCleanupGit(t, f.repo, "add", ".gitignore")
+		runCleanupGit(t, f.repo, "commit", "-q", "-m", "ignore lens reports")
+		f.addWorktree()
+
+		writeCleanupFile(t, filepath.Join(f.worktree, "lens-report.md"), "ignored lens\n")
+		writeCleanupFile(t, filepath.Join(f.worktree, "sub", "ops-report.md"), "untracked ops\n")
+		writeCleanupFile(t, filepath.Join(f.worktree, "tracked-report.md"), "original tracked\n")
+		runCleanupGit(t, f.worktree, "add", "tracked-report.md")
+		runCleanupGit(t, f.worktree, "commit", "-q", "-m", "track report")
+		writeCleanupFile(t, filepath.Join(f.worktree, "tracked-report.md"), "modified tracked\n")
+		writeCleanupFile(t, filepath.Join(f.worktree, "a", "dup-report.md"), "dup A\n")
+		writeCleanupFile(t, filepath.Join(f.worktree, "b", "dup-report.md"), "dup B\n")
+		f.writeBead(cleanupWorkBead, map[string]string{"work_dir": f.worktree})
+
+		out, code := f.run()
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0:\n%s", code, out)
+		}
+		for name, want := range map[string]string{
+			"lens-report.md":    "ignored lens\n",
+			"ops-report.md":     "untracked ops\n",
+			"tracked-report.md": "modified tracked\n",
+			"dup-report.md":     "dup A\n",
+			"b_dup-report.md":   "dup B\n",
+		} {
+			if got, ok := f.backup(name); !ok || got != want {
+				t.Errorf("salvaged %s = %q ok=%v, want %q", name, got, ok, want)
+			}
+		}
+		if f.exists(f.worktree) {
+			t.Error("a clean, fully-salvaged worktree must be removed")
+		}
+		f.assertUnset()
+	})
 }

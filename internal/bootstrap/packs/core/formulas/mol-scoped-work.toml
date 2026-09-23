@@ -193,7 +193,12 @@ id = "cleanup-worktree"
 title = "Clean up the worktree"
 needs = ["body"]
 description = """
-Remove the temporary worktree after the body reaches terminal state.
+Remove the temporary worktree after the body reaches terminal state. Removal is
+idempotent and best-effort: an empty or already-removed work_dir is a
+**successful no-op**, never an escalation. `*-report.md` review artifacts that
+are untracked, ignored, or modified are copied to the city backups directory
+before the tree goes away. Only a linked worktree this molecule created under a
+repo's `worktrees/` directory is ever removed.
 
 ```bash
 CONVOY_STATUS=$(gc convoy status {{convoy_id}} --json)
@@ -202,20 +207,139 @@ if [ -z "$WORK_BEAD_ID" ]; then
   echo "mol-scoped-work requires an input convoy with exactly one tracked member" >&2
   exit 1
 fi
+
+# Read work_dir from the WORK BEAD only. NEVER fall back to this cleanup bead's
+# own gc.work_dir: this step runs at the rig root, so that fallback resolves to
+# the shared main checkout (in the Gateway-LLM rig,
+# /home/coolhenrylinux/projects/Gateway-LLM) and deleting it would destroy the
+# owner's checkout. An empty work_dir means workspace-setup never created a
+# worktree for this molecule, so cleanup is a SUCCESSFUL NO-OP: say so, do not
+# mail, and close this step with gc.outcome=pass.
 WORKTREE=$(gc bd show "$WORK_BEAD_ID" --json | jq -r '.[0].metadata.work_dir // empty')
-if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
-  # cwd is not guaranteed to be inside the repo at this step, so resolve REPO
-  # off the worktree itself rather than off `pwd`.
-  REPO=$(git -C "$WORKTREE" rev-parse --path-format=absolute --git-common-dir)
-  if [ -z "$REPO" ]; then
-    echo "cleanup: could not resolve the owning repo for $WORKTREE; leaving it registered" >&2
-  elif ! git -C "$REPO" worktree remove --force "$WORKTREE"; then
-    if [ -f "$WORKTREE/.git" ]; then
-      rm -rf "$WORKTREE"
-      git -C "$REPO" worktree prune
-    else
-      echo "cleanup: refusing to rm -rf $WORKTREE: not a linked worktree" >&2
-    fi
+if [ -z "$WORKTREE" ]; then
+  echo "cleanup: no work_dir on $WORK_BEAD_ID; nothing to remove (successful no-op)"
+  exit 0
+fi
+
+# A worktree that is already gone is also a successful no-op, not a refusal:
+# a prior teardown, a manual prune, or a re-run reaches this branch.
+if [ ! -d "$WORKTREE" ]; then
+  echo "cleanup: work_dir $WORKTREE is already gone; nothing to remove (successful no-op)"
+  gc bd update "$WORK_BEAD_ID" --unset-metadata work_dir
+  exit 0
+fi
+
+# cwd is not guaranteed to be inside the repo at this step, so resolve REPO
+# off the worktree itself rather than off `pwd`.
+REPO=$(git -C "$WORKTREE" rev-parse --path-format=absolute --git-common-dir)
+if [ -z "$REPO" ]; then
+  echo "cleanup: could not resolve the owning repo for $WORKTREE; leaving it registered" >&2
+  exit 0
+fi
+
+# Only ever remove a LINKED worktree: a linked worktree's .git is a FILE, a
+# main checkout's .git is a DIRECTORY. Refuse anything else (successful no-op,
+# not an escalation) instead of force-deleting a tree we did not create.
+if [ ! -f "$WORKTREE/.git" ]; then
+  echo "cleanup: refusing to remove $WORKTREE: not a linked worktree created by this molecule"
+  exit 0
+fi
+
+# Ownership: workspace-setup creates the tree at "$(pwd)/worktrees/<work-bead>",
+# i.e. "<repo-root>/worktrees/<work-bead>". Requiring that exact layout is what
+# separates a tree THIS molecule created from some other clean linked worktree
+# on the host that a stale or erroneous metadata.work_dir may point at: the
+# linked-worktree check above alone would happily force-remove that one too.
+REPO_ROOT=$(cd "$(dirname "$REPO")" 2>/dev/null && pwd -P)
+WORKTREE_ABS=$(cd "$WORKTREE" 2>/dev/null && pwd -P)
+if [ -z "$REPO_ROOT" ] || [ -z "$WORKTREE_ABS" ] || [ "$WORKTREE_ABS" != "$REPO_ROOT/worktrees/$WORK_BEAD_ID" ]; then
+  echo "cleanup: refusing to remove $WORKTREE: not the worktree this molecule created (expected $REPO_ROOT/worktrees/$WORK_BEAD_ID; resolved $WORKTREE_ABS)"
+  exit 0
+fi
+
+# Salvage review artifacts before removal: a *-report.md that is untracked,
+# ignored, or modified exists only in this worktree, and `git worktree remove
+# --force` would destroy the only copy (the two PR #787 lens reports had to be
+# rescued by hand). `ls-files --others --exclude-standard` alone skips ignored
+# reports, and a tracked report modified in the worktree is neither untracked
+# nor ignored, so enumerate all three classes. Name the destination in the
+# teardown close reason.
+SALVAGE_DIR="${GC_CITY_BACKUPS:-/home/coolhenrylinux/city/backups}"
+mkdir -p "$SALVAGE_DIR" 2>/dev/null || true
+SALVAGED=""
+SALVAGE_FAILED=""
+while IFS= read -r report; do
+  [ -n "$report" ] || continue
+  src="$WORKTREE/$report"
+  [ -f "$src" ] || continue
+  # Never clobber an earlier salvage: one tree can hold a/lens-report.md and
+  # b/lens-report.md, and molecules sharing GC_CITY_BACKUPS can reuse a name.
+  # Fall back to the slash-flattened relative path, which stays unique.
+  dest="$SALVAGE_DIR/$(basename "$report")"
+  if [ -e "$dest" ]; then
+    dest="$SALVAGE_DIR/$(printf '%s' "$report" | tr '/' '_')"
+  fi
+  if cp -f "$src" "$dest" 2>/dev/null; then
+    SALVAGED="${SALVAGED}${SALVAGED:+, }$dest"
+  else
+    SALVAGE_FAILED="${SALVAGE_FAILED}${SALVAGE_FAILED:+, }$report"
+  fi
+done < <(
+  {
+    git -C "$WORKTREE" ls-files --others --exclude-standard -- '*-report.md' 2>/dev/null
+    git -C "$WORKTREE" ls-files --others --ignored --exclude-standard -- '*-report.md' 2>/dev/null
+    git -C "$WORKTREE" diff --name-only HEAD -- '*-report.md' 2>/dev/null
+  } | sort -u
+)
+if [ -n "$SALVAGED" ]; then
+  echo "cleanup: salvaged reports to $SALVAGED"
+fi
+if [ -n "$SALVAGE_FAILED" ]; then
+  echo "cleanup: could not salvage $SALVAGE_FAILED; preserving $WORKTREE for recovery (successful no-op)" >&2
+  exit 0
+fi
+
+# Do not fire a destructive removal on a FAILED body: a failed run's diff, logs,
+# and reports are the only place its evidence survives, so preserve it for
+# recovery (successful no-op). Consult the WORK BEAD's own outcome first: the
+# root outcome is stamped by workflow-finalize, which can land after this
+# teardown is dispatched, and the old root-only test then removed a failed
+# body's tree on the clean-tracked case.
+WORK_OUTCOME=$(gc bd show "$WORK_BEAD_ID" --json 2>/dev/null | jq -r '.[0].metadata["gc.outcome"] // empty')
+case "$WORK_OUTCOME" in
+  fail|canceled)
+    echo "cleanup: work bead $WORK_BEAD_ID settled $WORK_OUTCOME; preserving $WORKTREE for recovery (successful no-op)"
+    exit 0
+    ;;
+esac
+ROOT_BEAD_ID=$(gc bd show "$WORK_BEAD_ID" --json | jq -r '.[0].metadata["gc.root_bead_id"] // empty')
+[ -n "$ROOT_BEAD_ID" ] || ROOT_BEAD_ID="${GC_ROOT_BEAD_ID:-}"
+if [ -n "$ROOT_BEAD_ID" ]; then
+  ROOT_OUTCOME=$(gc bd show "$ROOT_BEAD_ID" --json 2>/dev/null | jq -r '.[0].metadata["gc.outcome"] // empty')
+  case "$ROOT_OUTCOME" in
+    fail|canceled)
+      echo "cleanup: workflow root $ROOT_BEAD_ID settled $ROOT_OUTCOME; preserving $WORKTREE for recovery (successful no-op)"
+      exit 0
+      ;;
+  esac
+fi
+
+# Preserve a worktree that still holds uncommitted work: it is the only copy
+# and may be a failed body's evidence. Every dirty report was copied above (or
+# this step already exited), so report files are the only dirt cleanup is
+# allowed to discard.
+DIRTY=$(git -C "$WORKTREE" status --porcelain --untracked-files=all 2>/dev/null | grep -v -- '-report[.]md$' || true)
+if [ -n "$DIRTY" ]; then
+  echo "cleanup: $WORKTREE has uncommitted work; preserving it for recovery (successful no-op)" >&2
+  exit 0
+fi
+
+if ! git -C "$REPO" worktree remove --force "$WORKTREE"; then
+  if [ -f "$WORKTREE/.git" ]; then
+    rm -rf "$WORKTREE"
+    git -C "$REPO" worktree prune
+  else
+    echo "cleanup: refusing to rm -rf $WORKTREE: not a linked worktree" >&2
   fi
 fi
 gc bd update "$WORK_BEAD_ID" --unset-metadata work_dir
@@ -223,6 +347,8 @@ gc bd update "$WORK_BEAD_ID" --unset-metadata work_dir
 """
 metadata = { "gc.kind" = "cleanup", "gc.scope_ref" = "body", "gc.scope_role" = "teardown" }
 
+# Teardown must not retry a refusal: max_attempts 3 turns one refusal into three
+# deletion attempts, then a hard_fail that floods the mayor with BLOCKED mail.
 [steps.retry]
-max_attempts = 3
+max_attempts = 1
 on_exhausted = "hard_fail"

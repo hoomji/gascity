@@ -203,7 +203,13 @@ jobs:
       - gate
     if: needs.gate.outputs.run_smoke == 'true'
     runs-on: ${{ needs.runner-policy.outputs.runner_macos }}
-    timeout-minutes: 35
+    # Full-repo golangci-lint from a cold cache on the 3-vCPU macOS runner
+    # takes ~50m (run 35846773311: Lint 10:08:01Z -> 10:57:32Z), and the
+    # actions/cache save post-step is success()-gated, so a cold run that
+    # gets cancelled never seeds the cache. Give the one cold run room to
+    # finish lint+fmt+vet+docs and persist the cache; later runs on this
+    # ref restore it and are far shorter.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
