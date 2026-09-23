@@ -34,7 +34,7 @@ var supported = []string{"claude", "codex", "gemini", "antigravity", "kiro", "op
 
 const (
 	managedPiHookVersion       = 9
-	managedOpenCodeHookVersion = 6
+	managedOpenCodeHookVersion = 7
 	managedMimoCodeHookVersion = 2
 	managedOmpHookVersion      = 2
 )
@@ -353,13 +353,21 @@ func opencodeHookNeedsUpgrade(existing []byte) bool {
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID_REQUIRED") ||
 		// The child's stdin must be closed or gc blocks on it (#5562).
-		!strings.Contains(content, "pending.child.stdin?.end();") {
+		!strings.Contains(content, "pending.child.stdin?.end();") ||
+		// Volatile injections must go to the newest user message, leaving the
+		// system prompt byte-stable so the provider prefix cache can grow.
+		!strings.Contains(content, "buildSystemContext") ||
+		!strings.Contains(content, "buildVolatileInjection") ||
+		!strings.Contains(content, "output.parts.push(") {
 		return true
 	}
 	for _, marker := range []string{
 		`run(directory, "handoff", "context cycle")`,
 		`"session", "reset"`,
 		`"session.deleted"`,
+		// buildPrefix folded the volatile clock and mail into the system
+		// prompt on every turn, invalidating the cached conversation prefix.
+		"buildPrefix(",
 	} {
 		if strings.Contains(content, marker) {
 			return true

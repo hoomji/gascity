@@ -1778,7 +1778,7 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	}
 	opencodeHooks := string(fs.Files["/work/.opencode/plugins/gascity.js"])
 	for _, want := range []string{
-		"const GC_OPENCODE_HOOK_VERSION = 6",
+		"const GC_OPENCODE_HOOK_VERSION = 7",
 		"pending.child.stdin?.end();",
 		`process.env.GC_BIN || "gc"`,
 		`/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`,
@@ -1791,6 +1791,9 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 		"providerSessionEnv(sessionID)",
 		"GC_PROVIDER_SESSION_ID",
 		"GC_PROVIDER_SESSION_ID_REQUIRED",
+		"buildSystemContext",
+		"buildVolatileInjection",
+		"output.parts.push(",
 	} {
 		if !strings.Contains(opencodeHooks, want) {
 			t.Errorf("OpenCode plugin missing marker %q:\n%s", want, opencodeHooks)
@@ -1800,6 +1803,7 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 		`run(directory, "handoff", "context cycle")`,
 		`"session", "reset"`,
 		`"session.deleted"`,
+		"buildPrefix(",
 	} {
 		if strings.Contains(opencodeHooks, unwanted) {
 			t.Errorf("OpenCode plugin contains obsolete marker %q:\n%s", unwanted, opencodeHooks)
@@ -2200,7 +2204,7 @@ export default async function gascityPlugin() {
 		t.Fatal("stale OpenCode managed plugin was preserved; expected managed upgrade")
 	}
 	for _, want := range []string{
-		"const GC_OPENCODE_HOOK_VERSION = 6",
+		"const GC_OPENCODE_HOOK_VERSION = 7",
 		"pending.child.stdin?.end();",
 		`process.env.GC_BIN || "gc"`,
 		`/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`,
@@ -2210,6 +2214,9 @@ export default async function gascityPlugin() {
 		"logRunStderr",
 		"GC_PROVIDER_SESSION_ID",
 		"GC_PROVIDER_SESSION_ID_REQUIRED",
+		"buildSystemContext",
+		"buildVolatileInjection",
+		"output.parts.push(",
 	} {
 		if !strings.Contains(data, want) {
 			t.Errorf("upgraded OpenCode plugin missing marker %q:\n%s", want, data)
@@ -2223,7 +2230,7 @@ export default async function gascityPlugin() {
 
 func TestOpenCodeHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 	current := []byte(`// Gas City hooks for OpenCode.
-const GC_OPENCODE_HOOK_VERSION = 6;
+const GC_OPENCODE_HOOK_VERSION = 7;
 const GC_BIN = process.env.GC_BIN || "gc";
 const PATH_PREFIX =
   "/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:";
@@ -2238,11 +2245,17 @@ output.context.push(handoff);
 GC_PROVIDER_SESSION_ID;
 GC_PROVIDER_SESSION_ID_REQUIRED;
 pending.child.stdin?.end();
+buildSystemContext;
+buildVolatileInjection;
+output.parts.push({
 `)
-	stale := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 6"), []byte("GC_OPENCODE_HOOK_VERSION = 5"), 1)
-	future := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 6"), []byte("GC_OPENCODE_HOOK_VERSION = 7"), 1)
+	stale := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 7"), []byte("GC_OPENCODE_HOOK_VERSION = 6"), 1)
+	future := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 7"), []byte("GC_OPENCODE_HOOK_VERSION = 8"), 1)
 	missingStderrLog := bytes.Replace(current, []byte("logRunStderr(stderr);\n"), nil, 1)
 	openStdin := bytes.Replace(current, []byte("pending.child.stdin?.end();\n"), nil, 1)
+	missingStableContext := bytes.Replace(current, []byte("buildSystemContext;\n"), nil, 1)
+	missingVolatileTail := bytes.Replace(current, []byte("output.parts.push({\n"), nil, 1)
+	stillFoldsVolatile := bytes.Replace(current, []byte("buildVolatileInjection;\n"), []byte("buildPrefix();\n"), 1)
 
 	if !opencodeHookNeedsUpgrade(stale) {
 		t.Fatal("stale OpenCode hook version did not request upgrade")
@@ -2258,6 +2271,15 @@ pending.child.stdin?.end();
 	}
 	if !opencodeHookNeedsUpgrade(openStdin) {
 		t.Fatal("OpenCode hook leaving child stdin open did not request upgrade")
+	}
+	if !opencodeHookNeedsUpgrade(missingStableContext) {
+		t.Fatal("OpenCode hook without a byte-stable system context did not request upgrade")
+	}
+	if !opencodeHookNeedsUpgrade(missingVolatileTail) {
+		t.Fatal("OpenCode hook without a volatile user-message tail did not request upgrade")
+	}
+	if !opencodeHookNeedsUpgrade(stillFoldsVolatile) {
+		t.Fatal("OpenCode hook still folding volatile content into the system prompt did not request upgrade")
 	}
 }
 
