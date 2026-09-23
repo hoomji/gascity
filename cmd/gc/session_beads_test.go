@@ -9517,3 +9517,80 @@ func TestCleanupDeadRuntimeSessionCorpsesSkipsBeadsWithMalformedStartMarkers(t *
 		})
 	}
 }
+
+// TestSweepProcessTableOrphansRequestsRestartForStaleControllerRuntime pins the
+// stale-gc-binary remedy for a controller bound to an open session bead. The
+// tracked runtime is not killed here; restart_requested is set so the
+// reconciler replaces it. A non-controller stale runtime is left alone.
+func TestSweepProcessTableOrphansRequestsRestartForStaleControllerRuntime(t *testing.T) {
+	prev := processRuntimeBinaryStale
+	processRuntimeBinaryStale = func(int) bool { return true }
+	t.Cleanup(func() { processRuntimeBinaryStale = prev })
+
+	store := beads.NewMemStoreFrom(0, []beads.Bead{
+		{ID: "gm-controller", Status: "open", Metadata: map[string]string{"template": "gateway-llm/core.control-dispatcher"}},
+		{ID: "gm-worker", Status: "open", Metadata: map[string]string{"template": "worker"}},
+	}, nil)
+	sp := newProcessTableSweepProvider(
+		runtime.LiveRuntime{SessionID: "gm-controller", PID: 301, IsTracked: true},
+		runtime.LiveRuntime{SessionID: "gm-worker", PID: 302, IsTracked: true},
+	)
+
+	var stderr bytes.Buffer
+	got := sweepProcessTableOrphans(sp, nil, store, "", &stderr)
+	if got != 0 {
+		t.Fatalf("sweepProcessTableOrphans() = %d, want 0 (open controller is restarted, not reaped); stderr=%q", got, stderr.String())
+	}
+	if b, err := store.Get("gm-controller"); err != nil || b.Metadata["restart_requested"] != "true" {
+		t.Fatalf("controller restart_requested = %q err=%v, want true", b.Metadata["restart_requested"], err)
+	}
+	if b, err := store.Get("gm-worker"); err != nil || b.Metadata["restart_requested"] == "true" {
+		t.Fatalf("non-controller restart_requested = %q err=%v, want unset", b.Metadata["restart_requested"], err)
+	}
+	if len(sp.terminated) != 0 {
+		t.Fatalf("tracked controller terminated = %v, want none", sp.terminated)
+	}
+}
+
+// A controller process the provider no longer tracks is a duplicate; the sweep
+// terminates it and still requests a fresh restart for the session bead.
+func TestSweepProcessTableOrphansTerminatesUntrackedStaleControllerDuplicate(t *testing.T) {
+	prev := processRuntimeBinaryStale
+	processRuntimeBinaryStale = func(int) bool { return true }
+	t.Cleanup(func() { processRuntimeBinaryStale = prev })
+
+	store := beads.NewMemStoreFrom(0, []beads.Bead{
+		{ID: "gm-controller", Status: "open", Metadata: map[string]string{"template": "core.control-dispatcher"}},
+	}, nil)
+	sp := newProcessTableSweepProvider(
+		runtime.LiveRuntime{SessionID: "gm-controller", PID: 303, IsTracked: false},
+	)
+
+	var stderr bytes.Buffer
+	if got := sweepProcessTableOrphans(sp, nil, store, "", &stderr); got != 0 {
+		t.Fatalf("sweepProcessTableOrphans() = %d, want 0; stderr=%q", got, stderr.String())
+	}
+	if ids := terminatedSessionIDs(sp.terminated); ids != "gm-controller" {
+		t.Fatalf("terminated = %q, want gm-controller", ids)
+	}
+	if b, err := store.Get("gm-controller"); err != nil || b.Metadata["restart_requested"] != "true" {
+		t.Fatalf("controller restart_requested = %q err=%v, want true", b.Metadata["restart_requested"], err)
+	}
+}
+
+func TestIsControlDispatcherSessionTemplate(t *testing.T) {
+	cases := map[string]bool{
+		"control-dispatcher":                  true,
+		"core.control-dispatcher":             true,
+		"gateway-llm/core.control-dispatcher": true,
+		"gascity/core.control-dispatcher":     true,
+		"worker":                              false,
+		"control-dispatcher-helper":           false,
+		"":                                    false,
+	}
+	for template, want := range cases {
+		if got := isControlDispatcherSessionTemplate(template); got != want {
+			t.Errorf("isControlDispatcherSessionTemplate(%q) = %v, want %v", template, got, want)
+		}
+	}
+}

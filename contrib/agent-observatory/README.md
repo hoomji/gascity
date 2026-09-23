@@ -492,8 +492,8 @@ reason:
 | --- | --- |
 | `imported` | Read this pass; the reason names `new`/`appended`/`rewritten`, the generation and new/duplicate event counts. |
 | `unchanged` | Size and mtime match the checkpoint; not re-read. |
-| `debounced` | Modified within `--debounce-seconds`; read on a later pass. A file that never goes quiet is read anyway after `--max-debounce-seconds` since its last import. |
-| `deferred` | A per-run source/byte cap, the per-source cap or the projection storage cap was reached. The work waits; it is not dropped. |
+| `debounced` | Modified within `--debounce-seconds`; read on a later pass. A file that never goes quiet is read anyway after `--max-debounce-seconds` since the pending change was first seen; a replacement or truncation at the same path starts a fresh clock. |
+| `deferred` | A per-run source/byte cap, the per-source cap or the projection storage cap was reached. The work waits; it is not dropped. A source deferred because of its own size is retried when its stat changes or the cap is raised, so an oversized `.zstd` stream is not re-read and re-decompressed every pass. |
 | `error` | The adapter or import refused the source; the reason carries `path:line`. |
 | `unreadable` | The file or directory could not be read or listed. |
 | `unsupported` | A known provider without an adapter (OpenCode, pi). |
@@ -507,15 +507,20 @@ generation and rewrite increments it (the M1 rules). Imports are idempotent, so
 if a crash lands between the import and the checkpoint write, the next pass
 re-imports as duplicates and the counts stay the same. A failed import writes no
 checkpoint and the source is retried. A per-projection advisory lock
-(`DB.collector.lock`) keeps two collectors from interleaving.
+(`<realpath(DB)>.collector.lock`) keeps two collectors from interleaving, and
+`queue-drain` takes its own `<realpath(DB)>.drain.lock` so two overlapping drains
+cannot select and pay for the same pending rows. Both locks are keyed on the
+database real path, so a symlink and its target share one lock.
 
 Bounds:
 
 - `--max-sources` / `--max-bytes` cap the work per pass. The first changed
   source always proceeds, so a byte cap cannot wedge the backlog.
-- `--max-source-bytes` defers any single file above the cap. The adapters parse
-  a whole file in memory, and peak RSS runs several times the file size (a
-  305 MB Codex transcript peaked at 2.5 GB).
+- `--max-source-bytes` defers any single file above the cap (default 256 MiB).
+  The adapters parse a whole file in memory, and peak RSS runs several times the
+  file size (a 305 MB Codex transcript peaked at 2.5 GB). For a `*.zstd` source
+  the cap bounds the **decompressed** size: the reader stops at the cap instead
+  of expanding a small compressed stream into unbounded memory.
 - `--max-db-bytes` defers imports once the projection reaches the cap.
 - Normalized JSONL is spooled to `DB.collector-spool/<source_id>.jsonl` and
   deleted right after each import. Imported events therefore carry the spool
@@ -537,18 +542,41 @@ bounded M3 transport and **requires `--max-requests`** as the per-run spend
 ceiling:
 
 - `classified` → `done`, with the classification id.
-- `budget_exhausted`, `circuit_open`, `credential_error`, `model_drift` or a
-  transport error → the drain stops and the item stays `pending` with no
-  attempt charged. These say nothing about the subject.
+- `budget_exhausted`, `circuit_open`, `credential_error` or `model_drift` → the
+  drain stops and the item stays `pending` with no attempt charged. These say
+  nothing about the subject.
+- A request that cannot be built (a `RequestError`, including a byte-cap
+  violation) → that item is charged an attempt and the drain continues with the
+  next due item, so one unbuildable subject cannot wedge the queue.
+- A transport error → the drain stops and the item is charged an attempt. A
+  permanently broken transport therefore parks the item after
+  `--max-item-attempts` instead of replaying it forever.
 - Any other failure → it is retried after `--retry-backoff` seconds, doubling
   each time. After `--max-item-attempts` failures the item moves to `unknown`
   and keeps its last failure. Nothing is fabricated.
 
-The drain sends **metadata-only state**: event-kind counts, tool invocation
-counts, command-category counts, models, duration, and bead/formula/parent
-flags. No text, titles or command lines leave the host. Sending transcript
-content to the classifier is a separate data-scope decision this slice does not
-make.
+The drain sends **metadata-only state** by default: event-kind counts, tool
+invocation counts, command-category counts, models, duration, and
+bead/formula/parent flags. No text, titles or command lines leave the host.
+
+`queue-drain --text-state` is the explicit opt-in data scope for sending
+transcript text. It reuses the same bounded transport and requires
+`--max-requests`:
+
+- Every excerpt is run through the adapter credential redactor again (key
+  assignments, bearer tokens, well-known token shapes, email addresses and
+  home-directory paths), so re-sending already-redacted projection text cannot
+  resurrect a secret.
+- Each event's text is excerpted deterministically from the head at
+  `DEFAULT_TEXT_EXCERPT_BYTES` (1536) UTF-8 bytes, with the dropped tail
+  summarized by byte length and digest. The whole request is then fitted to the
+  transport's 24 KB `REQUEST_BYTE_CAP` by dropping trailing excerpts.
+- The stored request metadata records what happened under `text_mode`:
+  `excerpt_bytes`, `excerpted_events`, `excerpt_strategy` and
+  `request_dropped_excerpts`.
+- The subject snapshot is namespaced for text mode, so a text classification can
+  never collide with the metadata classification of the same session. Metadata
+  mode keeps the raw session snapshot, leaving existing classifications valid.
 
 `collect-status` reports coverage (`current / scoped`), per-provider status
 counts, lagging sources with their lag and reason, queue counts, the oldest
@@ -589,7 +617,7 @@ agent-observatory collect --db DB --root DIR [--root DIR ...] --city CITY --host
 agent-observatory collect-status --db DB [--kill-switch PATH] [--out FILE]
 agent-observatory collector-switch --db DB on|off [--kill-switch PATH]
 agent-observatory queue-drain --db DB --max-requests N [--max-items N]
-    [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
+    [--text-state] [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
     [transport options as for classify] [--out FILE]
 agent-observatory --version
 ```

@@ -40,6 +40,19 @@ class AdapterError(ObservatoryError):
         super().__init__(location + message)
 
 
+class SourceSizeExceeded(AdapterError):
+    """A source's logical (decompressed) size exceeds the configured cap.
+
+    The compressed ``st_size`` a caller can see before reading says nothing about
+    how much a ``.zstd`` stream expands to, so the reader enforces the cap while
+    it decompresses instead of materializing the whole payload first.
+    """
+
+    def __init__(self, source_path: str, cap_bytes: int):
+        self.cap_bytes = cap_bytes
+        super().__init__(f"decompressed source exceeds the per-source cap of {cap_bytes} bytes", source_path)
+
+
 @dataclass(frozen=True)
 class AdapterContext:
     """City/host scope applied to every record an adapter emits."""
@@ -118,9 +131,16 @@ class SourceAdapter:
     provider = ""
     adapter_version = "0.0.0"
 
-    def decompress(self, raw: bytes, source_path: str) -> bytes:
-        """Return the logical content of *raw* (identity for uncompressed files)."""
+    def decompress(self, raw: bytes, source_path: str, max_bytes: int | None = None) -> bytes:
+        """Return the logical content of *raw* (identity for uncompressed files).
 
+        *max_bytes*, when set, bounds the logical size a caller is willing to
+        hold in memory; the identity reader refuses an oversized payload rather
+        than returning it.
+        """
+
+        if max_bytes is not None and len(raw) > max_bytes:
+            raise SourceSizeExceeded(source_path, max_bytes)
         return raw
 
     def detect(self, source_path: str) -> bool:

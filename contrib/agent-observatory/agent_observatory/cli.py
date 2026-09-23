@@ -24,6 +24,9 @@ from .annotations import load_gold_set, save_gold_annotations
 from .canonical import sha256_bytes
 from .changes import normalize_change_bundle
 from .collector import (
+    DEFAULT_MAX_SOURCE_BYTES,
+    STATE_MODE_METADATA,
+    STATE_MODE_TEXT,
     CollectorConfig,
     collect_once,
     collect_watch,
@@ -678,9 +681,10 @@ def _cmd_queue_drain(args: argparse.Namespace) -> int:
             max_attempts=args.max_item_attempts,
             retry_backoff_seconds=args.retry_backoff,
             kill_switch_path=_kill_switch_path(args),
+            state_mode=STATE_MODE_TEXT if args.text_state else STATE_MODE_METADATA,
         )
     _write_output(json.dumps(result.to_dict(), indent=2, sort_keys=True, ensure_ascii=False), args.out)
-    return 0 if result.status in {"ok", "disabled"} else 1
+    return 0 if result.status in {"ok", "disabled", "locked"} else 1
 
 
 def _add_transport_args(parser: argparse.ArgumentParser) -> None:
@@ -942,8 +946,11 @@ def build_parser() -> argparse.ArgumentParser:
     collect_parser.add_argument(
         "--max-source-bytes",
         type=int,
-        default=None,
-        help="defer any single source larger than this (adapters parse whole files in memory)",
+        default=DEFAULT_MAX_SOURCE_BYTES,
+        help=(
+            "defer any single source larger than this, including a decompressed "
+            f".zstd source (default {DEFAULT_MAX_SOURCE_BYTES}; adapters parse whole files in memory)"
+        ),
     )
     collect_parser.add_argument(
         "--max-db-bytes", type=int, default=None, help="defer imports once the projection reaches this size"
@@ -975,10 +982,15 @@ def build_parser() -> argparse.ArgumentParser:
     switch_parser.set_defaults(func=_cmd_collector_switch)
 
     drain_parser = subparsers.add_parser(
-        "queue-drain", help="classify queued sessions with metadata-only state within a request ceiling"
+        "queue-drain", help="classify queued sessions within a request ceiling (metadata-only unless --text-state)"
     )
     drain_parser.add_argument("--db", required=True, help="SQLite projection path")
     drain_parser.add_argument("--taxonomy", default=None, help="taxonomy JSON path")
+    drain_parser.add_argument(
+        "--text-state",
+        action="store_true",
+        help="opt in to redacted transcript text in the classification state (default: metadata only)",
+    )
     drain_parser.add_argument("--max-items", type=int, default=None, help="queue items to consider (default --max-requests)")
     drain_parser.add_argument(
         "--max-item-attempts", type=int, default=3, help="failed attempts before an item moves to unknown"
