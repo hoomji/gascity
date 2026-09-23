@@ -2727,7 +2727,13 @@ func TestTryDeliverQueuedNudgesByPollerWakesHookInstalledSessionForMail(t *testi
 		t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
 	}
 
+	// A non-nil cfg matters: the pre-fix gate read config intent
+	// (AgentHasHooks on a claude-family agent), so without it the old code
+	// would skip the withdrawal and this test would pass for the wrong
+	// reason. With it, the pre-fix code terminalizes the only item as
+	// mail-hook-inject and the poller returns without a turn.
 	target := nudgeTarget{
+		cfg:         &config.City{},
 		cityPath:    dir,
 		agent:       config.Agent{Name: "worker", Provider: "claude"},
 		sessionID:   info.ID,
