@@ -3633,6 +3633,107 @@ func TestCmdNudgeDrainReValidatesMailAgainstRealProvider(t *testing.T) {
 	}
 }
 
+// TestCmdNudgeDrainDropsHookInjectedMailReminder drives the drain root end to
+// end for the "drop the deferred [mail] reminder" contract. The worker's
+// catalog agent declares hooks_installed, so the resolved target is
+// hook-present and the queued mail reminder must be withdrawn instead of
+// injected; the unread message itself stays for the provider's own
+// UserPromptSubmit `gc mail check --inject` hook to surface.
+func TestCmdNudgeDrainDropsHookInjectedMailReminder(t *testing.T) {
+	clearGCEnv(t)
+	disableManagedDoltRecoveryForTest(t)
+	t.Setenv("GC_BEADS", "file")
+
+	cityDir := t.TempDir()
+	writeHookInstalledWorkerCityTOML(t, cityDir)
+	t.Setenv("GC_CITY", cityDir)
+
+	store, err := openCityStoreAt(cityDir)
+	if err != nil {
+		t.Fatalf("openCityStoreAt: %v", err)
+	}
+	created, err := store.Create(beads.Bead{
+		Title:  "Session: worker",
+		Type:   session.BeadType,
+		Status: "open",
+		Labels: []string{session.LabelSession},
+		Metadata: map[string]string{
+			"session_name": "worker-session",
+			"agent_name":   "worker",
+			"template":     "worker",
+			"state":        string(session.StateActive),
+		},
+	})
+	if err != nil {
+		t.Fatalf("store.Create session: %v", err)
+	}
+
+	mp := beadmail.New(store)
+	unread, err := mp.Send("alice", "worker", "still unread", "body")
+	if err != nil {
+		t.Fatalf("Send(alice): %v", err)
+	}
+
+	item := newQueuedNudgeWithOptions("worker", "You have mail from alice", "mail", time.Now().Add(-time.Minute), queuedNudgeOptions{
+		SessionID: created.ID,
+		Reference: &nudgeReference{Kind: "mail", ID: unread.ID},
+	})
+	if err := enqueueQueuedNudgeWithStore(cityDir, beads.NudgesStore{Store: store}, item); err != nil {
+		t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := cmdNudgeDrainWithFormat([]string{created.ID}, true, "", &stdout, &stderr); code != 0 {
+		t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "You have mail from alice") {
+		t.Fatalf("stdout = %q, want the hook-injected mail reminder withheld", stdout.String())
+	}
+
+	after, err := openCityStoreAt(cityDir)
+	if err != nil {
+		t.Fatalf("openCityStoreAt (after drain): %v", err)
+	}
+	front := nudgeFrontDoor(beads.NudgesStore{Store: after})
+	withdrawn, ok, err := front.FindIncludingTerminal(item.ID)
+	if err != nil {
+		t.Fatalf("FindIncludingTerminal: %v", err)
+	}
+	if !ok {
+		t.Fatal("FindIncludingTerminal returned not found")
+	}
+	if withdrawn.Open {
+		t.Fatal("hook-injected mail nudge is still open, want terminal")
+	}
+	if withdrawn.TerminalReason != "mail-hook-inject" {
+		t.Fatalf("terminal_reason = %q, want mail-hook-inject", withdrawn.TerminalReason)
+	}
+}
+
+// writeHookInstalledWorkerCityTOML writes a minimal file-store city whose
+// "worker" catalog agent declares hooks_installed, so AgentHasHooks reports
+// hook-present for the resolved drain target without needing a real provider
+// binary on PATH.
+func writeHookInstalledWorkerCityTOML(t *testing.T, dir string) {
+	t.Helper()
+	killNamedSessionTmuxServer(t)
+	if err := os.MkdirAll(filepath.Join(dir, ".gc"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.gc): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pack.toml"), []byte("[pack]\nname = \"test-city\"\nschema = 2\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(pack.toml): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte("[workspace]\n\n[beads]\nprovider = \"file\"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(city.toml): %v", err)
+	}
+	writeBuiltinImportsFixture(t, dir, "core")
+	siteTOML := fmt.Sprintf("workspace_name = %q\n", namedSessionTestWorkspace)
+	if err := os.WriteFile(filepath.Join(dir, ".gc", "site.toml"), []byte(siteTOML), 0o644); err != nil {
+		t.Fatalf("WriteFile(.gc/site.toml): %v", err)
+	}
+	writeCatalogFile(t, dir, "agents/worker/agent.toml", "start_command = \"echo\"\nhooks_installed = true\n")
+}
+
 func TestDeliverSlingNudgeWaitIdleWrapsInSystemReminder(t *testing.T) {
 	clearGCEnv(t)
 	disableManagedDoltRecoveryForTest(t)
@@ -4361,7 +4462,7 @@ func TestSplitQueuedNudgesForDelivery_BlocksCanceledWaitNudge(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, []queuedNudge{{
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, nudgeTarget{}, []queuedNudge{{
 		ID:        "n1",
 		Agent:     "worker",
 		Source:    "wait",
@@ -4392,7 +4493,7 @@ func TestSplitQueuedNudgesForDelivery_AllowsReadyLegacyWaitNudge(t *testing.T) {
 		t.Fatalf("create legacy wait bead: %v", err)
 	}
 
-	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, []queuedNudge{{
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, nudgeTarget{}, []queuedNudge{{
 		ID:        "n1",
 		Agent:     "worker",
 		Source:    "wait",
@@ -5634,7 +5735,7 @@ func TestBlockedQueuedNudgeReason_GetWaitErrorMapping(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reason, block, err := blockedQueuedNudgeReason(sessFront, nil, tc.item)
+			reason, block, err := blockedQueuedNudgeReason(sessFront, nil, nudgeTarget{}, tc.item)
 			if err != nil {
 				t.Fatalf("blockedQueuedNudgeReason: %v", err)
 			}
@@ -5695,7 +5796,7 @@ func TestBlockedQueuedMailNudgeReason_ReReadsMessageAtDelivery(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reason, block, err := blockedQueuedNudgeReason(nil, tc.mp, tc.item)
+			reason, block, err := blockedQueuedNudgeReason(nil, tc.mp, nudgeTarget{}, tc.item)
 			if err != nil {
 				t.Fatalf("blockedQueuedNudgeReason: %v", err)
 			}
@@ -5729,7 +5830,7 @@ func TestSplitQueuedNudgesForDelivery_MailNudges(t *testing.T) {
 		{ID: "n-missing", Agent: "worker", Source: "mail", Reference: &nudgeReference{Kind: "mail", ID: "gc-nope"}},
 	}
 
-	deliverable, blocked, err := splitQueuedNudgesForDelivery(nil, mp, items)
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(nil, mp, nudgeTarget{}, items)
 	if err != nil {
 		t.Fatalf("splitQueuedNudgesForDelivery: %v", err)
 	}
@@ -5741,6 +5842,88 @@ func TestSplitQueuedNudgesForDelivery_MailNudges(t *testing.T) {
 	}
 	if got := blocked["mail-missing"]; len(got) != 1 || got[0].ID != "n-missing" {
 		t.Fatalf("blocked[mail-missing] = %#v, want n-missing", blocked["mail-missing"])
+	}
+}
+
+// TestBlockedQueuedMailNudgeReason_DropsReminderWhenProviderHooksInjectMail
+// pins the "drop the deferred [mail] reminder" contract: when the target's
+// provider has prompt hooks installed (Claude-family always; other providers
+// when the operator opts in through install_agent_hooks / hooks_installed),
+// its UserPromptSubmit `gc mail check --inject` hook already injects the
+// unread-mail list on every turn. A queued mail reminder delivered on that
+// same turn is therefore pure duplication and must be withdrawn. A provider
+// without hooks still delivers it, and the existing mail-state gates keep
+// precedence (an already-read message is still withdrawn as mail-already-read).
+func TestBlockedQueuedMailNudgeReason_DropsReminderWhenProviderHooksInjectMail(t *testing.T) {
+	mp := mail.NewFake()
+	unread, err := mp.Send("alice", "bob", "subject", "body")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	readMsg, err := mp.Send("alice", "bob", "subject", "body")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if _, err := mp.Read(readMsg.ID); err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+
+	item := func(id string) queuedNudge {
+		return queuedNudge{Source: "mail", Reference: &nudgeReference{Kind: "mail", ID: id}}
+	}
+	hookTarget := nudgeTarget{cfg: &config.City{}, agent: config.Agent{Name: "worker", Provider: "claude"}}
+	hooklessTarget := nudgeTarget{cfg: &config.City{}, agent: config.Agent{Name: "worker", Provider: "custom-no-hooks"}}
+
+	cases := []struct {
+		name       string
+		target     nudgeTarget
+		item       queuedNudge
+		wantReason string
+		wantBlock  bool
+	}{
+		{"hooks-withdraws-unread-reminder", hookTarget, item(unread.ID), "mail-hook-inject", true},
+		{"hookless-delivers-unread-reminder", hooklessTarget, item(unread.ID), "", false},
+		{"hooks-still-withdraw-read-reminder-first", hookTarget, item(readMsg.ID), "mail-already-read", true},
+		{"hooks-withdraw-reference-less-reminder", hookTarget, queuedNudge{Source: "mail"}, "mail-hook-inject", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reason, block, err := blockedQueuedNudgeReason(nil, mp, tc.target, tc.item)
+			if err != nil {
+				t.Fatalf("blockedQueuedNudgeReason: %v", err)
+			}
+			if reason != tc.wantReason || block != tc.wantBlock {
+				t.Fatalf("got (%q, %v), want (%q, %v)", reason, block, tc.wantReason, tc.wantBlock)
+			}
+		})
+	}
+}
+
+// TestSplitQueuedNudgesForDelivery_DropsOnlyHookInjectedMailReminders narrows
+// the same gate at the delivery-splitting seam both the drain hook and the
+// poller call: only mail-sourced reminders are withdrawn for a hook-present
+// target; a wait/session-sourced queue item still delivers.
+func TestSplitQueuedNudgesForDelivery_DropsOnlyHookInjectedMailReminders(t *testing.T) {
+	mp := mail.NewFake()
+	unread, err := mp.Send("alice", "bob", "subject", "body")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	items := []queuedNudge{
+		{ID: "n-mail", Agent: "worker", Source: "mail", Reference: &nudgeReference{Kind: "mail", ID: unread.ID}},
+		{ID: "n-session", Agent: "worker", Source: "session"},
+	}
+	target := nudgeTarget{cfg: &config.City{}, agent: config.Agent{Name: "worker", Provider: "claude"}}
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(nil, mp, target, items)
+	if err != nil {
+		t.Fatalf("splitQueuedNudgesForDelivery: %v", err)
+	}
+	if len(deliverable) != 1 || deliverable[0].ID != "n-session" {
+		t.Fatalf("deliverable = %#v, want only n-session", deliverable)
+	}
+	if got := blocked["mail-hook-inject"]; len(got) != 1 || got[0].ID != "n-mail" {
+		t.Fatalf("blocked[mail-hook-inject] = %#v, want n-mail", blocked["mail-hook-inject"])
 	}
 }
 

@@ -553,7 +553,7 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 		_ = recordQueuedNudgeFailureWithStore(target.cityPath, deliveryStore, queuedNudgeIDs(rejected), errNudgeSessionFenceMismatch, time.Now())
 	}
 	candidates := items
-	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, candidates)
+	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, target, candidates)
 	if err != nil {
 		// Release the claims so the next drain or poller pass retries
 		// promptly instead of waiting out the in-flight lease.
@@ -1602,7 +1602,7 @@ func tryDeliverQueuedNudgesByPoller(target nudgeTarget, store, sessStore beads.S
 		}
 	}
 	candidates := items
-	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, candidates)
+	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, target, candidates)
 	if err != nil {
 		relErr := releaseQueuedNudgeClaims(target.cityPath, queuedNudgeIDs(candidates))
 		return false, errors.Join(bookkeepErr, err, relErr)
@@ -1811,15 +1811,17 @@ func splitQueuedNudgesForTarget(target nudgeTarget, items []queuedNudge) ([]queu
 // cliSessionStore) so a [beads.classes.sessions] relocation reaches it. mp is
 // the mail provider used the same way to gate mail-sourced nudges; it may be
 // nil, which behaves as if no mail nudge ever carried a reference (delivered
-// unconditionally, matching pre-#5321 behavior).
-func splitQueuedNudgesForDelivery(sessFront *session.Store, mp mail.Provider, items []queuedNudge) ([]queuedNudge, map[string][]queuedNudge, error) {
+// unconditionally, matching pre-#5321 behavior). target scopes the hook gate:
+// mail-sourced nudges for a provider whose own prompt hook already injects the
+// unread-mail list are withdrawn as redundant.
+func splitQueuedNudgesForDelivery(sessFront *session.Store, mp mail.Provider, target nudgeTarget, items []queuedNudge) ([]queuedNudge, map[string][]queuedNudge, error) {
 	if len(items) == 0 {
 		return nil, nil, nil
 	}
 	deliverable := make([]queuedNudge, 0, len(items))
 	blocked := make(map[string][]queuedNudge)
 	for _, item := range items {
-		reason, shouldBlock, err := blockedQueuedNudgeReason(sessFront, mp, item)
+		reason, shouldBlock, err := blockedQueuedNudgeReason(sessFront, mp, target, item)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1832,18 +1834,42 @@ func splitQueuedNudgesForDelivery(sessFront *session.Store, mp mail.Provider, it
 	return deliverable, blocked, nil
 }
 
+// targetInjectsMailOnPrompt reports whether the target session's provider has
+// provider hooks installed. Those hooks include the UserPromptSubmit
+// `gc mail check --inject` hook, which already injects the unread-mail list on
+// every prompt turn, so a queued mail reminder delivered on that same turn only
+// repeats a notification the session already carries. Claude-family sessions
+// always have hooks; other providers do when the operator opts in through
+// install_agent_hooks / hooks_installed.
+func targetInjectsMailOnPrompt(target nudgeTarget) bool {
+	if target.cfg == nil {
+		return false
+	}
+	return config.AgentHasHooks(&target.agent, &target.cfg.Workspace, target.providerName(), target.cfg.Providers)
+}
+
 // blockedQueuedNudgeReason re-validates a claimed nudge against the current
 // state of the thing it announces, at delivery time. It's the per-source
 // dispatch table: each queued-nudge source that carries a re-checkable
 // reference gets its own gate below, so an item whose referent has since been
 // resolved (a wait that fired, a mail message already read) is withdrawn
 // instead of waking the target for stale news. See gastownhall/gascity#5321.
-func blockedQueuedNudgeReason(sessFront *session.Store, mp mail.Provider, item queuedNudge) (string, bool, error) {
+func blockedQueuedNudgeReason(sessFront *session.Store, mp mail.Provider, target nudgeTarget, item queuedNudge) (string, bool, error) {
 	switch item.Source {
 	case "wait":
 		return blockedQueuedWaitNudgeReason(sessFront, item)
 	case "mail":
-		return blockedQueuedMailNudgeReason(mp, item)
+		reason, blocked, err := blockedQueuedMailNudgeReason(mp, item)
+		if err != nil || blocked {
+			return reason, blocked, err
+		}
+		if targetInjectsMailOnPrompt(target) {
+			// The unread-mail list is injected by the provider's own
+			// UserPromptSubmit hook, so the deferred [mail] reminder is
+			// redundant on that turn. Withdraw it rather than deliver.
+			return "mail-hook-inject", true, nil
+		}
+		return "", false, nil
 	default:
 		return "", false, nil
 	}
