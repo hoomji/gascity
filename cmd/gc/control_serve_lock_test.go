@@ -100,7 +100,7 @@ func TestControlServeLockCanonicalizesSymlinkedCityPath(t *testing.T) {
 
 // setupWorkflowServeTestCity writes the minimal control-dispatcher city the
 // serve-loop integration tests need and points GC_CITY at it.
-func setupWorkflowServeTestCity(t *testing.T) string {
+func setupWorkflowServeTestCity(t *testing.T) {
 	t.Helper()
 	clearGCEnv(t)
 	disableManagedDoltRecoveryForTest(t)
@@ -110,7 +110,6 @@ func setupWorkflowServeTestCity(t *testing.T) string {
 		t.Fatalf("write city.toml: %v", err)
 	}
 	t.Setenv("GC_CITY", cityDir)
-	return cityDir
 }
 
 // TestRunWorkflowServeRefusesWhenStreamLocked pins the integration: the serve
