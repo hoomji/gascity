@@ -3999,7 +3999,7 @@ exit 0
 		"SHOW COLUMNS FROM `beads`.dependencies",
 		"SHOW COLUMNS FROM `beads`.wisp_dependencies",
 		"FROM `beads`.wisp_dependencies d",
-		"d.depends_on_wisp_id = wisps.id",
+		"COALESCE(d.depends_on_issue_id, d.depends_on_wisp_id, d.depends_on_external) = wisps.id",
 	} {
 		if !strings.Contains(log, want) {
 			t.Errorf("reaper SQL missing %q:\n%s", want, log)
@@ -4028,12 +4028,21 @@ exit 0
 		t.Errorf("reaper missing closed-wisp purge delete:\n%s", log)
 	} else {
 		purgeSQL := log[purgeIdx:]
-		if !strings.Contains(purgeSQL, "child_wisp.status IN ('open', 'hooked', 'in_progress')") ||
+		if !strings.Contains(purgeSQL, "NOT EXISTS") ||
 			!containsReaperPurgeProtectEdgePredicate(purgeSQL) ||
-			!strings.Contains(purgeSQL, "NOT EXISTS") ||
-			!strings.Contains(purgeSQL, "d.depends_on_wisp_id = wisps.id") {
-			t.Errorf("reaper purge can delete closed parents with non-closed children:\n%s", purgeSQL)
+			!strings.Contains(purgeSQL, "JSON_UNQUOTE(JSON_EXTRACT(child_issue.metadata, '$.\"gc.root_bead_id\"')) = wisps.id") ||
+			!strings.Contains(purgeSQL, "COALESCE(child_wisp.status, child_issue.status) IN ('open', 'hooked', 'in_progress', 'blocked', 'deferred', 'pinned', 'review', 'testing')") ||
+			!strings.Contains(purgeSQL, "FROM `beads`.dependencies d") ||
+			!strings.Contains(purgeSQL, "COALESCE(d.depends_on_issue_id, d.depends_on_wisp_id, d.depends_on_external) = wisps.id") {
+			t.Errorf("reaper purge can delete closed roots with live issue or gc.root_bead_id children:\n%s", purgeSQL)
 		}
+	}
+	// The purge count and the DELETE must share one protection body, so a
+	// protected root is skipped by the count (no DELETE attempted) and by the
+	// DELETE alike. The issue-child probe only exists in that shared body, so
+	// exactly-two occurrences means both statements carry it.
+	if got, want := strings.Count(log, "JSON_UNQUOTE(JSON_EXTRACT(child_issue.metadata, '$.\"gc.root_bead_id\"')) = wisps.id"), 2; got != want {
+		t.Errorf("reaper purge protection predicate appears %d times, want %d (count + delete):\n%s", got, want, log)
 	}
 
 	gcData, err := os.ReadFile(gcLog)
@@ -5225,7 +5234,7 @@ exit 0
 		"WITH RECURSIVE workflow_issue_root_candidates",
 		"workflow_descendants(root_id, id)",
 		"roots_with_live_descendants",
-		"UPDATE `beads`.wisps SET status='closed', closed_at=NOW(), metadata = JSON_SET(COALESCE(metadata, JSON_OBJECT())",
+		"UPDATE `beads`.wisps SET status='closed', closed_at=UTC_TIMESTAMP(), metadata = JSON_SET(COALESCE(metadata, JSON_OBJECT())",
 		"'$.\"gc.outcome\"', 'skipped'",
 		"'$.\"close_reason\"', 'stale inactive workflow root auto-closed by reaper'",
 		"JSON_UNQUOTE(JSON_EXTRACT(w.metadata, '$.\"gc.kind\"')) = 'workflow'",
@@ -5322,10 +5331,10 @@ case "$*" in
   *"workflow_issue_root_candidates_base"*"SELECT COUNT(*) FROM workflow_issue_root_candidates"*)
     printf 'COUNT(*)\n3\n'
     ;;
-  *"workflow_issue_root_candidates_base"*"LIMIT 2 OFFSET 0"*"SELECT DISTINCT root.id"*)
+  *"workflow_issue_root_candidates_base"*"WHERE id > ''"*"SELECT DISTINCT root.id"*)
     printf 'id\nroot-a\nroot-b\n'
     ;;
-  *"workflow_issue_root_candidates_base"*"LIMIT 2 OFFSET 2"*"SELECT DISTINCT root.id"*)
+  *"workflow_issue_root_candidates_base"*"WHERE id > 'root-b'"*"SELECT DISTINCT root.id"*)
     if [ "$DOLT_FAIL_SECOND_PAGE" = "1" ]; then
       printf 'injected page timeout\n' >&2
       exit 42
@@ -5427,6 +5436,85 @@ func TestReaperWorkflowRootPredicateIsGeneratedFromOneHelper(t *testing.T) {
 	}
 }
 
+// TestReaperWorkflowRootCensusPagesByKeyset pins the optional hardening from
+// the PR #20 review round: OFFSET windows over a live candidate set can skip
+// rows when writers land between page queries, so the census pages with
+// WHERE id > last instead. The default batch size is no longer 1 either, so a
+// husk backlog no longer costs one recursive census query per root.
+func TestReaperWorkflowRootCensusPagesByKeyset(t *testing.T) {
+	data, err := os.ReadFile(coreScriptPath("reaper.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile(reaper.sh): %v", err)
+	}
+	script := string(data)
+	if strings.Contains(script, "LIMIT $page_limit OFFSET") {
+		t.Fatalf("workflow-root census still pages with OFFSET")
+	}
+	if !strings.Contains(script, "WHERE id > $page_after") {
+		t.Fatalf("workflow-root census does not page by keyset (WHERE id > last)")
+	}
+	if strings.Contains(script, "GC_REAPER_WORKFLOW_ROOT_BATCH_SIZE:-1}") {
+		t.Fatalf("workflow-root census batch default is still 1")
+	}
+}
+
+// TestReaperPurgeProtectionPredicateIsOneSharedBody pins the two medium
+// findings of the PR #20 fix round: the purge probe must protect the same
+// descendants as the close census (wisp and issue children stamped through
+// gc.root_bead_id, or reached through wisp_dependencies/dependencies) and use
+// the same WORKFLOW_ROOT_LIVE_STATUSES set. The old probe only saw wisp
+// children through wisp_dependencies with a narrower
+// ('open','hooked','in_progress') list, so an aged root with a live issue
+// child (or a child in review/testing/blocked/deferred/pinned) was purged and
+// left the child's gc.root_bead_id dangling. The count and the DELETE must
+// splice one body so they cannot drift apart.
+func TestReaperPurgeProtectionPredicateIsOneSharedBody(t *testing.T) {
+	data, err := os.ReadFile(coreScriptPath("reaper.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile(reaper.sh): %v", err)
+	}
+	script := string(data)
+
+	if strings.Contains(script, "child_wisp.status IN ('open', 'hooked', 'in_progress')") {
+		t.Fatalf("purge protection still hardcodes the narrow three-status list instead of WORKFLOW_ROOT_LIVE_STATUSES")
+	}
+	if got := strings.Count(script, `$(wisp_purge_protection_predicate "$DB")`); got != 2 {
+		t.Fatalf("wisp_purge_protection_predicate is spliced %d times, want 2 (count + DELETE)", got)
+	}
+	for _, want := range []string{
+		"wisp_purge_protection_predicate() {",
+		"FROM \\`$db\\`.issues child_issue",
+		"child_wisp.status IN ($WORKFLOW_ROOT_LIVE_STATUSES)",
+		"child_issue.status IN ($WORKFLOW_ROOT_LIVE_STATUSES)",
+		"COALESCE(child_wisp.status, child_issue.status) IN ($WORKFLOW_ROOT_LIVE_STATUSES)",
+		"\\`$db\\`.wisp_dependencies d",
+		"\\`$db\\`.dependencies d",
+		"COALESCE(d.depends_on_issue_id, d.depends_on_wisp_id, d.depends_on_external) = wisps.id",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("purge protection predicate missing %q", want)
+		}
+	}
+}
+
+// TestReaperClosedAtWritesAreUTC pins the low finding that closed_at was
+// written with NOW() (server local zone) but read against UTC_TIMESTAMP(); on
+// an EDT server a row the reaper itself closed looked four hours older and
+// became purge-eligible early. Both self-write sites must use UTC.
+func TestReaperClosedAtWritesAreUTC(t *testing.T) {
+	data, err := os.ReadFile(coreScriptPath("reaper.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile(reaper.sh): %v", err)
+	}
+	script := string(data)
+	if strings.Contains(script, "closed_at=NOW()") || strings.Contains(script, "closed_at = NOW()") {
+		t.Fatalf("reaper still writes closed_at with NOW(); must use UTC_TIMESTAMP()")
+	}
+	if got := strings.Count(script, "closed_at=UTC_TIMESTAMP()"); got < 2 {
+		t.Fatalf("closed_at=UTC_TIMESTAMP() appears %d times, want the stale-wisp and workflow-root close sites", got)
+	}
+}
+
 func TestReaperPreservesWorkflowRootsWithLiveDescendants(t *testing.T) {
 	cityDir := t.TempDir()
 	binDir := t.TempDir()
@@ -5513,7 +5601,7 @@ exit 0
 			t.Fatalf("reaper workflow-root preserve guard missing %q:\n%s", want, log)
 		}
 	}
-	if strings.Contains(log, "UPDATE `beads`.wisps SET status='closed', closed_at=NOW(), metadata = JSON_SET") ||
+	if strings.Contains(log, "UPDATE `beads`.wisps SET status='closed', closed_at=UTC_TIMESTAMP(), metadata = JSON_SET") ||
 		strings.Contains(log, "UPDATE `beads`.issues SET status='closed'") {
 		t.Fatalf("reaper closed workflow roots after live-descendant counts returned zero:\n%s", log)
 	}
@@ -5606,8 +5694,8 @@ exit 0
 	if err != nil {
 		t.Fatalf("ReadFile(dolt log): %v", err)
 	}
-	if strings.Contains(string(logData), "UPDATE `beads`.wisps SET status='closed', closed_at=NOW(), metadata = JSON_SET") ||
-		strings.Contains(string(logData), "UPDATE `beads`.issues SET status='closed', closed_at=NOW(), metadata = JSON_SET") {
+	if strings.Contains(string(logData), "UPDATE `beads`.wisps SET status='closed', closed_at=UTC_TIMESTAMP(), metadata = JSON_SET") ||
+		strings.Contains(string(logData), "UPDATE `beads`.issues SET status='closed', closed_at=UTC_TIMESTAMP(), metadata = JSON_SET") {
 		t.Fatalf("dry-run executed workflow-root update:\n%s", logData)
 	}
 
@@ -5760,6 +5848,276 @@ exit 0
 	}
 	if strings.Contains(gcLogText, "purged:1") {
 		t.Fatalf("reaper counted failed purge as success:\n%s", gcLogText)
+	}
+}
+
+// TestReaperExitsNonZeroWhenWorkflowWispRootCloseFails pins the first exit-0
+// hole of the PR #20 review round: the bulk wisp-root UPDATE only recorded an
+// anomaly, so a failed close still produced a clean `order.completed`. The
+// order must fail so the controller sees it.
+func TestReaperExitsNonZeroWhenWorkflowWispRootCloseFails(t *testing.T) {
+	cityDir := t.TempDir()
+	binDir := t.TempDir()
+	doltLog := filepath.Join(t.TempDir(), "dolt-args.log")
+	gcLog := filepath.Join(t.TempDir(), "gc.log")
+
+	writeExecutable(t, filepath.Join(binDir, "dolt"), `#!/bin/sh
+printf '%s\n' "$*" >> "$DOLT_ARGS_LOG"
+case "$*" in
+  *"SHOW TABLES FROM"*"LIKE 'wisps'"*)
+    printf 'Tables_in_db\nwisps\n'
+    ;;
+  *"SHOW DATABASES"*)
+    printf 'Database\nbeads\n'
+    ;;
+  *"SHOW COLUMNS FROM"*"dependencies"*)
+    printf 'Field,Type,Null,Key,Default,Extra\n'
+    printf 'issue_id,varchar,NO,,,\n'
+    printf 'depends_on_issue_id,varchar,YES,,,\n'
+    printf 'depends_on_wisp_id,varchar,YES,,,\n'
+    printf 'depends_on_external,varchar,YES,,,\n'
+    printf 'type,varchar,NO,,,\n'
+    ;;
+  *"workflow_wisp_root_candidates_base"*"LEFT JOIN workflow_wisp_root_candidates"*|*"workflow_issue_root_candidates_base"*"LEFT JOIN workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"UPDATE "*"wisps SET status='closed'"*"metadata = JSON_SET"*)
+    printf 'workflow wisp root close failed\n' >&2
+    exit 42
+    ;;
+  *"WITH workflow_wisp_root_candidates_base"*"SELECT COUNT(*) FROM workflow_wisp_root_candidates"*)
+    printf 'COUNT(*)\n1\n'
+    ;;
+  *"WITH workflow_issue_root_candidates_base"*"SELECT COUNT(*) FROM workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"WITH RECURSIVE workflow_wisp_root_candidates"*"SELECT DISTINCT root.id"*)
+    printf 'id\nwisp-close\n'
+    ;;
+  *"WITH RECURSIVE workflow_issue_root_candidates"*"SELECT DISTINCT root.id"*)
+    printf 'id\n'
+    ;;
+  *"SELECT COUNT(*) FROM "*"wisps"*"status IN ('open', 'hooked', 'in_progress')"*"created_at <"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"COUNT("*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"SELECT id"*)
+    printf 'id\n'
+    ;;
+esac
+exit 0
+`)
+	writeMaintenanceGCStub(t, filepath.Join(binDir, "gc"), `#!/bin/sh
+printf '%s\n' "$*" >> "$GC_CALL_LOG"
+exit 0
+`)
+	writeCityBeadsMetadata(t, cityDir, "beads")
+
+	env := map[string]string{
+		"DOLT_ARGS_LOG":    doltLog,
+		"GC_CALL_LOG":      gcLog,
+		"GC_CITY":          cityDir,
+		"GC_CITY_PATH":     cityDir,
+		"GC_DOLT_HOST":     "127.0.0.1",
+		"GC_DOLT_PORT":     "3307",
+		"GC_DOLT_USER":     "root",
+		"GC_DOLT_PASSWORD": "",
+		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+
+	out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+	if err == nil {
+		t.Fatalf("reaper exited 0 after a failed workflow wisp-root close:\n%s", out)
+	}
+
+	gcData, err := os.ReadFile(gcLog)
+	if err != nil {
+		t.Fatalf("ReadFile(gc log): %v", err)
+	}
+	gcLogText := string(gcData)
+	if !strings.Contains(gcLogText, "closing stale inactive workflow wisp roots failed for beads") {
+		t.Fatalf("reaper did not escalate the failed wisp-root close:\n%s", gcLogText)
+	}
+	if strings.Contains(gcLogText, "workflow_roots:1") {
+		t.Fatalf("reaper counted the failed wisp-root close as success:\n%s", gcLogText)
+	}
+}
+
+// TestReaperExitsNonZeroWhenWorkflowIssueRootCloseFails pins the second
+// exit-0 hole: a failed per-id city issue-root `bd close` only recorded an
+// anomaly. It must fail the order.
+func TestReaperExitsNonZeroWhenWorkflowIssueRootCloseFails(t *testing.T) {
+	cityDir := t.TempDir()
+	binDir := t.TempDir()
+	doltLog := filepath.Join(t.TempDir(), "dolt-args.log")
+	bdLog := filepath.Join(t.TempDir(), "bd.log")
+	gcLog := filepath.Join(t.TempDir(), "gc.log")
+
+	writeExecutable(t, filepath.Join(binDir, "dolt"), `#!/bin/sh
+printf '%s\n' "$*" >> "$DOLT_ARGS_LOG"
+case "$*" in
+  *"SHOW TABLES FROM"*"LIKE 'wisps'"*)
+    printf 'Tables_in_db\nwisps\n'
+    ;;
+  *"SHOW DATABASES"*)
+    printf 'Database\nbeads\n'
+    ;;
+  *"SHOW COLUMNS FROM"*"dependencies"*)
+    printf 'Field,Type,Null,Key,Default,Extra\n'
+    printf 'issue_id,varchar,NO,,,\n'
+    printf 'depends_on_issue_id,varchar,YES,,,\n'
+    printf 'depends_on_wisp_id,varchar,YES,,,\n'
+    printf 'depends_on_external,varchar,YES,,,\n'
+    printf 'type,varchar,NO,,,\n'
+    ;;
+  *"workflow_wisp_root_candidates_base"*"LEFT JOIN workflow_wisp_root_candidates"*|*"workflow_issue_root_candidates_base"*"LEFT JOIN workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"WITH workflow_wisp_root_candidates_base"*"SELECT COUNT(*) FROM workflow_wisp_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"WITH workflow_issue_root_candidates_base"*"SELECT COUNT(*) FROM workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n1\n'
+    ;;
+  *"WITH RECURSIVE workflow_wisp_root_candidates"*"SELECT DISTINCT root.id"*)
+    printf 'id\n'
+    ;;
+  *"WITH RECURSIVE workflow_issue_root_candidates"*"SELECT DISTINCT root.id"*)
+    printf 'id\nissue-close\n'
+    ;;
+  *"SELECT COUNT(*) FROM "*"wisps"*"status IN ('open', 'hooked', 'in_progress')"*"created_at <"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"COUNT("*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"SELECT id"*)
+    printf 'id\n'
+    ;;
+esac
+exit 0
+`)
+	writeExecutable(t, filepath.Join(binDir, "bd"), `#!/bin/sh
+printf '%s\n' "$*" >> "$BD_CALL_LOG"
+case "$*" in
+  *"close issue-close"*)
+    printf 'issue root close failed\n' >&2
+    exit 42
+    ;;
+esac
+exit 0
+`)
+	writeMaintenanceGCStub(t, filepath.Join(binDir, "gc"), `#!/bin/sh
+printf '%s\n' "$*" >> "$GC_CALL_LOG"
+exit 0
+`)
+	writeCityBeadsMetadata(t, cityDir, "beads")
+
+	env := map[string]string{
+		"BD_CALL_LOG":      bdLog,
+		"DOLT_ARGS_LOG":    doltLog,
+		"GC_CALL_LOG":      gcLog,
+		"GC_CITY":          cityDir,
+		"GC_CITY_PATH":     cityDir,
+		"GC_DOLT_HOST":     "127.0.0.1",
+		"GC_DOLT_PORT":     "3307",
+		"GC_DOLT_USER":     "root",
+		"GC_DOLT_PASSWORD": "",
+		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+
+	out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+	if err == nil {
+		t.Fatalf("reaper exited 0 after a failed workflow issue-root close:\n%s", out)
+	}
+
+	gcData, err := os.ReadFile(gcLog)
+	if err != nil {
+		t.Fatalf("ReadFile(gc log): %v", err)
+	}
+	gcLogText := string(gcData)
+	if !strings.Contains(gcLogText, "closing stale inactive workflow issue root issue-close failed for beads") {
+		t.Fatalf("reaper did not escalate the failed issue-root close:\n%s", gcLogText)
+	}
+	if strings.Contains(gcLogText, "workflow_roots:1") {
+		t.Fatalf("reaper counted the failed issue-root close as success:\n%s", gcLogText)
+	}
+}
+
+// TestReaperExitsNonZeroWhenPurgeCountFails pins the third exit-0 hole: a
+// failed purge COUNT reads as 0, skips the DELETE, and used to leave the
+// order reporting success. It must fail the order.
+func TestReaperExitsNonZeroWhenPurgeCountFails(t *testing.T) {
+	cityDir := t.TempDir()
+	binDir := t.TempDir()
+	doltLog := filepath.Join(t.TempDir(), "dolt-args.log")
+	gcLog := filepath.Join(t.TempDir(), "gc.log")
+
+	writeExecutable(t, filepath.Join(binDir, "dolt"), `#!/bin/sh
+printf '%s\n' "$*" >> "$DOLT_ARGS_LOG"
+case "$*" in
+  *"SHOW TABLES FROM"*"LIKE 'wisps'"*)
+    printf 'Tables_in_db\nwisps\n'
+    ;;
+  *"SHOW DATABASES"*)
+    printf 'Database\nbeads\n'
+    ;;
+  *"SHOW COLUMNS FROM"*"dependencies"*)
+    printf 'Field,Type,Null,Key,Default,Extra\n'
+    printf 'issue_id,varchar,NO,,,\n'
+    printf 'depends_on_issue_id,varchar,YES,,,\n'
+    printf 'depends_on_wisp_id,varchar,YES,,,\n'
+    printf 'depends_on_external,varchar,YES,,,\n'
+    printf 'type,varchar,NO,,,\n'
+    ;;
+  *"workflow_wisp_root_candidates_base"*"LEFT JOIN workflow_wisp_root_candidates"*|*"workflow_issue_root_candidates_base"*"LEFT JOIN workflow_issue_root_candidates"*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"wisps"*"status = 'closed'"*"closed_at <"*)
+    printf 'purge count probe timed out\n' >&2
+    exit 42
+    ;;
+  *"COUNT("*)
+    printf 'COUNT(*)\n0\n'
+    ;;
+  *"SELECT id"*)
+    printf 'id\n'
+    ;;
+esac
+exit 0
+`)
+	writeMaintenanceGCStub(t, filepath.Join(binDir, "gc"), `#!/bin/sh
+printf '%s\n' "$*" >> "$GC_CALL_LOG"
+exit 0
+`)
+	writeCityBeadsMetadata(t, cityDir, "beads")
+
+	env := map[string]string{
+		"DOLT_ARGS_LOG":    doltLog,
+		"GC_CALL_LOG":      gcLog,
+		"GC_CITY":          cityDir,
+		"GC_CITY_PATH":     cityDir,
+		"GC_DOLT_HOST":     "127.0.0.1",
+		"GC_DOLT_PORT":     "3307",
+		"GC_DOLT_USER":     "root",
+		"GC_DOLT_PASSWORD": "",
+		"PATH":             binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+
+	out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+	if err == nil {
+		t.Fatalf("reaper exited 0 after a failed purge count:\n%s", out)
+	}
+
+	gcData, err := os.ReadFile(gcLog)
+	if err != nil {
+		t.Fatalf("ReadFile(gc log): %v", err)
+	}
+	gcLogText := string(gcData)
+	if !strings.Contains(gcLogText, "closed wisp purge count failed for beads") {
+		t.Fatalf("reaper did not escalate the failed purge count:\n%s", gcLogText)
 	}
 }
 
