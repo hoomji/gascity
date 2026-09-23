@@ -24,6 +24,7 @@ from .annotations import load_gold_set, save_gold_annotations
 from .canonical import sha256_bytes
 from .changes import normalize_change_bundle
 from .collector import (
+    DEFAULT_MAX_SOURCE_BYTES,
     CollectorConfig,
     collect_once,
     collect_watch,
@@ -680,7 +681,7 @@ def _cmd_queue_drain(args: argparse.Namespace) -> int:
             kill_switch_path=_kill_switch_path(args),
         )
     _write_output(json.dumps(result.to_dict(), indent=2, sort_keys=True, ensure_ascii=False), args.out)
-    return 0 if result.status in {"ok", "disabled"} else 1
+    return 0 if result.status in {"ok", "disabled", "locked"} else 1
 
 
 def _add_transport_args(parser: argparse.ArgumentParser) -> None:
@@ -942,8 +943,11 @@ def build_parser() -> argparse.ArgumentParser:
     collect_parser.add_argument(
         "--max-source-bytes",
         type=int,
-        default=None,
-        help="defer any single source larger than this (adapters parse whole files in memory)",
+        default=DEFAULT_MAX_SOURCE_BYTES,
+        help=(
+            "defer any single source larger than this, including a decompressed "
+            f".zstd source (default {DEFAULT_MAX_SOURCE_BYTES}; adapters parse whole files in memory)"
+        ),
     )
     collect_parser.add_argument(
         "--max-db-bytes", type=int, default=None, help="defer imports once the projection reaches this size"
