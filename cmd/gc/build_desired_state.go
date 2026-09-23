@@ -6436,6 +6436,14 @@ func installAgentSideEffects(bp *agentBuildParams, cfgAgent *config.Agent, tp Te
 			autoSP.RouteACP(tp.SessionName)
 		}
 	}
+	if tp.Runtime != "" && bp.city != nil && tp.Runtime != bp.city.Session.Provider {
+		if autoSP, ok := bp.sp.(*sessionauto.Provider); ok {
+			remoteSP, err := buildSessionProviderByName(bp.city, tp.Runtime, bp.city.Session, bp.cityName, bp.cityPath)
+			if err == nil {
+				autoSP.RouteProvider(tp.SessionName, remoteSP)
+			}
+		}
+	}
 }
 
 // hooksWithoutClaude returns ih with any "claude" entries filtered out.

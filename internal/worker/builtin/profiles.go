@@ -26,6 +26,7 @@ type BuiltinOptionChoice struct {
 	Label       string
 	FlagArgs    []string
 	FlagAliases [][]string
+	Env         map[string]string
 }
 
 // BuiltinProviderSpec is the canonical builtin worker materialization source.
@@ -567,6 +568,20 @@ var builtinProviderSpecs = map[string]BuiltinProviderSpec{
 					{Value: "opencode/deepseek-v4-flash-free", Label: "DeepSeek V4 Flash Free", FlagArgs: []string{"--model", "opencode/deepseek-v4-flash-free"}, FlagAliases: [][]string{{"-m", "opencode/deepseek-v4-flash-free"}}},
 					{Value: "opencode/nemotron-3-super-free", Label: "Nemotron 3 Super Free", FlagArgs: []string{"--model", "opencode/nemotron-3-super-free"}, FlagAliases: [][]string{{"-m", "opencode/nemotron-3-super-free"}}},
 					{Value: "opencode/big-pickle", Label: "Big Pickle", FlagArgs: []string{"--model", "opencode/big-pickle"}, FlagAliases: [][]string{{"-m", "opencode/big-pickle"}}},
+				},
+			},
+			{
+				// OpenCode models reasoning effort as a model-specific variant. Its
+				// --variant flag is currently available only to `opencode run`, while
+				// Gas City launches the interactive TUI (`opencode --prompt`). Keep an
+				// explicit sentinel in the schema so effort is discoverable but every
+				// non-empty option_default or task override fails validation rather
+				// than being accepted and silently omitted from the provider request.
+				Key:   "effort",
+				Label: "Effort (unsupported for interactive OpenCode)",
+				Type:  "select",
+				Choices: []BuiltinOptionChoice{
+					{Value: "", Label: "Unsupported"},
 				},
 			},
 		},

@@ -1559,3 +1559,43 @@ func TestNewSessionProviderFromContextPreservesRawErrorForExistingCallers(t *tes
 		t.Fatalf("supervisor boundary error = %q, want %q", got, want)
 	}
 }
+
+func TestNewSessionProviderRoutesRemoteRuntimeAgent(t *testing.T) {
+	localFake := runtime.NewFake()
+	remoteFake := runtime.NewFake()
+
+	oldBuild := buildSessionProviderByName
+	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
+	buildSessionProviderByName = func(_ *config.City, name string, _ config.SessionConfig, _, _ string) (runtime.Provider, error) {
+		if name == "ssh:dell" {
+			return remoteFake, nil
+		}
+		return localFake, nil
+	}
+
+	cfg := &config.City{
+		Workspace: config.Workspace{
+			Name: "test-city",
+		},
+		Agents: []config.Agent{
+			{Name: "dell-worker", Runtime: "ssh:dell"},
+		},
+	}
+
+	ctx := sessionProviderContextForCity(cfg, t.TempDir(), "fake")
+	sp, err := newSessionProviderFromContext(ctx, nil)
+	if err != nil {
+		t.Fatalf("newSessionProviderFromContext: %v", err)
+	}
+
+	if err := sp.Start(t.Context(), "dell-worker", runtime.Config{Command: "test"}); err != nil {
+		t.Fatalf("sp.Start: %v", err)
+	}
+
+	if !remoteFake.IsRunning("dell-worker") {
+		t.Errorf("session 'dell-worker' was not routed to remote fake provider")
+	}
+	if localFake.IsRunning("dell-worker") {
+		t.Errorf("session 'dell-worker' ran on local provider instead of remote provider")
+	}
+}

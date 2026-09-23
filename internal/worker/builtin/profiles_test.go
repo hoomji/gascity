@@ -78,6 +78,37 @@ func TestBuiltinProviderMimoCodeSpec(t *testing.T) {
 	}
 }
 
+func TestBuiltinOpenCodeDeclaresEffortUnsupported(t *testing.T) {
+	opencode, ok := BuiltinProviders()["opencode"]
+	if !ok {
+		t.Fatal("BuiltinProviders() missing opencode")
+	}
+
+	var effortOption BuiltinProviderOption
+	for _, option := range opencode.OptionsSchema {
+		if option.Key == "effort" {
+			effortOption = option
+			break
+		}
+	}
+	if effortOption.Key == "" {
+		t.Fatal("opencode provider missing effort option")
+	}
+	if effortOption.Default != "" {
+		t.Errorf("effort Default = %q, want empty", effortOption.Default)
+	}
+	if _, ok := opencode.OptionDefaults["effort"]; ok {
+		t.Errorf("OptionDefaults[effort] = %q, want absent", opencode.OptionDefaults["effort"])
+	}
+	if len(effortOption.Choices) != 1 {
+		t.Fatalf("effort choices = %v, want one unsupported sentinel", effortOption.Choices)
+	}
+	choice := effortOption.Choices[0]
+	if choice.Value != "" || len(choice.FlagArgs) != 0 || len(choice.Env) != 0 {
+		t.Fatalf("effort sentinel = %+v, want empty value with no launch mapping", choice)
+	}
+}
+
 func TestBuiltinProviderZCodeSpec(t *testing.T) {
 	spec, ok := BuiltinProviders()["zcode"]
 	if !ok {
