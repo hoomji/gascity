@@ -104,3 +104,42 @@ func TestRuntimeBinaryStaleDetectsReplacedExecutable(t *testing.T) {
 		t.Fatalf("replaced executable was not reported stale")
 	}
 }
+
+// TestRuntimeBinaryStaleTreatsUnreadableStatAsNotStale pins the stat branch that
+// the " (deleted)" short-circuit above does not reach: when the executable path
+// is still linked but cannot be stat'd (EACCES), the probe must report "cannot
+// tell" (false), never stale, because a false positive makes the reconciler
+// restart a healthy controller.
+func TestRuntimeBinaryStaleTreatsUnreadableStatAsNotStale(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: directory permissions do not produce EACCES")
+	}
+	cmd, bin := startCopiedLongLivedProcess(t)
+
+	dir := filepath.Dir(bin)
+	if err := os.Chmod(dir, 0o000); err != nil {
+		t.Fatalf("chmod %s: %v", dir, err)
+	}
+	defer func() {
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Errorf("restore %s permissions: %v", dir, err)
+		}
+	}()
+
+	// The unlinked short-circuit must not fire: readlink still reports the
+	// path, and the kernel did not decorate it with " (deleted)".
+	path, deleted, err := readProcExe(cmd.Process.Pid)
+	if err != nil {
+		t.Fatalf("readProcExe: %v", err)
+	}
+	if deleted {
+		t.Fatalf("readProcExe deleted = true, want false (path=%q)", path)
+	}
+	if _, statErr := os.Stat(bin); statErr == nil || os.IsNotExist(statErr) {
+		t.Fatalf("os.Stat(%q) error = %v, want a non-ENOENT failure such as EACCES", bin, statErr)
+	}
+
+	if runtimeBinaryStale(cmd.Process.Pid) {
+		t.Fatalf("unreadable on-disk executable reported stale; want false (cannot tell)")
+	}
+}

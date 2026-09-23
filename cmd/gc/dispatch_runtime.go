@@ -268,6 +268,11 @@ func useWorkflowTraceWarnings(writer io.Writer) func() {
 	}
 }
 
+// drainWorkflowServe is the one-shot drain seam for runWorkflowServe. It lets a
+// test pin that the single-server lock is acquired before any draining without
+// standing up a live control stream.
+var drainWorkflowServe = drainWorkflowServeWork
+
 func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writer) error {
 	restoreTraceWarnings := useWorkflowTraceWarnings(stderr)
 	defer restoreTraceWarnings()
@@ -335,7 +340,7 @@ func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writ
 
 	workflowTracef("serve start agent=%s city=%s dir=%s", agentCfg.QualifiedName(), cityPath, workDir)
 	if !follow {
-		_, err := drainWorkflowServeWork(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
+		_, err := drainWorkflowServe(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
 		return err
 	}
 	return runWorkflowServeFollow(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)

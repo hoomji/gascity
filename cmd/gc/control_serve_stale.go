@@ -53,7 +53,9 @@ func isControlDispatcherSessionBead(b beads.Bead) bool {
 // The remedy has two parts:
 //
 //   - An untracked runtime is a duplicate the provider no longer owns, so it is
-//     terminated directly.
+//     terminated directly. restart_requested is only set once that terminate
+//     succeeds (or the process is confirmed gone): if the duplicate cannot be
+//     stopped, requesting a restart would only race it with a second server.
 //   - restart_requested is set on the session bead so the reconciler stops and
 //     re-starts the tracked controller on the current binary. That stop/start
 //     also releases the single-server lock, letting the replacement claim it.
@@ -72,10 +74,15 @@ func requestStaleControllerRuntimeRestart(
 	}
 	if !live.IsTracked {
 		if err := scanner.TerminateRuntime(live); err != nil {
-			fmt.Fprintf(stderr, "session reconciler: terminating stale untracked controller pid=%d session=%s: %v\n", live.PID, live.SessionID, err) //nolint:errcheck
-		} else {
-			fmt.Fprintf(stderr, "session reconciler: terminated stale untracked controller pid=%d session=%s (running a replaced gc binary)\n", live.PID, live.SessionID) //nolint:errcheck
+			// The duplicate may still be alive and serving the stream. Asking
+			// the reconciler for a restart now would race it with a second
+			// server, so leave restart_requested unset until the terminate is
+			// observed to have worked (or the process is confirmed gone, which
+			// TerminateRuntime reports as nil).
+			fmt.Fprintf(stderr, "session reconciler: terminating stale untracked controller pid=%d session=%s: %v; not requesting restart\n", live.PID, live.SessionID, err) //nolint:errcheck
+			return
 		}
+		fmt.Fprintf(stderr, "session reconciler: terminated stale untracked controller pid=%d session=%s (running a replaced gc binary)\n", live.PID, live.SessionID) //nolint:errcheck
 	}
 	if err := store.SetMetadata(live.SessionID, "restart_requested", "true"); err != nil {
 		fmt.Fprintf(stderr, "session reconciler: requesting restart for stale controller session %s pid=%d: %v\n", live.SessionID, live.PID, err) //nolint:errcheck

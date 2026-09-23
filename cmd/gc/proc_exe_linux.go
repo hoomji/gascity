@@ -3,7 +3,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 )
@@ -55,8 +57,11 @@ func runtimeBinaryStale(pid int) bool {
 	}
 	diskInfo, err := os.Stat(exePath)
 	if err != nil {
-		// The running binary has no on-disk name anymore.
-		return true
+		// Only a genuinely absent path means the running binary no longer has
+		// an on-disk name. Any other stat failure (for example EACCES on an
+		// unreadable parent directory) is "cannot tell", and must not be
+		// reported as stale: the caller restarts the process on true.
+		return errors.Is(err, fs.ErrNotExist)
 	}
 	return !os.SameFile(procInfo, diskInfo)
 }

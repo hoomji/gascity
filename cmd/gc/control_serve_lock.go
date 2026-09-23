@@ -85,6 +85,15 @@ func controlServeLockPath(cityPath, stream string) string {
 // canonicalControlServeCityPath resolves as much of cityPath as exists so
 // symlink-equivalent names collapse to one lock location. It falls back to the
 // cleaned absolute path when resolution fails.
+//
+// Known limit (F3, deliberately not fixed here): this collapses symlinks and
+// relative paths, but not bind mounts. On container hosts where the host path
+// (/srv/city) and the in-container path (/mnt/city) name the same directory
+// through different mounts, the two strings are not equal and do not resolve
+// through EvalSymlinks, so the derived lock files differ and two --serve
+// processes can still both acquire a lock. Comparing the city directory's
+// st_dev/st_ino would close that gap; until then, run a city's servers from one
+// path shape.
 func canonicalControlServeCityPath(cityPath string) string {
 	cityPath = strings.TrimSpace(cityPath)
 	if resolved, err := filepath.EvalSymlinks(cityPath); err == nil && resolved != "" {

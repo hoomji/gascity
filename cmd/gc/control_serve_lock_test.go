@@ -5,8 +5,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gastownhall/gascity/internal/config"
 )
 
 // zeroControlServeLockWait removes the acquisition grace window so a contended
@@ -95,10 +98,10 @@ func TestControlServeLockCanonicalizesSymlinkedCityPath(t *testing.T) {
 	}
 }
 
-// TestRunWorkflowServeRefusesWhenStreamLocked pins the integration: the serve
-// loop must acquire the stream lock before it drains anything and surface the
-// refusal as the typed error a caller can recognize.
-func TestRunWorkflowServeRefusesWhenStreamLocked(t *testing.T) {
+// setupWorkflowServeTestCity writes the minimal control-dispatcher city the
+// serve-loop integration tests need and points GC_CITY at it.
+func setupWorkflowServeTestCity(t *testing.T) string {
+	t.Helper()
 	clearGCEnv(t)
 	disableManagedDoltRecoveryForTest(t)
 
@@ -107,6 +110,14 @@ func TestRunWorkflowServeRefusesWhenStreamLocked(t *testing.T) {
 		t.Fatalf("write city.toml: %v", err)
 	}
 	t.Setenv("GC_CITY", cityDir)
+	return cityDir
+}
+
+// TestRunWorkflowServeRefusesWhenStreamLocked pins the integration: the serve
+// loop must acquire the stream lock before it drains anything and surface the
+// refusal as the typed error a caller can recognize.
+func TestRunWorkflowServeRefusesWhenStreamLocked(t *testing.T) {
+	setupWorkflowServeTestCity(t)
 
 	prevCityFlag := cityFlag
 	prevAcquire := controlServeLockAcquire
@@ -131,5 +142,39 @@ func TestRunWorkflowServeRefusesWhenStreamLocked(t *testing.T) {
 	}
 	if gotStream == "" {
 		t.Fatalf("serve loop acquired the stream lock with an empty stream identity")
+	}
+}
+
+// TestRunWorkflowServeAcquiresLockBeforeDrain pins the positive ordering: on a
+// free stream the one-shot serve path must own the lock before it drains, not
+// merely refuse when the lock is taken. Both seams are substituted so the test
+// observes the order directly and never touches a real stream.
+func TestRunWorkflowServeAcquiresLockBeforeDrain(t *testing.T) {
+	setupWorkflowServeTestCity(t)
+
+	prevCityFlag := cityFlag
+	prevAcquire := controlServeLockAcquire
+	prevDrain := drainWorkflowServe
+	cityFlag = ""
+	var order []string
+	controlServeLockAcquire = func(_, _ string) (*controlServeLock, error) {
+		order = append(order, "acquire")
+		return &controlServeLock{}, nil
+	}
+	drainWorkflowServe = func(config.Agent, string, string, string, map[string]string, io.Writer) (workflowServeDrainResult, error) {
+		order = append(order, "drain")
+		return workflowServeDrainResult{}, nil
+	}
+	t.Cleanup(func() {
+		cityFlag = prevCityFlag
+		controlServeLockAcquire = prevAcquire
+		drainWorkflowServe = prevDrain
+	})
+
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
+		t.Fatalf("runWorkflowServe: %v", err)
+	}
+	if got := strings.Join(order, ","); got != "acquire,drain" {
+		t.Fatalf("serve call order = %q, want %q", got, "acquire,drain")
 	}
 }
