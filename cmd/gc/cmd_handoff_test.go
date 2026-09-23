@@ -325,19 +325,24 @@ func TestCmdHandoffAutoHookFormatCodex(t *testing.T) {
 	}
 
 	var payload struct {
-		HookSpecificOutput struct {
-			HookEventName     string `json:"hookEventName"`
-			AdditionalContext string `json:"additionalContext"`
-		} `json:"hookSpecificOutput"`
+		SystemMessage      string          `json:"systemMessage"`
+		HookSpecificOutput json.RawMessage `json:"hookSpecificOutput"`
+		Continue           *bool           `json:"continue"`
+		StopReason         string          `json:"stopReason"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
 		t.Fatalf("stdout is not Codex hook JSON: %v\n%s", err, stdout.String())
 	}
-	if got, want := payload.HookSpecificOutput.HookEventName, "PreCompact"; got != want {
-		t.Fatalf("hookEventName = %q, want %q", got, want)
+	// Codex PreCompactCommandOutputWire has no hookSpecificOutput field and is
+	// deny_unknown_fields, so the Claude envelope must not appear at all.
+	if len(payload.HookSpecificOutput) != 0 {
+		t.Fatalf("hookSpecificOutput present in PreCompact codex output: %s", stdout.String())
 	}
-	if !strings.Contains(payload.HookSpecificOutput.AdditionalContext, "Handoff: sent auto mail") {
-		t.Fatalf("additionalContext = %q, want handoff confirmation", payload.HookSpecificOutput.AdditionalContext)
+	if payload.Continue != nil || payload.StopReason != "" {
+		t.Fatalf("PreCompact codex output must not carry continue/stopReason: %s", stdout.String())
+	}
+	if !strings.Contains(payload.SystemMessage, "Handoff: sent auto mail") {
+		t.Fatalf("systemMessage = %q, want handoff confirmation", payload.SystemMessage)
 	}
 	store, err := openCityStoreAt(cityDir)
 	if err != nil {
@@ -347,8 +352,8 @@ func TestCmdHandoffAutoHookFormatCodex(t *testing.T) {
 	if len(all) != 1 {
 		t.Fatalf("open beads = %d, want handoff mail", len(all))
 	}
-	if !strings.Contains(payload.HookSpecificOutput.AdditionalContext, all[0].ID) {
-		t.Fatalf("additionalContext = %q, want handoff mail id %s", payload.HookSpecificOutput.AdditionalContext, all[0].ID)
+	if !strings.Contains(payload.SystemMessage, all[0].ID) {
+		t.Fatalf("systemMessage = %q, want handoff mail id %s", payload.SystemMessage, all[0].ID)
 	}
 }
 
