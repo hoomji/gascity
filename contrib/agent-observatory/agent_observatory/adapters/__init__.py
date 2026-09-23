@@ -21,6 +21,7 @@ from .base import (
     AdapterError,
     AdapterResult,
     SourceAdapter,
+    SourceSizeExceeded,
     TitleRevision,
 )
 from .claude import ClaudeAdapter
@@ -57,11 +58,15 @@ def adapter_for_path(source_path: str) -> SourceAdapter | None:
     return None
 
 
-def load_source_data(source_path: str, *, provider: str | None = None) -> tuple[SourceAdapter, bytes, str]:
+def load_source_data(
+    source_path: str, *, provider: str | None = None, max_bytes: int | None = None
+) -> tuple[SourceAdapter, bytes, str]:
     """Read and decompress one transcript.
 
     Returns ``(adapter, logical_bytes, sha256)`` so callers can decide the
     logical source generation before parsing (needed for rewrite detection).
+    *max_bytes*, when set, bounds the decompressed payload a compressed source
+    may expand to; exceeding it raises :class:`SourceSizeExceeded`.
     """
 
     path = Path(source_path)
@@ -72,7 +77,7 @@ def load_source_data(source_path: str, *, provider: str | None = None) -> tuple[
         raw = path.read_bytes()
     except OSError as exc:
         raise AdapterError(f"cannot read source: {exc}", source_path) from exc
-    data = adapter.decompress(raw, source_path)
+    data = adapter.decompress(raw, source_path, max_bytes)
     return adapter, data, sha256_bytes(data)
 
 
@@ -82,6 +87,7 @@ def read_source(
     context: AdapterContext,
     provider: str | None = None,
     generation: int = 1,
+    max_bytes: int | None = None,
 ) -> AdapterResult:
     """Read one transcript and return validated normalized records.
 
@@ -95,7 +101,7 @@ def read_source(
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
         raise AdapterError(f"generation must be a positive integer, got {generation!r}")
 
-    adapter, data, digest = load_source_data(source_path, provider=provider)
+    adapter, data, digest = load_source_data(source_path, provider=provider, max_bytes=max_bytes)
     result = adapter.parse(
         data,
         context=context,
@@ -148,6 +154,7 @@ __all__ = [
     "AdapterError",
     "AdapterResult",
     "SourceAdapter",
+    "SourceSizeExceeded",
     "TitleRevision",
     "adapter_for_path",
     "get_adapter",

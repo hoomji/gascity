@@ -3216,6 +3216,16 @@ func reapRuntimesBoundToClosedBeads(
 	return reaped
 }
 
+// sweepProcessTableOrphans reconciles OS-live gc runtimes against this city's
+// session beads. It has two arms:
+//
+//   - Untracked runtimes whose session bead is closed or gone are reaped.
+//   - A tracked or untracked control-dispatcher runtime whose /proc/<pid>/exe
+//     no longer matches the gc binary on disk (the binary `gc install`
+//     replaced) has a restart requested, and an untracked duplicate is
+//     terminated, so exactly one current-binary server serves each stream.
+//
+// It returns the number of runtimes reaped (restart requests are not reaps).
 func sweepProcessTableOrphans(
 	sp runtime.Provider,
 	_ *sessionBeadSnapshot,
@@ -3242,7 +3252,7 @@ func sweepProcessTableOrphans(
 	reaped := 0
 	for _, live := range found {
 		live.SessionID = strings.TrimSpace(live.SessionID)
-		if live.SessionID == "" || live.IsTracked {
+		if live.SessionID == "" {
 			continue
 		}
 		// The process-table scan is supervisor-wide: it walks all of /proc and
@@ -3256,10 +3266,31 @@ func sweepProcessTableOrphans(
 		if cityPath != "" && normalizePathForCompare(strings.TrimSpace(live.City)) != cityPath {
 			continue
 		}
+		if live.IsTracked {
+			// A tracked runtime belongs to this provider, so the orphan reap
+			// below never touches it. A tracked controller can still be running
+			// a gc binary that `gc install` replaced, though; request the
+			// reconciler restart that puts it back on the current binary. The
+			// stale-binary probe runs first so healthy sessions never pay for a
+			// store lookup here.
+			if processRuntimeBinaryStale(live.PID) {
+				bead, err := store.Get(live.SessionID)
+				if err == nil && bead.Status != "closed" {
+					requestStaleControllerRuntimeRestart(scanner, store, live, bead, stderr)
+				}
+			}
+			continue
+		}
 		bead, err := store.Get(live.SessionID)
 		switch {
 		case err == nil && bead.Status != "closed":
-			continue // bead still open — leave the runtime alone
+			// A live runtime bound to an open bead is normally left alone, but
+			// a control-dispatcher still running a gc binary that `gc install`
+			// replaced is the stale-server defect: it serves the stream from
+			// deleted code. Request a fresh restart (and reap an untracked
+			// duplicate) so exactly one current-binary server serves the stream.
+			requestStaleControllerRuntimeRestart(scanner, store, live, bead, stderr)
+			continue
 		case err != nil && !errors.Is(err, beads.ErrNotFound):
 			// transient/unreadable store error — do not destroy a live runtime on uncertainty
 			fmt.Fprintf(stderr, "session reconciler: looking up process-table orphan session bead %s pid=%d: %v\n", live.SessionID, live.PID, err) //nolint:errcheck

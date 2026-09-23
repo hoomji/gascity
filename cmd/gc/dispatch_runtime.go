@@ -268,6 +268,11 @@ func useWorkflowTraceWarnings(writer io.Writer) func() {
 	}
 }
 
+// drainWorkflowServe is the one-shot drain seam for runWorkflowServe. It lets a
+// test pin that the single-server lock is acquired before any draining without
+// standing up a live control stream.
+var drainWorkflowServe = drainWorkflowServeWork
+
 func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writer) error {
 	restoreTraceWarnings := useWorkflowTraceWarnings(stderr)
 	defer restoreTraceWarnings()
@@ -322,9 +327,20 @@ func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writ
 	if agentCfg.WorkQuery == "" && isWorkflowServeControlDispatcherAgent(agentCfg) {
 		workQuery = workflowServeControlReadyQueryForBeads(agentCfg, cfg.Beads, config.NamedSessionRuntimeName(cityName, cfg.Workspace, agentCfg.QualifiedName()))
 	}
+	// Single-server lock: one convoy-control stream must be served by exactly
+	// one process. A duplicate --serve races the same ready beads, and when gc
+	// is reinstalled the loser can be an old process still running the rotated
+	// -out binary. Acquire before any draining so a refused starter never
+	// touches the stream.
+	serveLock, err := controlServeLockAcquire(cityPath, agentCfg.QualifiedName())
+	if err != nil {
+		return err
+	}
+	defer serveLock.Release()
+
 	workflowTracef("serve start agent=%s city=%s dir=%s", agentCfg.QualifiedName(), cityPath, workDir)
 	if !follow {
-		_, err := drainWorkflowServeWork(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
+		_, err := drainWorkflowServe(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
 		return err
 	}
 	return runWorkflowServeFollow(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
