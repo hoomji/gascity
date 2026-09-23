@@ -195,7 +195,7 @@ PURGE_FAILED=0
 # stall that let the husk backlog grow.
 CENSUS_FAILED=0
 # Set when a Step 2 workflow-root close actually fails: the bulk wisp-root
-# UPDATE or a per-id city issue-root `bd close`. Those failures only recorded
+# UPDATE or a per-id city issue-root `gc bd close`. Those failures only recorded
 # an anomaly, so the controller still saw a clean `order.completed` (the same
 # exit-0 hole the census flag closes for the read side). The final exit below
 # includes this flag.
