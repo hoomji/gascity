@@ -553,7 +553,10 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 		_ = recordQueuedNudgeFailureWithStore(target.cityPath, deliveryStore, queuedNudgeIDs(rejected), errNudgeSessionFenceMismatch, time.Now())
 	}
 	candidates := items
-	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, candidates)
+	// The --inject form is produced by the provider's UserPromptSubmit hook, so
+	// only it has a prompt turn in flight and a mail-check hook injecting on the
+	// same event; the human-facing non-inject drain delivers the full reminder.
+	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, inject, candidates)
 	if err != nil {
 		// Release the claims so the next drain or poller pass retries
 		// promptly instead of waiting out the in-flight lease.
@@ -1602,7 +1605,10 @@ func tryDeliverQueuedNudgesByPoller(target nudgeTarget, store, sessStore beads.S
 		}
 	}
 	candidates := items
-	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, candidates)
+	// The poller runs at quiescence with no prompt turn in flight; its delivery
+	// IS the wake that makes the provider's mail-check hook inject, so it must
+	// never drop an unread mail reminder as redundant (F1).
+	items, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(deliverySessStore), deliveryMailProvider, false, candidates)
 	if err != nil {
 		relErr := releaseQueuedNudgeClaims(target.cityPath, queuedNudgeIDs(candidates))
 		return false, errors.Join(bookkeepErr, err, relErr)
@@ -1812,14 +1818,24 @@ func splitQueuedNudgesForTarget(target nudgeTarget, items []queuedNudge) ([]queu
 // the mail provider used the same way to gate mail-sourced nudges; it may be
 // nil, which behaves as if no mail nudge ever carried a reference (delivered
 // unconditionally, matching pre-#5321 behavior).
-func splitQueuedNudgesForDelivery(sessFront *session.Store, mp mail.Provider, items []queuedNudge) ([]queuedNudge, map[string][]queuedNudge, error) {
+//
+// promptTurnInFlight is true only for the provider-hook drain
+// (`gc nudge drain --inject`). There the provider's UserPromptSubmit
+// `gc mail check --inject` hook runs on the same turn and already injects the
+// unread-mail list, so a queued [mail] reminder is redundant and withdrawn.
+// The gate keys off the live hook invocation rather than a config read, so an
+// install failure or a stale session (no hook in the session, hence no --inject
+// drain) keeps the full reminder. The nudge poller passes false: it runs at
+// quiescence with no turn in flight, and its delivery is the turn that makes
+// the mail-check hook inject, so withdrawing there would strand the mail (F1).
+func splitQueuedNudgesForDelivery(sessFront *session.Store, mp mail.Provider, promptTurnInFlight bool, items []queuedNudge) ([]queuedNudge, map[string][]queuedNudge, error) {
 	if len(items) == 0 {
 		return nil, nil, nil
 	}
 	deliverable := make([]queuedNudge, 0, len(items))
 	blocked := make(map[string][]queuedNudge)
 	for _, item := range items {
-		reason, shouldBlock, err := blockedQueuedNudgeReason(sessFront, mp, item)
+		reason, shouldBlock, err := blockedQueuedNudgeReason(sessFront, mp, promptTurnInFlight, item)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1838,12 +1854,36 @@ func splitQueuedNudgesForDelivery(sessFront *session.Store, mp mail.Provider, it
 // reference gets its own gate below, so an item whose referent has since been
 // resolved (a wait that fired, a mail message already read) is withdrawn
 // instead of waking the target for stale news. See gastownhall/gascity#5321.
-func blockedQueuedNudgeReason(sessFront *session.Store, mp mail.Provider, item queuedNudge) (string, bool, error) {
+//
+// promptTurnInFlight enables the mail-hook-inject gate: on a provider hook turn
+// the mail-check hook already injects unread mail, so an unread mail reminder is
+// withdrawn as "mail-hook-inject". The gate is only reachable after the message
+// was actually re-read as unread; a nil provider or a reference-less reminder is
+// delivered rather than withdrawn on an unverified premise, preserving the
+// documented nil-mp "delivered unconditionally" contract (F4).
+func blockedQueuedNudgeReason(sessFront *session.Store, mp mail.Provider, promptTurnInFlight bool, item queuedNudge) (string, bool, error) {
 	switch item.Source {
 	case "wait":
 		return blockedQueuedWaitNudgeReason(sessFront, item)
 	case "mail":
-		return blockedQueuedMailNudgeReason(mp, item)
+		if mp == nil || item.Reference == nil || item.Reference.Kind != "mail" || item.Reference.ID == "" {
+			// Nothing to re-read: the message's existence/unread state is
+			// unverified, so deliver it (pre-#5321 contract for a nil mp).
+			return "", false, nil
+		}
+		reason, blocked, err := blockedQueuedMailNudgeReason(mp, item)
+		if err != nil || blocked {
+			return reason, blocked, err
+		}
+		if promptTurnInFlight {
+			// The provider's own UserPromptSubmit hook is running this
+			// drain, so its mail-check hook injects the same unread list on
+			// this turn. Withdraw the redundant reminder. We only reach this
+			// point after blockedQueuedMailNudgeReason found the message
+			// unread, never on a config read or an unverified premise.
+			return "mail-hook-inject", true, nil
+		}
+		return "", false, nil
 	default:
 		return "", false, nil
 	}
