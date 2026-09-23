@@ -14,6 +14,20 @@ __SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$__SCRIPT_DIR/_bd_trace.sh" "reaper"
 
 CITY="${GC_CITY_PATH:-${GC_CITY:-.}}"
+
+# A reaper that outlives its city must not fall through to whatever Dolt target
+# happens to be in its inherited environment. When GC_CITY (or GC_CITY_PATH)
+# points at a directory that no longer exists -- a deleted test fixture, a
+# torn-down city -- refuse before sourcing dolt-target.sh. Its no-Dolt skip
+# guard would otherwise accept an inherited GC_DOLT_PORT as this city's
+# canonical target and reap a foreign store, and even with no inherited port it
+# would exit 0 as a silent skip instead of surfacing the misconfiguration. This
+# is a refusal (exit 1), never a silent skip, so the controller sees it.
+if [ ! -d "$CITY" ]; then
+    printf 'reaper: refusing to run: GC_CITY/GC_CITY_PATH does not exist: %s\n' "$CITY" >&2
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/dolt-target.sh"
 CITY_ABS="$(cd "$CITY" 2>/dev/null && pwd -P || printf '%s\n' "$CITY")"

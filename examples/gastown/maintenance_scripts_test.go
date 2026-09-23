@@ -1,9 +1,12 @@
 package gastown_test
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -11,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -8193,11 +8197,65 @@ func runScript(t *testing.T, script string, env map[string]string) {
 	}
 }
 
+const (
+	// maintenanceScriptTimeout bounds a single maintenance-script run. A script
+	// that inherits a live host Dolt target can block on connection retries far
+	// longer than a unit test should; the timeout turns that into a test failure
+	// instead of a process that outlives the suite.
+	maintenanceScriptTimeout = 90 * time.Second
+	// maintenanceScriptWaitDelay bounds Wait after the script's leader exits or
+	// the context is canceled, so a forked child holding the combined-output
+	// pipe cannot pin Wait and defeat the process-group kill below.
+	maintenanceScriptWaitDelay = 5 * time.Second
+)
+
+// runScriptResult runs a maintenance script in its own process group, with a
+// bounded runtime, and reaps the whole group when it returns. The reaper can
+// fork (or, like the leaked test process this guards against, be left behind by
+// a test binary that moves on) and survive its parent; killing the group is what
+// keeps such a child from running against the host city after the test.
 func runScriptResult(t *testing.T, script string, env map[string]string) ([]byte, error) {
 	t.Helper()
-	cmd := exec.Command(script)
+
+	ctx, cancel := context.WithTimeout(context.Background(), maintenanceScriptTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, script)
 	cmd.Env = mergeTestEnv(env)
-	return cmd.CombinedOutput()
+	cmd.WaitDelay = maintenanceScriptWaitDelay
+	// Put the script in its own process group so any child it forks can be
+	// signaled as a tree rather than one orphan at a time.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	pid := cmd.Process.Pid
+	t.Cleanup(func() { killMaintenanceScriptGroup(pid) })
+
+	err := cmd.Wait()
+	// Wait returns once the script's leader is gone, but a forked child can
+	// still be running in the group (the reaper leak this guards against). Reap
+	// the rest of the group now instead of waiting for test Cleanup.
+	killMaintenanceScriptGroup(pid)
+	if ctx.Err() == context.DeadlineExceeded {
+		err = fmt.Errorf("script %s timed out after %s", filepath.Base(script), maintenanceScriptTimeout)
+	}
+	return output.Bytes(), err
+}
+
+// killMaintenanceScriptGroup SIGKILLs every process in pid's process group,
+// which runScriptResult created with Setpgid. Best-effort: ESRCH simply means
+// nothing is left to kill.
+func killMaintenanceScriptGroup(pid int) {
+	if pid <= 0 {
+		return
+	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
 }
 
 func runReaperCloseFixture(t *testing.T, fixture string) (doltLog string, gcLog string) {
@@ -8475,7 +8533,7 @@ func mergeTestEnv(overrides map[string]string) []string {
 	if _, ok := overrides["GC_MAINTENANCE_DONE_TARGET"]; !ok {
 		overrides["GC_MAINTENANCE_DONE_TARGET"] = "deacon/"
 	}
-	env := os.Environ()
+	env := scrubInheritedBeadsDoltEnv(os.Environ())
 	for key := range overrides {
 		prefix := key + "="
 		filtered := env[:0]
@@ -8494,6 +8552,169 @@ func mergeTestEnv(overrides map[string]string) []string {
 		env = append(env, key+"="+overrides[key])
 	}
 	return env
+}
+
+// scrubInheritedBeadsDoltEnv drops the ambient city's bead-store identity before
+// a maintenance script under test starts. mergeTestEnv seeds from os.Environ();
+// when the suite runs inside a live city that exports GC_DOLT_*, GC_BEADS_* or
+// BEADS_*, a script would treat the host store as its target. A reaper test
+// doing that can purge real city beads, so a test that needs a Dolt target must
+// declare it explicitly in its own overrides.
+func scrubInheritedBeadsDoltEnv(env []string) []string {
+	filtered := env[:0]
+	for _, entry := range env {
+		key := entry
+		if i := strings.IndexByte(entry, '='); i >= 0 {
+			key = entry[:i]
+		}
+		switch {
+		case strings.HasPrefix(key, "GC_DOLT_"),
+			strings.HasPrefix(key, "GC_BEADS_"),
+			strings.HasPrefix(key, "BEADS_"):
+			continue
+		default:
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
+// TestMaintenanceScriptHarnessKillsLeakedProcessGroup is the regression for the
+// reaper leak (gl-run93d142f4097b52832d63): a maintenance script that forks a
+// long-lived child and exits used to leave that child running against whatever
+// Dolt target its environment pointed at, long after the test that spawned it
+// finished. The child mimics a leaked reaper by holding the write end of a FIFO
+// open; that FIFO is its lifecycle signal, so the test observes whether the
+// harness reaped the process group without sleeping on the wall clock.
+func TestMaintenanceScriptHarnessKillsLeakedProcessGroup(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "child.pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("mkfifo unavailable: %v", err)
+	}
+	// Hold the read end before starting the script so the child's write-open
+	// never blocks the script shell itself; the reader observes the child's
+	// lifecycle through EOF when its write end closes.
+	reader, err := os.OpenFile(fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		t.Fatalf("open child pipe: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	script := filepath.Join(dir, "leaky-reaper.sh")
+	// The backgrounded child takes the FIFO write end and idles; the parent exits
+	// immediately, leaking the child in the script's process group. The child's
+	// stdio is detached so the harness's Wait is not pinned by an inherited
+	// output pipe.
+	writeExecutable(t, script, "#!/bin/sh\n"+
+		"sleep 600 >/dev/null 2>&1 3>'"+fifo+"' &\n"+
+		"exit 0\n")
+
+	out, err := runScriptResult(t, script, map[string]string{})
+	if err != nil {
+		t.Fatalf("runScriptResult(leaky parent): %v\n%s", err, out)
+	}
+
+	// A FIFO read returns EOF once every write end is closed. A surviving child
+	// keeps its end open, so the read blocks instead. Bound that wait with a read
+	// deadline: the child's lifecycle is the signal under test, not wall time.
+	if err := reader.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Skipf("pipe read deadline unavailable: %v", err)
+	}
+	buf := make([]byte, 1)
+	n, readErr := reader.Read(buf)
+	if n == 0 && (readErr == nil || errors.Is(readErr, io.EOF)) {
+		return // no writer left: the harness reaped the leaked process group
+	}
+	if errors.Is(readErr, os.ErrDeadlineExceeded) {
+		t.Fatalf("leaked child still holds the maintenance script's process group")
+	}
+	t.Fatalf("read child pipe: %v", readErr)
+}
+
+// TestMaintenanceRunScriptScrubsInheritedBeadsDoltEnv guards the env half of the
+// same leak: when the suite runs inside a live city, the host GC_DOLT_* /
+// GC_BEADS_* / BEADS_* identity must not reach a script under test unless that
+// test asks for it explicitly.
+func TestMaintenanceRunScriptScrubsInheritedBeadsDoltEnv(t *testing.T) {
+	t.Setenv("GC_DOLT_PORT", "3307")
+	t.Setenv("GC_DOLT_DATA_DIR", "/host/city/.beads/dolt")
+	t.Setenv("GC_BEADS_PREFIX", "ci")
+	t.Setenv("BEADS_DIR", "/host/city/.beads")
+
+	env := mergeTestEnv(map[string]string{"GC_DOLT_PORT": "12345"})
+	got := map[string]string{}
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		got[key] = value
+	}
+
+	if got["GC_DOLT_PORT"] != "12345" {
+		t.Fatalf("explicit GC_DOLT_PORT override lost: got %q, want 12345", got["GC_DOLT_PORT"])
+	}
+	for _, key := range []string{"GC_DOLT_DATA_DIR", "GC_BEADS_PREFIX", "BEADS_DIR"} {
+		if value, ok := got[key]; ok {
+			t.Fatalf("inherited %s=%q leaked into maintenance script env", key, value)
+		}
+	}
+}
+
+// TestReaperRefusesWhenCityDirectoryIsGone covers reaper.sh's missing-city
+// guard. Pointed at a deleted GC_CITY -- with or without an inherited Dolt
+// target -- the reaper must refuse before sourcing dolt-target.sh rather than
+// skip (exit 0) or query Dolt and reap a foreign store.
+func TestReaperRefusesWhenCityDirectoryIsGone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+	}{
+		{
+			name: "inherited dolt target",
+			env: map[string]string{
+				"GC_DOLT_HOST":     "127.0.0.1",
+				"GC_DOLT_PORT":     "3307",
+				"GC_DOLT_USER":     "root",
+				"GC_DOLT_PASSWORD": "",
+			},
+		},
+		{
+			// No Dolt target at all: dolt-target.sh's no-Dolt guard would
+			// otherwise exit 0 before the missing-city check runs.
+			name: "no dolt target",
+			env:  map[string]string{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doltLog := filepath.Join(t.TempDir(), "dolt-args.log")
+			binDir := t.TempDir()
+			writeExecutable(t, filepath.Join(binDir, "dolt"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DOLT_ARGS_LOG\"\nexit 0\n")
+
+			missingCity := filepath.Join(t.TempDir(), "deleted-city")
+			env := map[string]string{
+				"DOLT_ARGS_LOG": doltLog,
+				"GC_CITY":       missingCity,
+				"GC_CITY_PATH":  missingCity,
+				"PATH":          binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+			}
+			for key, value := range tc.env {
+				env[key] = value
+			}
+
+			out, err := runScriptResult(t, coreScriptPath("reaper.sh"), env)
+			if err == nil {
+				t.Fatalf("reaper accepted a missing GC_CITY and exited 0:\n%s", out)
+			}
+			if !strings.Contains(string(out), "does not exist") {
+				t.Fatalf("reaper did not explain the missing-city refusal:\n%s", out)
+			}
+			if data, readErr := os.ReadFile(doltLog); readErr == nil && len(data) > 0 {
+				t.Fatalf("reaper queried Dolt before refusing the missing city:\n%s", data)
+			}
+		})
+	}
 }
 
 // jsonlExportEnv builds the common env map used by the spike-detection tests
