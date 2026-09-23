@@ -2686,6 +2686,88 @@ func TestTryDeliverQueuedNudgesByPollerDeliversAndAcks(t *testing.T) {
 	}
 }
 
+// TestTryDeliverQueuedNudgesByPollerWakesHookInstalledSessionForMail is the F1
+// regression: a mail nudge queued for an idle hook-installed (claude) session
+// without --notify must still produce a poller turn. The poller has no prompt
+// turn in flight — its delivery IS the turn that triggers the UserPromptSubmit
+// mail-check hook — so it must not withdraw the reminder as redundant. Before
+// the fix the hook gate ran on the poller too, the item was terminalized
+// mail-hook-inject, len(items)==0 returned without submitting anything, and the
+// unread mail was never surfaced.
+func TestTryDeliverQueuedNudgesByPollerWakesHookInstalledSessionForMail(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	t.Setenv("GC_MAIL", "beadmail")
+	dir := t.TempDir()
+	t.Setenv("GC_CITY", dir)
+
+	store := openNudgeBeadStore(dir)
+	fake := runtime.NewFake()
+	mgr := newSessionManagerWithConfig(dir, store, fake, nil)
+	info, err := mgr.CreateSession(context.Background(), session.CreateOptions{Template: "worker", Title: "Worker", Command: "claude", WorkDir: dir, Provider: "claude", Env: nil, Resume: session.ProviderResume{}, Hints: runtime.Config{WorkDir: dir}, ExtraMeta: map[string]string{"session_origin": "manual"}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := mgr.Start(context.Background(), info.ID, "", runtime.Config{WorkDir: dir}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idleSince := time.Now().Add(-10 * time.Second)
+	fake.Activity = map[string]time.Time{info.SessionName: idleSince}
+
+	mp := beadmail.New(store)
+	msg, err := mp.Send("alice", "worker", "unread mail, no notify", "body")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	item := newQueuedNudgeWithOptions("worker", "You have mail from alice", "mail", time.Now().Add(-time.Minute), queuedNudgeOptions{
+		SessionID: info.ID,
+		Reference: &nudgeReference{Kind: "mail", ID: msg.ID},
+	})
+	if err := enqueueQueuedNudgeWithStore(dir, store, item); err != nil {
+		t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
+	}
+
+	target := nudgeTarget{
+		cityPath:    dir,
+		agent:       config.Agent{Name: "worker", Provider: "claude"},
+		sessionID:   info.ID,
+		resolved:    &config.ResolvedProvider{Name: "claude"},
+		sessionName: info.SessionName,
+	}
+	obs := worker.LiveObservation{Running: true, LastActivity: &idleSince}
+
+	delivered, err := tryDeliverQueuedNudgesByPoller(target, store, store, fake, 3*time.Second, obs)
+	if err != nil {
+		t.Fatalf("tryDeliverQueuedNudgesByPoller: %v", err)
+	}
+	if !delivered {
+		t.Fatal("delivered = false, want true: the poller must submit the wake turn that triggers mail injection")
+	}
+
+	var nudgeCalls []runtime.Call
+	for _, call := range fake.Calls {
+		if call.Method == "Nudge" {
+			nudgeCalls = append(nudgeCalls, call)
+		}
+	}
+	if len(nudgeCalls) != 1 {
+		t.Fatalf("nudge calls = %d, want exactly 1 wake turn", len(nudgeCalls))
+	}
+	if !strings.Contains(nudgeCalls[0].Message, "You have mail from alice") {
+		t.Fatalf("nudge message = %q, want the mail reminder delivered as the wake", nudgeCalls[0].Message)
+	}
+
+	// The reminder turn is only the trigger; the message itself must still be
+	// unread so the mail-check hook injects it exactly once on that turn.
+	stored, err := mp.Get(msg.ID)
+	if err != nil {
+		t.Fatalf("Get(msg): %v", err)
+	}
+	if stored.Read {
+		t.Fatal("mail was marked read by the reminder turn; the mail-check hook has nothing left to inject")
+	}
+}
+
 // TestTryDeliverQueuedNudgesByPollerAcksDeliveredUnobservedInsteadOfRetrying
 // guards ga-civwyz: when the provider reports
 // tmux.ErrNudgeSubmitDeliveredUnobserved (submit Enter delivered, composer
@@ -3634,18 +3716,22 @@ func TestCmdNudgeDrainReValidatesMailAgainstRealProvider(t *testing.T) {
 }
 
 // TestCmdNudgeDrainDropsHookInjectedMailReminder drives the drain root end to
-// end for the "drop the deferred [mail] reminder" contract. The worker's
-// catalog agent declares hooks_installed, so the resolved target is
-// hook-present and the queued mail reminder must be withdrawn instead of
-// injected; the unread message itself stays for the provider's own
-// UserPromptSubmit `gc mail check --inject` hook to surface.
+// end for the "drop the deferred [mail] reminder" contract. The drain is the
+// provider-hook --inject form (the only producer of --inject is the
+// UserPromptSubmit hook), so a prompt turn is in flight and the provider's
+// `gc mail check --inject` hook injects the unread list on the same turn; the
+// queued mail reminder must be withdrawn instead of injected, and the unread
+// message stays for that hook. The city deliberately defines no worker agent
+// with hooks_installed: the gate keys off the live hook invocation, not config
+// intent, so an install failure or a stale session with no hook never reaches
+// this path.
 func TestCmdNudgeDrainDropsHookInjectedMailReminder(t *testing.T) {
 	clearGCEnv(t)
 	disableManagedDoltRecoveryForTest(t)
 	t.Setenv("GC_BEADS", "file")
 
 	cityDir := t.TempDir()
-	writeHookInstalledWorkerCityTOML(t, cityDir)
+	writeNamedSessionCityTOML(t, cityDir)
 	t.Setenv("GC_CITY", cityDir)
 
 	store, err := openCityStoreAt(cityDir)
@@ -3708,30 +3794,6 @@ func TestCmdNudgeDrainDropsHookInjectedMailReminder(t *testing.T) {
 	if withdrawn.TerminalReason != "mail-hook-inject" {
 		t.Fatalf("terminal_reason = %q, want mail-hook-inject", withdrawn.TerminalReason)
 	}
-}
-
-// writeHookInstalledWorkerCityTOML writes a minimal file-store city whose
-// "worker" catalog agent declares hooks_installed, so AgentHasHooks reports
-// hook-present for the resolved drain target without needing a real provider
-// binary on PATH.
-func writeHookInstalledWorkerCityTOML(t *testing.T, dir string) {
-	t.Helper()
-	killNamedSessionTmuxServer(t)
-	if err := os.MkdirAll(filepath.Join(dir, ".gc"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(.gc): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "pack.toml"), []byte("[pack]\nname = \"test-city\"\nschema = 2\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(pack.toml): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte("[workspace]\n\n[beads]\nprovider = \"file\"\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(city.toml): %v", err)
-	}
-	writeBuiltinImportsFixture(t, dir, "core")
-	siteTOML := fmt.Sprintf("workspace_name = %q\n", namedSessionTestWorkspace)
-	if err := os.WriteFile(filepath.Join(dir, ".gc", "site.toml"), []byte(siteTOML), 0o644); err != nil {
-		t.Fatalf("WriteFile(.gc/site.toml): %v", err)
-	}
-	writeCatalogFile(t, dir, "agents/worker/agent.toml", "start_command = \"echo\"\nhooks_installed = true\n")
 }
 
 func TestDeliverSlingNudgeWaitIdleWrapsInSystemReminder(t *testing.T) {
@@ -4462,7 +4524,7 @@ func TestSplitQueuedNudgesForDelivery_BlocksCanceledWaitNudge(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, nudgeTarget{}, []queuedNudge{{
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, false, []queuedNudge{{
 		ID:        "n1",
 		Agent:     "worker",
 		Source:    "wait",
@@ -4493,7 +4555,7 @@ func TestSplitQueuedNudgesForDelivery_AllowsReadyLegacyWaitNudge(t *testing.T) {
 		t.Fatalf("create legacy wait bead: %v", err)
 	}
 
-	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, nudgeTarget{}, []queuedNudge{{
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(sessionFrontDoor(store), nil, false, []queuedNudge{{
 		ID:        "n1",
 		Agent:     "worker",
 		Source:    "wait",
@@ -5735,7 +5797,7 @@ func TestBlockedQueuedNudgeReason_GetWaitErrorMapping(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reason, block, err := blockedQueuedNudgeReason(sessFront, nil, nudgeTarget{}, tc.item)
+			reason, block, err := blockedQueuedNudgeReason(sessFront, nil, false, tc.item)
 			if err != nil {
 				t.Fatalf("blockedQueuedNudgeReason: %v", err)
 			}
@@ -5796,7 +5858,7 @@ func TestBlockedQueuedMailNudgeReason_ReReadsMessageAtDelivery(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reason, block, err := blockedQueuedNudgeReason(nil, tc.mp, nudgeTarget{}, tc.item)
+			reason, block, err := blockedQueuedNudgeReason(nil, tc.mp, false, tc.item)
 			if err != nil {
 				t.Fatalf("blockedQueuedNudgeReason: %v", err)
 			}
@@ -5830,7 +5892,7 @@ func TestSplitQueuedNudgesForDelivery_MailNudges(t *testing.T) {
 		{ID: "n-missing", Agent: "worker", Source: "mail", Reference: &nudgeReference{Kind: "mail", ID: "gc-nope"}},
 	}
 
-	deliverable, blocked, err := splitQueuedNudgesForDelivery(nil, mp, nudgeTarget{}, items)
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(nil, mp, false, items)
 	if err != nil {
 		t.Fatalf("splitQueuedNudgesForDelivery: %v", err)
 	}
@@ -5845,16 +5907,17 @@ func TestSplitQueuedNudgesForDelivery_MailNudges(t *testing.T) {
 	}
 }
 
-// TestBlockedQueuedMailNudgeReason_DropsReminderWhenProviderHooksInjectMail
-// pins the "drop the deferred [mail] reminder" contract: when the target's
-// provider has prompt hooks installed (Claude-family always; other providers
-// when the operator opts in through install_agent_hooks / hooks_installed),
-// its UserPromptSubmit `gc mail check --inject` hook already injects the
-// unread-mail list on every turn. A queued mail reminder delivered on that
-// same turn is therefore pure duplication and must be withdrawn. A provider
-// without hooks still delivers it, and the existing mail-state gates keep
-// precedence (an already-read message is still withdrawn as mail-already-read).
-func TestBlockedQueuedMailNudgeReason_DropsReminderWhenProviderHooksInjectMail(t *testing.T) {
+// TestBlockedQueuedNudgeReason_PromptTurnGateSuppressesVerifiedUnreadMail pins
+// the F1/F4 contract for the hook-injection gate. With promptTurnInFlight (the
+// provider's `gc nudge drain --inject` hook is running) an unread mail reminder
+// is redundant because the mail-check hook injects the same list on that turn,
+// and it is withdrawn as "mail-hook-inject". Without a prompt turn in flight
+// (the poller) the reminder always delivers — its delivery IS the wake that
+// lets the hook fire. The gate only fires after the message was actually
+// re-read as unread: a nil provider or a reference-less reminder is delivered,
+// never withdrawn on an unverified premise. Existing mail-state gates keep
+// precedence.
+func TestBlockedQueuedNudgeReason_PromptTurnGateSuppressesVerifiedUnreadMail(t *testing.T) {
 	mp := mail.NewFake()
 	unread, err := mp.Send("alice", "bob", "subject", "body")
 	if err != nil {
@@ -5871,24 +5934,26 @@ func TestBlockedQueuedMailNudgeReason_DropsReminderWhenProviderHooksInjectMail(t
 	item := func(id string) queuedNudge {
 		return queuedNudge{Source: "mail", Reference: &nudgeReference{Kind: "mail", ID: id}}
 	}
-	hookTarget := nudgeTarget{cfg: &config.City{}, agent: config.Agent{Name: "worker", Provider: "claude"}}
-	hooklessTarget := nudgeTarget{cfg: &config.City{}, agent: config.Agent{Name: "worker", Provider: "custom-no-hooks"}}
 
 	cases := []struct {
 		name       string
-		target     nudgeTarget
+		mp         mail.Provider
+		promptTurn bool
 		item       queuedNudge
 		wantReason string
 		wantBlock  bool
 	}{
-		{"hooks-withdraws-unread-reminder", hookTarget, item(unread.ID), "mail-hook-inject", true},
-		{"hookless-delivers-unread-reminder", hooklessTarget, item(unread.ID), "", false},
-		{"hooks-still-withdraw-read-reminder-first", hookTarget, item(readMsg.ID), "mail-already-read", true},
-		{"hooks-withdraw-reference-less-reminder", hookTarget, queuedNudge{Source: "mail"}, "mail-hook-inject", true},
+		{"hook-turn-withdraws-unread-reminder", mp, true, item(unread.ID), "mail-hook-inject", true},
+		{"poller-delivers-unread-reminder", mp, false, item(unread.ID), "", false},
+		{"hook-turn-still-withdraws-read-first", mp, true, item(readMsg.ID), "mail-already-read", true},
+		{"poller-still-withdraws-read-first", mp, false, item(readMsg.ID), "mail-already-read", true},
+		{"hook-turn-still-withdraws-missing-first", mp, true, item("gc-nope"), "mail-missing", true},
+		{"hook-turn-delivers-unverified-nil-provider", nil, true, item(unread.ID), "", false},
+		{"hook-turn-delivers-reference-less-reminder", mp, true, queuedNudge{Source: "mail"}, "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reason, block, err := blockedQueuedNudgeReason(nil, mp, tc.target, tc.item)
+			reason, block, err := blockedQueuedNudgeReason(nil, tc.mp, tc.promptTurn, tc.item)
 			if err != nil {
 				t.Fatalf("blockedQueuedNudgeReason: %v", err)
 			}
@@ -5899,31 +5964,45 @@ func TestBlockedQueuedMailNudgeReason_DropsReminderWhenProviderHooksInjectMail(t
 	}
 }
 
-// TestSplitQueuedNudgesForDelivery_DropsOnlyHookInjectedMailReminders narrows
-// the same gate at the delivery-splitting seam both the drain hook and the
-// poller call: only mail-sourced reminders are withdrawn for a hook-present
-// target; a wait/session-sourced queue item still delivers.
-func TestSplitQueuedNudgesForDelivery_DropsOnlyHookInjectedMailReminders(t *testing.T) {
+// TestSplitQueuedNudgesForDelivery_HookTurnDropsOnlyMailReminders narrows the
+// same gate at the delivery-splitting seam both the drain hook and the poller
+// call. With promptTurnInFlight only mail-sourced reminders are withdrawn; a
+// session-sourced queue item still delivers, and the poller (no turn in flight)
+// delivers the mail reminder too.
+func TestSplitQueuedNudgesForDelivery_HookTurnDropsOnlyMailReminders(t *testing.T) {
 	mp := mail.NewFake()
 	unread, err := mp.Send("alice", "bob", "subject", "body")
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 
-	items := []queuedNudge{
-		{ID: "n-mail", Agent: "worker", Source: "mail", Reference: &nudgeReference{Kind: "mail", ID: unread.ID}},
-		{ID: "n-session", Agent: "worker", Source: "session"},
+	newItems := func() []queuedNudge {
+		return []queuedNudge{
+			{ID: "n-mail", Agent: "worker", Source: "mail", Reference: &nudgeReference{Kind: "mail", ID: unread.ID}},
+			{ID: "n-session", Agent: "worker", Source: "session"},
+		}
 	}
-	target := nudgeTarget{cfg: &config.City{}, agent: config.Agent{Name: "worker", Provider: "claude"}}
-	deliverable, blocked, err := splitQueuedNudgesForDelivery(nil, mp, target, items)
+
+	deliverable, blocked, err := splitQueuedNudgesForDelivery(nil, mp, true, newItems())
 	if err != nil {
-		t.Fatalf("splitQueuedNudgesForDelivery: %v", err)
+		t.Fatalf("splitQueuedNudgesForDelivery(hook turn): %v", err)
 	}
 	if len(deliverable) != 1 || deliverable[0].ID != "n-session" {
-		t.Fatalf("deliverable = %#v, want only n-session", deliverable)
+		t.Fatalf("hook-turn deliverable = %#v, want only n-session", deliverable)
 	}
 	if got := blocked["mail-hook-inject"]; len(got) != 1 || got[0].ID != "n-mail" {
 		t.Fatalf("blocked[mail-hook-inject] = %#v, want n-mail", blocked["mail-hook-inject"])
+	}
+
+	deliverable, blocked, err = splitQueuedNudgesForDelivery(nil, mp, false, newItems())
+	if err != nil {
+		t.Fatalf("splitQueuedNudgesForDelivery(poller): %v", err)
+	}
+	if len(deliverable) != 2 {
+		t.Fatalf("poller deliverable = %#v, want both items delivered", deliverable)
+	}
+	if len(blocked) != 0 {
+		t.Fatalf("poller blocked = %#v, want none (no prompt turn in flight)", blocked)
 	}
 }
 
