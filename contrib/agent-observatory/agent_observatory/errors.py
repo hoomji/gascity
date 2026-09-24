@@ -97,3 +97,14 @@ class ImpactError(ObservatoryError):
     :mod:`agent_observatory.impact`); the report never fabricates an accepted
     task, a baseline, a price or a matched control.
     """
+
+
+class PolicyError(ObservatoryError):
+    """A shadow-policy catalog or recommendation bundle is missing or malformed.
+
+    The policy input is an explicit, versioned JSON catalog plus a bundle of
+    validated classifications (see :mod:`agent_observatory.policy`). Shadow
+    recommendations are advisory only: the module never writes routing,
+    dispatch or configuration, and only candidates present in the supplied
+    catalog can be recommended.
+    """

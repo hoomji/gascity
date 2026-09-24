@@ -68,6 +68,14 @@ from .impact import (
     observed_evidence_from_store,
 )
 from .jev import REQUEST_BYTE_CAP, build_request, import_response, persist_request
+from .policy import (
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    PolicyConfig,
+    build_shadow_report,
+    load_catalog,
+    load_recommendation_bundle,
+    recommendation_rows,
+)
 from .report import build_report
 from .store import ObservatoryStore
 from .taxonomy import DEFAULT_TAXONOMY_PATH, load_taxonomy
@@ -636,6 +644,59 @@ def _cmd_impact(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_shadow(args: argparse.Namespace) -> int:
+    """Build shadow-policy recommendations without modifying routing (M7).
+
+    ``--catalog`` is the current configured candidate set and ``--input`` is the
+    bundle of validated classifications with their as-of provenance. ``--db``
+    optionally persists the recommendations (append-only, content-hashed); the
+    report is always written and no routing, dispatch or config is touched.
+    """
+    catalog = load_catalog(args.catalog)
+    bundle = load_recommendation_bundle(args.input)
+    config = PolicyConfig(confidence_threshold=args.confidence_threshold)
+    report = build_shadow_report(
+        bundle,
+        catalog,
+        config,
+        generated_by=f"agent-observatory/{__version__}",
+    )
+    # Persist exactly the report that is emitted (stable float precision) so a
+    # stored payload and the written report cannot disagree on the numbers.
+    serialized = report_json(report)
+    stored: int | None = None
+    deduplicated: int | None = None
+    if args.db:
+        rows = recommendation_rows(json.loads(serialized))
+        with _open_store(args.db) as store:
+            result = store.save_recommendations(rows)
+            stored = result.inserted
+            deduplicated = result.deduplicated
+    _write_output(serialized, args.out)
+    shadow = report["shadow"]
+    print(
+        json.dumps(
+            {
+                "catalog_version": report["provenance"]["catalog_version"],
+                "episodes": shadow["episodes"],
+                "recommendations": shadow["totals"]["recommendations"],
+                "recommended": shadow["totals"]["recommended"],
+                "agree": shadow["totals"]["agree"],
+                "fallback": shadow["totals"]["fallback"],
+                "disagreements": shadow["totals"]["disagreements"],
+                "leak_free": shadow["leak_free"],
+                "stored": stored,
+                "deduplicated": deduplicated,
+                "report_hash": report["report_hash"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _cmd_evaluate(args: argparse.Namespace) -> int:
     taxonomy = load_taxonomy(args.taxonomy)
     gold_set = load_gold_set(args.gold, taxonomy)
@@ -963,6 +1024,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     impact_parser.add_argument("--out", default=None, help="write the impact report to this path")
     impact_parser.set_defaults(func=_cmd_impact)
+
+    shadow_parser = subparsers.add_parser(
+        "shadow",
+        help="shadow policy recommendations against current routing (M7, advisory only)",
+    )
+    shadow_parser.add_argument(
+        "--catalog",
+        required=True,
+        help="current configured candidate catalog JSON (the only recommendable set)",
+    )
+    shadow_parser.add_argument(
+        "--input",
+        required=True,
+        help="versioned recommendation bundle JSON (as-of classifications)",
+    )
+    shadow_parser.add_argument(
+        "--db",
+        default=None,
+        help="SQLite projection path (optional; persists recommendations append-only)",
+    )
+    shadow_parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=DEFAULT_CONFIDENCE_THRESHOLD,
+        help="minimum classification confidence for an eligible recommendation",
+    )
+    shadow_parser.add_argument("--out", default=None, help="write the shadow report to this path")
+    shadow_parser.set_defaults(func=_cmd_shadow)
 
     episodes_parser = subparsers.add_parser(
         "episodes",

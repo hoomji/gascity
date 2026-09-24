@@ -48,7 +48,11 @@ from .errors import (
 #
 # Version 4 adds the M5 optimization registry: ``changes``, ``change_activations``,
 # ``commit_parents``, ``session_fingerprints`` and the derived ``exposures`` join.
-DB_SCHEMA_VERSION = 4
+#
+# Version 5 adds the M7 shadow-policy ``recommendations`` projection. Rows are
+# append-only and keyed by the recommendation content hash, so replaying an
+# identical shadow run deduplicates while a changed policy version is retained.
+DB_SCHEMA_VERSION = 5
 
 # Normalized record fields, in table order. ``observed_timestamp`` is not here:
 # it is derived provenance (the raw input string), not part of the payload hash.
@@ -293,6 +297,34 @@ _SCHEMA_STATEMENTS = (
         FOREIGN KEY (change_id) REFERENCES changes(change_id) ON DELETE CASCADE
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS recommendations (
+        recommendation_id TEXT PRIMARY KEY,
+        episode_id TEXT NOT NULL,
+        work_item_id TEXT,
+        kind TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        eligibility TEXT NOT NULL,
+        eligibility_reason TEXT NOT NULL,
+        confidence REAL,
+        uncertainty REAL,
+        recommended_candidate TEXT,
+        current_candidate TEXT,
+        fallback_candidate TEXT,
+        fallback_path TEXT,
+        disagreement INTEGER NOT NULL,
+        temporal_leak_free INTEGER NOT NULL,
+        as_of TEXT NOT NULL,
+        catalog_version TEXT NOT NULL,
+        evaluator_version TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS recommendations_episode_kind
+        ON recommendations(episode_id, kind)
+    """,
 )
 
 @dataclass
@@ -319,6 +351,14 @@ class RegistryImportResult:
     activations_deduplicated: int = 0
     commit_parents_inserted: int = 0
     session_fingerprints_inserted: int = 0
+
+
+@dataclass
+class RecommendationSaveResult:
+    """Outcome of persisting one batch of M7 shadow recommendations."""
+
+    inserted: int = 0
+    deduplicated: int = 0
 
 
 def _reject_json_constant(value: str) -> Any:
@@ -1115,6 +1155,98 @@ class ObservatoryStore:
                 "session": json.loads(row["session_json"]),
                 "status": row["status"],
                 "evidence": json.loads(row["evidence_json"]),
+            }
+
+    # -- M7 shadow recommendations ----------------------------------------
+
+    def save_recommendations(self, rows: Iterable[dict[str, Any]]) -> RecommendationSaveResult:
+        """Persist shadow recommendations append-only, keyed by content hash.
+
+        The row id is the canonical hash of the stored ``payload``, so replaying
+        the same shadow run deduplicates instead of appending a second copy, and
+        a genuinely different recommendation (new catalog or classification) is
+        retained as new evidence. Nothing here writes routing or dispatch.
+        """
+        result = RecommendationSaveResult()
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            for row in rows:
+                payload = row.get("payload")
+                recommendation_id = canonical_hash(payload)
+                existing = self._conn.execute(
+                    "SELECT 1 FROM recommendations WHERE recommendation_id = ?",
+                    (recommendation_id,),
+                ).fetchone()
+                if existing is not None:
+                    result.deduplicated += 1
+                    continue
+                self._conn.execute(
+                    "INSERT INTO recommendations(recommendation_id, episode_id, work_item_id, "
+                    "kind, decision, eligibility, eligibility_reason, confidence, uncertainty, "
+                    "recommended_candidate, current_candidate, fallback_candidate, fallback_path, "
+                    "disagreement, temporal_leak_free, as_of, catalog_version, evaluator_version, "
+                    "payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        recommendation_id,
+                        row["episode_id"],
+                        row.get("work_item_id"),
+                        row["kind"],
+                        row["decision"],
+                        row["eligibility"],
+                        row["eligibility_reason"],
+                        row.get("confidence"),
+                        row.get("uncertainty"),
+                        row.get("recommended_candidate"),
+                        row.get("current_candidate"),
+                        row.get("fallback_candidate"),
+                        row.get("fallback_path"),
+                        1 if row.get("disagreement") else 0,
+                        1 if row.get("temporal_leak_free") else 0,
+                        row["as_of"],
+                        row["catalog_version"],
+                        row["evaluator_version"],
+                        canonical_json(payload),
+                    ),
+                )
+                result.inserted += 1
+            self._conn.execute("COMMIT")
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        return result
+
+    def recommendation_count(self) -> int:
+        return int(self._conn.execute("SELECT COUNT(*) FROM recommendations").fetchone()[0])
+
+    def iter_recommendations(self) -> Iterator[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT recommendation_id, episode_id, work_item_id, kind, decision, eligibility, "
+            "eligibility_reason, confidence, uncertainty, recommended_candidate, current_candidate, "
+            "fallback_candidate, fallback_path, disagreement, temporal_leak_free, as_of, "
+            "catalog_version, evaluator_version, payload_json "
+            "FROM recommendations ORDER BY episode_id, kind, recommendation_id"
+        ).fetchall()
+        for row in rows:
+            yield {
+                "recommendation_id": row["recommendation_id"],
+                "episode_id": row["episode_id"],
+                "work_item_id": row["work_item_id"],
+                "kind": row["kind"],
+                "decision": row["decision"],
+                "eligibility": row["eligibility"],
+                "eligibility_reason": row["eligibility_reason"],
+                "confidence": row["confidence"],
+                "uncertainty": row["uncertainty"],
+                "recommended_candidate": row["recommended_candidate"],
+                "current_candidate": row["current_candidate"],
+                "fallback_candidate": row["fallback_candidate"],
+                "fallback_path": row["fallback_path"],
+                "disagreement": bool(row["disagreement"]),
+                "temporal_leak_free": bool(row["temporal_leak_free"]),
+                "as_of": row["as_of"],
+                "catalog_version": row["catalog_version"],
+                "evaluator_version": row["evaluator_version"],
+                "payload": json.loads(row["payload_json"]),
             }
 
 

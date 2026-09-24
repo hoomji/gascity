@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "tests/fixtures/policy/shadow_bundle.json",
+  "episodes": [
+    {
+      "episode_id": "e-impl",
+      "as_of": "2026-09-22T00:00:00Z",
+      "observed_at": "2026-09-21T23:00:00Z",
+      "intent": "implementation",
+      "scope": "small",
+      "confidence": 0.95,
+      "provider": "dsh",
+      "repo": "gascity",
+      "probabilities": {"implementation": 0.95, "bugfix": 0.05},
+      "required_capabilities": [],
+      "current_routing": {"formula": "formula:standard", "provider": "provider:dsh"},
+      "outcome": "accepted",
+      "outcome_observed_at": "2026-09-25T00:00:00Z",
+      "features": [
+        {"name": "compile_cache", "value": "warm", "available_at": "2026-09-26T00:00:00Z"}
+      ]
+    },
+    {
+      "episode_id": "e-cap-missing",
+      "as_of": "2026-09-22T00:00:00Z",
+      "observed_at": "2026-09-21T23:00:00Z",
+      "intent": "implementation",
+      "scope": "small",
+      "confidence": 0.95,
+      "provider": "dsh",
+      "required_capabilities": ["network"],
+      "current_routing": {"formula": "formula:standard"}
+    },
+    {
+      "episode_id": "e-unknown",
+      "as_of": "2026-09-22T00:00:00Z",
+      "observed_at": "2026-09-21T23:00:00Z",
+      "intent": "unknown",
+      "confidence": 0.99
+    },
+    {
+      "episode_id": "e-injected",
+      "as_of": "2026-09-22T00:00:00Z",
+      "observed_at": "2026-09-21T23:00:00Z",
+      "intent": "implementation",
+      "scope": "small",
+      "confidence": 0.99,
+      "flags": ["injected"]
+    },
+    {
+      "episode_id": "e-low-conf",
+      "as_of": "2026-09-22T00:00:00Z",
+      "observed_at": "2026-09-21T23:00:00Z",
+      "intent": "implementation",
+      "scope": "small",
+      "confidence": 0.4
+    },
+    {
+      "episode_id": "e-planning",
+      "as_of": "2026-09-22T00:00:00Z",
+      "observed_at": "2026-09-21T23:00:00Z",
+      "intent": "planning_spec",
+      "scope": "large",
+      "confidence": 0.93,
+      "required_capabilities": ["long_context"],
+      "current_routing": {"formula": "formula:planning"}
+    },
+    {
+      "episode_id": "e-future-classification",
+      "as_of": "2026-09-22T00:00:00Z",
+      "observed_at": "2026-09-23T00:00:00Z",
+      "intent": "implementation",
+      "scope": "small",
+      "confidence": 0.99
+    }
+  ]
+}

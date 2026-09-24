@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "catalog_version": "2026-09-24",
+  "generated_by": "tests/fixtures/policy/catalog.json",
+  "candidates": [
+    {
+      "candidate_id": "formula:standard",
+      "kind": "formula",
+      "priority": 0,
+      "capabilities": ["repo_write"],
+      "constraints": {"intents": ["implementation", "bugfix", "test_lint_build_ci"]}
+    },
+    {
+      "candidate_id": "formula:mechanical",
+      "kind": "formula",
+      "priority": 20,
+      "capabilities": [],
+      "constraints": {"intents": ["implementation"], "scopes": ["small"]}
+    },
+    {
+      "candidate_id": "formula:planning",
+      "kind": "formula",
+      "priority": 10,
+      "capabilities": ["repo_write", "long_context"],
+      "constraints": {"intents": ["planning_spec"], "scopes": ["large"]}
+    },
+    {
+      "candidate_id": "provider:claude",
+      "kind": "provider",
+      "capabilities": ["repo_write", "long_context"],
+      "constraints": {
+        "intents": ["implementation", "bugfix", "planning_spec", "test_lint_build_ci"]
+      }
+    },
+    {
+      "candidate_id": "provider:dsh",
+      "kind": "provider",
+      "capabilities": ["repo_write"],
+      "constraints": {
+        "intents": [
+          "implementation",
+          "bugfix",
+          "test_lint_build_ci",
+          "dependency_worktree_agent_ops"
+        ]
+      }
+    },
+    {
+      "candidate_id": "skill:review",
+      "kind": "skill",
+      "capabilities": ["review"],
+      "constraints": {"intents": ["pr_review", "adversarial_review"]}
+    },
+    {
+      "candidate_id": "context:minimal",
+      "kind": "context_bundle",
+      "capabilities": [],
+      "constraints": {"intents": ["implementation", "bugfix"]}
+    },
+    {
+      "candidate_id": "context:full",
+      "kind": "context_bundle",
+      "priority": 5,
+      "capabilities": ["long_context"],
+      "constraints": {"intents": ["planning_spec"]}
+    },
+    {
+      "candidate_id": "test:targeted",
+      "kind": "test_plan",
+      "capabilities": ["test_runner"],
+      "constraints": {"intents": ["implementation", "bugfix"]}
+    },
+    {
+      "candidate_id": "test:disabled",
+      "kind": "test_plan",
+      "enabled": false,
+      "constraints": {"intents": ["implementation"]}
+    }
+  ],
+  "defaults": {
+    "formula": "formula:standard",
+    "provider": "provider:dsh",
+    "test_plan": "test:targeted"
+  }
+}

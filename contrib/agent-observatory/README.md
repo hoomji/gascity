@@ -44,6 +44,7 @@ contrib/agent-observatory/
     evaluation.py      grouped temporal holdout, baselines, metrics, calibration
     collector.py       M4 checkpointed backfill, debounced collection, queue, status
     impact.py          M6 accepted-task impact reports, matched cohorts, uncertainty
+    policy.py          M7 shadow policy recommendations (as-of, catalog-bounded)
   examples/
     synthetic_events.jsonl   synthetic fixture (no real data)
     state.json               explicit sanitized state for the request builder
@@ -56,6 +57,8 @@ contrib/agent-observatory/
     fixtures/impact/known_effect.json   matched replay: a real effect is visible
     fixtures/impact/no_effect.json      matched replay: no effect is claimed
     fixtures/impact/confounded.json     replay: no overlap, confounding detected
+    fixtures/policy/catalog.json        current configured candidate catalog
+    fixtures/policy/shadow_bundle.json  as-of classifications for shadow replay
   reports/real-obsdb-20260922.json  real historical report from a copy of obs.db
   README.md
 ```
@@ -145,8 +148,10 @@ the tool executed, and does not prove success. Only a result event with an
 
 - Schema version is stored in `PRAGMA user_version` and `schema_meta`. Opening a
   store with an unknown/future version raises `SchemaVersionError`. The current
-  version is **3**; the payload hash no longer covers identity fields, so a
-  version-2 projection must be rebuilt rather than reused.
+  version is **5**; version 3 excluded identity fields from the payload hash (so a
+  version-2 projection must be rebuilt rather than reused), version 4 added the
+  M5 change/exposure registry, and version 5 adds the M7 shadow
+  `recommendations` projection.
 - Import is **per-file atomic**: the whole file is parsed and type-checked
   before writing, and all writes happen in one transaction. A malformed or
   truncated line reports `path:line` and commits nothing. Records are split on
@@ -648,6 +653,80 @@ accepted-task section as unmeasurable rather than fabricating work items,
 acceptance or cohorts. `reports/real-obsdb-20260922.json` is that report over a
 read-only copy of the local projection.
 
+## 11. Shadow orchestration recommendations (M7)
+
+`requirements.md` R4 asks for orchestration recommendations that are **advisory
+only**. `policy.py` maps validated classifications to the **current configured
+catalog** of formulas/providers/skills/context bundles/test plans and compares
+the result to the existing routing without changing it. The command is
+`shadow`; it never writes routing, dispatch, configuration or execution state.
+Two explicit, versioned inputs are required:
+
+- `--catalog`: the current allowed candidate set. Each candidate has an
+  immutable `candidate_id`, a `kind`, `enabled`, a `priority`, the
+  `capabilities` it provides, and `constraints` (`intents`, `providers`,
+  `repos`, `hosts`, `scopes`, `forbidden_flags`, `min_confidence`). The catalog's
+  `defaults` map is the existing default policy per kind.
+- `--input`: a bundle of validated classifications plus their **as-of**
+  provenance. Each record carries `as_of` (the decision time), `observed_at`
+  (when the classification was produced), the primary `intent`/`scope`, optional
+  `probabilities`, `confidence`, `flags`, `required_capabilities`, `provider`,
+  `repo`, `host`, named `features` (each with `available_at`), the current
+  `current_routing` decision, and the future `outcome`/`outcome_observed_at`.
+
+Recommendation rules:
+
+- **Catalog-bounded.** Only a candidate present in the catalog and `enabled` can
+  be named. An intent is served only by a candidate whose `constraints.intents`
+  includes it; a `required_capabilities` entry must be provided by the
+  candidate's `capabilities`; provider/repo/host/scope and `min_confidence`
+  constraints are checked too. A disabled or failing candidate appears in
+  `rejected_candidates` with its reason (`disabled`, `intent_mismatch`,
+  `capability_mismatch`, `provider_mismatch`, ...); it is never substituted.
+  Among allowed candidates the highest `priority` wins, ties break
+  lexicographically, so replay is deterministic. **Only current allowed
+  candidates are ever recommended.**
+- **As-of / strict causality.** `as_of_features` includes only named features
+  whose `available_at <= as_of`; later features are listed in
+  `excluded_future_features`. The completion `outcome` is never a decision
+  input. If the classification itself was observed after `as_of`, the record is
+  not leak-free and every kind falls back with
+  `as_of_before_classification`. The report's `shadow.decision_inputs_hash`
+  covers only as-of inputs, so two records differing solely in a future outcome
+  share it.
+- **Abstention → fallback.** Injected, uncertain, contested, changed-intent and
+  rare cases, `unknown`/missing intents, missing/low `confidence` (below
+  `--confidence-threshold`), and — when configured — high entropy abstain with a
+  named reason. An abstention or an empty allowed set falls back to the existing
+  policy: the record's `current_routing` candidate, else the catalog default,
+  recorded as `fallback_candidate` plus `fallback_path`
+  (`current_routing`/`catalog_default`/`unavailable`). The fallback keeps the
+  policy that would actually run even when it does not satisfy a newly declared
+  capability; silently substituting another candidate would be an applied
+  recommendation.
+- **Shadow disagreement.** Each recommendation records `decision`
+  (`recommended`/`agree`/`fallback`), `eligibility`
+  (`eligible`/`abstained`/`ineligible`), `eligibility_reason`, `reason`,
+  `confidence`, `uncertainty` (`1 - confidence`), `entropy_bits`,
+  `current_candidate`, `current_candidate_allowed`, the selected and alternative
+  candidates, and `disagreement`. The `shadow` block reports per-kind totals,
+  `agreement_rate`, the explicit disagreement list,
+  `fallback_reasons`, and `executes_changes: false`.
+
+`shadow --db DB` persists every recommendation append-only in the
+`recommendations` table, keyed by its content hash, with queryable eligibility,
+confidence/uncertainty, recommended/current/fallback candidates, fallback path,
+disagreement and leak-free columns. Replaying an identical run deduplicates; a
+changed catalog or classification is retained as new, versioned evidence. The
+report is deterministic (`report_hash` over the whole content) and the command
+exits non-zero only on invalid input, never to signal a disagreement.
+
+The M7 acceptance gate is the offline replay: `tests/test_policy.py` covers the
+catalog/capability constraints, the as-of/no-leak cases, injection and
+uncertainty abstention, fallback paths, disagreement reporting, deterministic
+replay and persistence, while `tests/fixtures/policy/` provides a reusable
+catalog plus shadow bundle.
+
 ## CLI reference
 
 ```
@@ -687,6 +766,8 @@ agent-observatory queue-drain --db DB --max-requests N [--max-items N]
     [transport options as for classify] [--out FILE]
 agent-observatory impact [--input BUNDLE.json] [--db DB]
     [--primary-outcome OUTCOME] [--bootstrap-resamples N] [--out FILE]
+agent-observatory shadow --catalog CATALOG.json --input BUNDLE.json
+    [--db DB] [--confidence-threshold C] [--out FILE]
 agent-observatory --version
 ```
 
@@ -745,6 +826,13 @@ missing-usage vs explicit measured zero, zero-baseline relative change, interval
 unioning and parallel-overlap, classifier-overhead rates and attribution, grade
 assignment/downgrade, projection evidence with missing-vs-zero usage, and the
 `impact` CLI.
+
+The shadow-policy tests add: catalog and bundle validation, enabled/capability/
+intent/provider/scope constraints, deterministic priority selection, the as-of
+exclusion of future features and the future completion label, fallback to the
+existing policy, injection/uncertainty/low-confidence/entropy abstention,
+disagreement reporting, byte-stable replay, append-only content-hash
+persistence, and the `shadow` CLI (including its clean-error contract).
 
 ## Limitations and next adapter requirements
 
