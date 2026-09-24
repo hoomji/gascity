@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "tests/fixtures/canary/units.json",
+  "units": [
+    {
+      "unit_id": "u01",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e01",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1000.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "unit_id": "u02",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e02",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1100.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "unit_id": "u03",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e03",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1200.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "unit_id": "u04",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e04",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1300.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "unit_id": "u05",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e05",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1400.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "unit_id": "u06",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e06",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1500.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "unit_id": "u07",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e07",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1600.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "unit_id": "u08",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "record": {
+        "episode_id": "e08",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      },
+      "outcome": {
+        "accepted": true,
+        "time_to_accepted_seconds": 1700.0,
+        "cost_usd": 1.0,
+        "quality_score": 1.0
+      }
+    }
+  ]
+}

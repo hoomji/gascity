@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "tests/fixtures/canary/units-unclassified.json",
+  "units": [
+    {
+      "unit_id": "q01",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "requires_classification": true,
+      "record": {
+        "episode_id": "q01",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      }
+    },
+    {
+      "unit_id": "q02",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "requires_classification": true,
+      "record": {
+        "episode_id": "q02",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      }
+    },
+    {
+      "unit_id": "q03",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "requires_classification": true,
+      "record": {
+        "episode_id": "q03",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      }
+    },
+    {
+      "unit_id": "q04",
+      "stratum": "repo=gascity|intent=planning_spec",
+      "requires_classification": true,
+      "record": {
+        "episode_id": "q04",
+        "as_of": "2026-09-24T00:00:00Z",
+        "observed_at": "2026-09-23T00:00:00Z",
+        "intent": "planning_spec",
+        "scope": "large",
+        "confidence": 0.95,
+        "repo": "gascity",
+        "current_routing": {"formula": "formula:planning"}
+      }
+    }
+  ]
+}

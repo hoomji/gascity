@@ -22,6 +22,13 @@ from . import __version__
 from .adapters import AdapterContext, read_source
 from .annotations import load_gold_set, save_gold_annotations
 from .canonical import sha256_bytes
+from .canary import (
+    MAX_ALLOWED_REQUESTS,
+    build_canary_report,
+    load_canary_bundle,
+    load_registration,
+    normalize_registration,
+)
 from .changes import normalize_change_bundle
 from .collector import (
     DEFAULT_MAX_SOURCE_BYTES,
@@ -697,6 +704,86 @@ def _cmd_shadow(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_canary_register(args: argparse.Namespace) -> int:
+    """Validate a canary spec and write the pre-registered artifact (M8).
+
+    The registration is the durable, pre-run record of the policy, seed, sample
+    size, guardrails and request cap. Nothing is applied here; the artifact is
+    the caller's proof that the design was fixed before the run.
+    """
+    raw = _read_json_object(args.input, "canary spec")
+    registration = normalize_registration(raw)
+    serialized = json.dumps(registration.content(), indent=2, sort_keys=True, ensure_ascii=False)
+    _write_output(serialized, args.out)
+    print(
+        json.dumps(
+            {
+                "registration_id": registration.registration_id,
+                "policy_id": registration.policy_id,
+                "policy_kind": registration.policy_kind,
+                "seed": registration.seed,
+                "sample_size": registration.sample_size,
+                "max_requests": registration.max_requests,
+                "registration_hash": registration.registration_hash(),
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _cmd_canary(args: argparse.Namespace) -> int:
+    """Evaluate a pre-registered, opt-in canary without changing routing (M8).
+
+    ``--enable`` opts in (the default is the prior policy). A present
+    ``--kill-switch`` file rolls an enabled canary back to the prior policy.
+    ``--max-requests`` bounds live classification requests to at most the
+    owner-approved cap. No routing, dispatch or config is written.
+    """
+    registration = load_registration(args.registration)
+    bundle = load_canary_bundle(args.input)
+    catalog = load_catalog(args.catalog)
+    kill_switch = bool(args.kill_switch) and Path(args.kill_switch).exists()
+    report = build_canary_report(
+        bundle,
+        catalog,
+        registration,
+        enabled=bool(args.enable),
+        kill_switch=kill_switch,
+        max_requests=args.max_requests,
+        generated_by=f"agent-observatory/{__version__}",
+    )
+    serialized = report_json(report)
+    _write_output(serialized, args.out)
+    canary = report["canary"]
+    print(
+        json.dumps(
+            {
+                "policy_id": canary["policy_id"],
+                "mode": canary["mode"],
+                "enabled": canary["enabled"],
+                "kill_switch": canary["kill_switch"],
+                "eligible_units": canary["exposure"]["eligible_units"],
+                "assigned_control": canary["exposure"]["assigned_control"],
+                "assigned_treatment": canary["exposure"]["assigned_treatment"],
+                "requests_used": canary["classification_budget"]["requests_used"],
+                "max_requests_effective": canary["classification_budget"]["max_requests_effective"],
+                "requests_capped": canary["classification_budget"]["requests_capped"],
+                "conclusion": canary["net_effect"]["conclusion"],
+                "improvement_claim": canary["net_effect"]["improvement_claim"],
+                "stop_recommended": canary["stop_recommended"],
+                "report_hash": report["report_hash"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _cmd_evaluate(args: argparse.Namespace) -> int:
     taxonomy = load_taxonomy(args.taxonomy)
     gold_set = load_gold_set(args.gold, taxonomy)
@@ -1052,6 +1139,53 @@ def build_parser() -> argparse.ArgumentParser:
     )
     shadow_parser.add_argument("--out", default=None, help="write the shadow report to this path")
     shadow_parser.set_defaults(func=_cmd_shadow)
+
+    canary_register_parser = subparsers.add_parser(
+        "canary-register",
+        help="validate and write a pre-registered policy-canary artifact (M8, no run)",
+    )
+    canary_register_parser.add_argument(
+        "--input", required=True, help="canary design spec JSON (policy, seed, guardrails, cap)"
+    )
+    canary_register_parser.add_argument(
+        "--out", default=None, help="write the frozen registration JSON to this path"
+    )
+    canary_register_parser.set_defaults(func=_cmd_canary_register)
+
+    canary_parser = subparsers.add_parser(
+        "canary",
+        help="opt-in seeded randomized policy canary with a kill switch (M8, advisory)",
+    )
+    canary_parser.add_argument(
+        "--registration", required=True, help="pre-registered canary artifact JSON"
+    )
+    canary_parser.add_argument(
+        "--catalog", required=True, help="current configured candidate catalog JSON"
+    )
+    canary_parser.add_argument(
+        "--input", required=True, help="canary bundle JSON (units, strata, optional outcomes)"
+    )
+    canary_parser.add_argument(
+        "--enable",
+        action="store_true",
+        help="opt in to treatment assignment (default: prior policy for every unit)",
+    )
+    canary_parser.add_argument(
+        "--kill-switch",
+        default=None,
+        help="rollback file; if it exists the prior policy is restored for every unit",
+    )
+    canary_parser.add_argument(
+        "--max-requests",
+        type=int,
+        default=None,
+        help=(
+            "live classification request budget for this run "
+            f"(default and hard ceiling {MAX_ALLOWED_REQUESTS})"
+        ),
+    )
+    canary_parser.add_argument("--out", default=None, help="write the canary report to this path")
+    canary_parser.set_defaults(func=_cmd_canary)
 
     episodes_parser = subparsers.add_parser(
         "episodes",

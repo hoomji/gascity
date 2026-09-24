@@ -9,7 +9,9 @@ This is a bounded foundation slice. It provides:
 * a Jev ``/v1/systemone`` request builder and saved-response validator
   (:mod:`jev`);
 * shadow orchestration recommendations over a current configured catalog
-  (:mod:`policy`), which are advisory and never modify routing.
+  (:mod:`policy`), which are advisory and never modify routing;
+* a pre-registered, opt-in, seeded randomized policy canary
+  (:mod:`canary`) with a tested kill switch and a bounded request cap.
 
 Live transport and collection are explicit and bounded: nothing crawls a home
 directory implicitly, and the collector (:mod:`collector`) reads only the roots it
@@ -18,9 +20,28 @@ Beads and events remain the authoritative record; the SQLite file is only a
 derived analytical projection.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from .annotations import GoldEpisode, GoldSet, load_gold_set
+from .canary import (
+    CANARY_BUNDLE_SCHEMA_VERSION,
+    CANARY_REGISTRATION_SCHEMA_VERSION,
+    CANARY_REPORT_KIND,
+    CANARY_REPORT_VERSION,
+    MAX_ALLOWED_REQUESTS,
+    CanaryBundle,
+    CanaryGuardrails,
+    CanaryRegistration,
+    CanaryUnit,
+    ObservedOutcome,
+    assign_arms,
+    assignment_digest,
+    build_canary_report,
+    load_canary_bundle,
+    load_registration,
+    normalize_canary_bundle,
+    normalize_registration,
+)
 from .changes import (
     BUNDLE_SCHEMA_VERSION,
     OPTIMIZATION_CATEGORIES,
@@ -33,6 +54,7 @@ from .contract import SCHEMA_VERSION, validate_record
 from .episodes import Episode, EpisodeConfig, segment_events, segment_store
 from .errors import (
     AnnotationError,
+    CanaryError,
     ContractError,
     EpisodeError,
     EvaluationError,
@@ -189,8 +211,26 @@ __all__ = [
     "recommendations_for_record",
     "build_shadow_report",
     "recommendation_rows",
+    "CANARY_REGISTRATION_SCHEMA_VERSION",
+    "CANARY_BUNDLE_SCHEMA_VERSION",
+    "CANARY_REPORT_VERSION",
+    "CANARY_REPORT_KIND",
+    "MAX_ALLOWED_REQUESTS",
+    "CanaryGuardrails",
+    "CanaryRegistration",
+    "ObservedOutcome",
+    "CanaryUnit",
+    "CanaryBundle",
+    "normalize_registration",
+    "load_registration",
+    "normalize_canary_bundle",
+    "load_canary_bundle",
+    "assignment_digest",
+    "assign_arms",
+    "build_canary_report",
     "ObservatoryError",
     "AnnotationError",
+    "CanaryError",
     "ContractError",
     "EpisodeError",
     "EvaluationError",

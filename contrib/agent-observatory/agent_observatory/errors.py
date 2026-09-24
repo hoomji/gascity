@@ -108,3 +108,13 @@ class PolicyError(ObservatoryError):
     dispatch or configuration, and only candidates present in the supplied
     catalog can be recommended.
     """
+
+
+class CanaryError(ObservatoryError):
+    """A canary registration, assignment bundle, or request cap is invalid.
+
+    The canary input is an explicit, pre-registered policy artifact plus a
+    bundle of units (see :mod:`agent_observatory.canary`). A canary is opt-in
+    and defaults to the prior policy; the module writes no routing, dispatch or
+    configuration, and a kill switch restores the prior policy immediately.
+    """
