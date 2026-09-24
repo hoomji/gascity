@@ -294,6 +294,25 @@ class OptInAndKillSwitchTest(unittest.TestCase):
         report = build_canary_report(self.bundle, CATALOG, self.reg, enabled=False, kill_switch=True)
         self.assertEqual(report["canary"]["mode"], "disabled")
 
+    def test_disabled_run_does_not_recommend_stop(self):
+        # A disabled canary assigns no unit, so the sample-size guardrails were
+        # never evaluated and there is no live run to stop (F1).
+        canary = build_canary_report(self.bundle, CATALOG, self.reg, enabled=False)["canary"]
+        self.assertEqual(canary["mode"], "disabled")
+        self.assertFalse(canary["stop_recommended"])
+        self.assertFalse(canary["guardrails"]["evaluated"]["value"])
+        self.assertFalse(canary["guardrails"]["stop_recommended"]["value"])
+        self.assertIsNone(canary["guardrails"]["min_control_n"]["pass"])
+        self.assertIsNone(canary["guardrails"]["min_treatment_n"]["pass"])
+
+    def test_rolled_back_run_does_not_recommend_stop(self):
+        canary = build_canary_report(
+            self.bundle, CATALOG, self.reg, enabled=True, kill_switch=True
+        )["canary"]
+        self.assertEqual(canary["mode"], "rolled_back")
+        self.assertFalse(canary["stop_recommended"])
+        self.assertFalse(canary["guardrails"]["evaluated"]["value"])
+
 
 class CostCapTest(unittest.TestCase):
     def setUp(self):
