@@ -43,6 +43,7 @@ contrib/agent-observatory/
     annotations.py     versioned gold annotations (separate from predictions)
     evaluation.py      grouped temporal holdout, baselines, metrics, calibration
     collector.py       M4 checkpointed backfill, debounced collection, queue, status
+    impact.py          M6 accepted-task impact reports, matched cohorts, uncertainty
   examples/
     synthetic_events.jsonl   synthetic fixture (no real data)
     state.json               explicit sanitized state for the request builder
@@ -52,6 +53,10 @@ contrib/agent-observatory/
     fixtures/jev_smoke_contract.json  synthetic-only pinned real wire exchange
     fixtures/gold/gold_episodes_v1.json  pinned gold mechanics fixture (synthetic)
     fixtures/gold/predictions_jev_v1.json  model predictions for that fixture
+    fixtures/impact/known_effect.json   matched replay: a real effect is visible
+    fixtures/impact/no_effect.json      matched replay: no effect is claimed
+    fixtures/impact/confounded.json     replay: no overlap, confounding detected
+  reports/real-obsdb-20260922.json  real historical report from a copy of obs.db
   README.md
 ```
 
@@ -582,6 +587,67 @@ transcript text. It reuses the same bounded transport and requires
 counts, lagging sources with their lag and reason, queue counts, the oldest
 pending age, the `unknown` items with their failures, and the last pass.
 
+## 10. Accepted-task impact reports (M6)
+
+`measurement.md` makes the work item / accepted task the primary unit and names
+the ways a plausible-looking before/after report is wrong. `impact.py` turns an
+explicit, versioned **impact bundle** plus optional projection evidence into a
+deterministic report that keeps those failure modes visible.
+
+The bundle (`schema_version` `"1.0"`) carries:
+
+- `work_items`: the eligible assigned tasks. Each records pre-treatment
+  covariates (`repo`, `task_class`, `scope`, `provider`, `model`, `harness`,
+  `effort`, `host`, `baseline_complexity`, `workload`, `cache_state`,
+  `concurrency`), `ready_at`/`accepted_at`/`acceptance_kind`, an `outcome`
+  (`accepted`/`rejected`/`abandoned`/`in_progress`/`unknown`), a `cohort`
+  (`treatment`/`control`/`unknown`), `attempts`, and `quality`.
+- `attempts`: observed execution/review/fix/retry intervals (`phase` is
+  `active`/`queue`/`idle`/`human_review`), nullable `usage` and `price`, and
+  optional quality fields.
+- `classifier_overhead`: request/token/latency/retry/cache-hits rows, optionally
+  attributed to a work item.
+- `evidence`: `randomized`/`assignment_logged` and `parallel_pre_trends`, which
+  bound the strongest attribution grade the comparison can earn.
+
+Accounting rules the report enforces:
+
+- **Denominator.** Every eligible assigned task stays in; failed and abandoned
+  runs lower the success rate instead of disappearing.
+- **Cost.** Total measured attempt cost includes retries and reviews, not just
+  the successful last attempt, and is divided by the accepted-task count. A
+  missing price or missing usage makes the item's cost unknown; an explicit
+  `cost_usd: 0`, or zero tokens with a known price, is a measured zero.
+- **Zero accepted tasks** makes cost per accepted task undefined (with the
+  reason recorded), never zero. An empty eligible set makes the success rate
+  undefined too.
+- **Censoring.** An incomplete task is right-censored and retained; its
+  acceptance time is never recorded as zero. An open attempt has an unknown
+  interval and is reported as such.
+- **Time.** `time_to_accepted` is `accepted_at - ready_at`; active execution is
+  the union of observed active intervals (queue/idle/human-review separately),
+  and a global union plus a parallel-overlap figure keep concurrent work from
+  being double-counted or summed as wall time.
+- **Costs.** Classifier requests/tokens/latency are reported as their own
+  overhead, alongside rather than inside task cost.
+- **Comparisons.** Treatment and control are exact-matched on the pre-treatment
+  covariates; matched units are the same set for every outcome. The report
+  records cohort `n`, overlap, exclusions, covariate imbalance (total-variation
+  distance), and a deterministic stratified-bootstrap interval for the matched
+  difference. A zero baseline makes the relative change undefined.
+- **Attribution.** The grade is `controlled` (logged/randomized assignment),
+  `quasi_experimental` (parallel pre-trends), `matched_observational`,
+  `descriptive` or `unmeasurable`; residual imbalance downgrades a strong grade.
+  Semantic labels and chronology alone never establish causality, and the
+  conclusion is worded as association unless the assignment supports more.
+
+When only `--db` is given, the command emits the descriptive half that a real
+projection can support (token totals, missing-vs-zero usage, duration
+distribution, classifier overhead, collector backlog) and reports the
+accepted-task section as unmeasurable rather than fabricating work items,
+acceptance or cohorts. `reports/real-obsdb-20260922.json` is that report over a
+read-only copy of the local projection.
+
 ## CLI reference
 
 ```
@@ -619,13 +685,16 @@ agent-observatory collector-switch --db DB on|off [--kill-switch PATH]
 agent-observatory queue-drain --db DB --max-requests N [--max-items N]
     [--text-state] [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
     [transport options as for classify] [--out FILE]
+agent-observatory impact [--input BUNDLE.json] [--db DB]
+    [--primary-outcome OUTCOME] [--bootstrap-resamples N] [--out FILE]
 agent-observatory --version
 ```
 
 `episodes` emits deterministic annotation candidates from the projection;
 `annotate` validates a gold set and appends it (append-only) to the projection;
 `evaluate` writes the deterministic evaluation report and exits non-zero when the
-split audit is not leak-free.
+split audit is not leak-free; `impact` writes the deterministic accepted-task
+impact report (at least one of `--input`/`--db` is required).
 
 When `--snapshot-hash` is supplied together with `--db` and `--session`, the
 explicit value is cross-checked against the projection and a mismatch is refused
@@ -669,6 +738,14 @@ detected group-overlap violation), the automation gate (injected/uncertain/rare/
 low-confidence/unknown never eligible), report reproducibility, and the
 `evaluate` CLI.
 
+The impact tests add: bundle validation/round-tripping, the known-effect /
+no-effect / confounded replay fixtures, zero-accepted and empty-cohort semantics,
+right-censoring and terminal runs in the denominator, missing-price vs
+missing-usage vs explicit measured zero, zero-baseline relative change, interval
+unioning and parallel-overlap, classifier-overhead rates and attribution, grade
+assignment/downgrade, projection evidence with missing-vs-zero usage, and the
+`impact` CLI.
+
 ## Limitations and next adapter requirements
 
 - Import adapters for real provider formats (codex, claude, dsh) are **not**
@@ -685,5 +762,11 @@ low-confidence/unknown never eligible), report reproducibility, and the
   one request because usage is only known after a response.
 - Classification is append-only by key; re-labelling with a new taxonomy or
   model version is how labels evolve.
+- The projection has no acceptance, work-link or cohort table yet, so the
+  accepted-task impact section reports `unmeasurable` for real projection-only
+  input. Supplying the explicit impact bundle is what makes a matched cohort
+  measurable; an evidence-backed work-link/acceptance import is the next step.
+  Classifier prices are also unset by default, so observed classifier cost stays
+  unknown until a price is configured.
 - Scope docs are maintained separately by the Mayor in
   `city/plans/jev-agent-observatory`.
