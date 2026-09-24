@@ -797,7 +797,19 @@ def _guardrail_results(
     registration: CanaryRegistration,
     control: Mapping[str, Any],
     treatment: Mapping[str, Any],
+    *,
+    active: bool,
 ) -> dict[str, Any]:
+    """Evaluate guardrails for a canary that may not have run.
+
+    An inactive canary (``--enable`` absent or the kill switch engaged) assigns
+    no unit to either arm, so ``_arm_metrics`` receives empty sequences. The
+    sample-size guardrails are then *not evaluated* (``None``) rather than
+    failed, and ``stop_recommended`` stays ``False``: there is no live run for a
+    stop signal to act on. Otherwise ``min_control_n``/``min_treatment_n`` would
+    compare 0 against the registered minimum and a disabled run would falsely
+    recommend stopping.
+    """
     guardrails = registration.guardrails
     control_quality = control["quality_score"]["mean"]
     treatment_quality = treatment["quality_score"]["mean"]
@@ -813,13 +825,13 @@ def _guardrail_results(
 
     check(
         "min_control_n",
-        control["n_assigned"] >= guardrails.min_control_n,
+        None if not active else control["n_assigned"] >= guardrails.min_control_n,
         value=control["n_assigned"],
         required=guardrails.min_control_n,
     )
     check(
         "min_treatment_n",
-        treatment["n_assigned"] >= guardrails.min_treatment_n,
+        None if not active else treatment["n_assigned"] >= guardrails.min_treatment_n,
         value=treatment["n_assigned"],
         required=guardrails.min_treatment_n,
     )
@@ -853,7 +865,7 @@ def _guardrail_results(
     evaluated = all(entry["pass"] is not None for entry in detail.values())
     results = dict(detail)
     results["stop_recommended"] = {
-        "value": any(entry["pass"] is False for entry in detail.values()),
+        "value": active and any(entry["pass"] is False for entry in detail.values()),
     }
     results["evaluated"] = {"value": evaluated}
     return results
@@ -967,7 +979,7 @@ def build_canary_report(
     control_metrics = _arm_metrics(control_units if active else [])
     treatment_metrics = _arm_metrics(treatment_units if active else [])
     net_effect = _net_effect(control_metrics, treatment_metrics, registration, active=active)
-    guardrails = _guardrail_results(registration, control_metrics, treatment_metrics)
+    guardrails = _guardrail_results(registration, control_metrics, treatment_metrics, active=active)
 
     sample_size_met = len(eligible_units) >= registration.sample_size
     guardrails_pass = all(

@@ -64,6 +64,7 @@ class CanaryCliTest(unittest.TestCase):
         self.assertEqual(report["kind"], "policy_canary")
         self.assertFalse(report["canary"]["executes_changes"])
         self.assertEqual(report["canary"]["mode"], "disabled")
+        self.assertFalse(report["canary"]["stop_recommended"])
         self.assertEqual(report["canary"]["exposure"]["assigned_treatment"], 0)
         self.assertEqual(report["canary"]["net_effect"]["improvement_claim"], "none")
         self.assertTrue(
