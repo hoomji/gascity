@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "registration_id": "canary-context-bundle-planning-v1",
+  "policy_id": "context-full-for-planning-v1",
+  "policy_kind": "context_bundle",
+  "treatment_candidate": "context:full",
+  "prior_candidate": "context:minimal",
+  "catalog_version": "2026-09-24",
+  "seed": "m8-seed-2026-09-24",
+  "sample_size": 8,
+  "treatment_fraction": 0.5,
+  "max_requests": 50,
+  "created_at": "2026-09-24T22:00:00Z",
+  "primary_outcome": "time_to_accepted_seconds",
+  "confidence_threshold": 0.8,
+  "guardrails": {
+    "min_control_n": 3,
+    "min_treatment_n": 3,
+    "max_quality_regression": 0.05,
+    "max_cost_regression_usd": 0.5,
+    "min_acceptance_rate": 0.5,
+    "alpha": 0.05
+  },
+  "evidence": {
+    "description": "M7 shadow disagreement rows justify the selected context policy",
+    "shadow_report_kind": "shadow_policy_recommendations",
+    "disagreement_rows": [
+      {
+        "episode_id": "example-planning-01",
+        "kind": "context_bundle",
+        "current_candidate": null,
+        "recommended_candidate": "context:full"
+      }
+    ]
+  },
+  "notes": [
+    "M7 replay shows a context_bundle disagreement; the prior policy keeps the current bundle."
+  ]
+}

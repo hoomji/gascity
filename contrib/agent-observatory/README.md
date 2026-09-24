@@ -45,6 +45,7 @@ contrib/agent-observatory/
     collector.py       M4 checkpointed backfill, debounced collection, queue, status
     impact.py          M6 accepted-task impact reports, matched cohorts, uncertainty
     policy.py          M7 shadow policy recommendations (as-of, catalog-bounded)
+    canary.py          M8 pre-registered, opt-in, seeded policy canary + kill switch
   examples/
     synthetic_events.jsonl   synthetic fixture (no real data)
     state.json               explicit sanitized state for the request builder
@@ -59,6 +60,9 @@ contrib/agent-observatory/
     fixtures/impact/confounded.json     replay: no overlap, confounding detected
     fixtures/policy/catalog.json        current configured candidate catalog
     fixtures/policy/shadow_bundle.json  as-of classifications for shadow replay
+    fixtures/canary/registration.json   pre-registered canary design (M8)
+    fixtures/canary/units.json          canary units with observed outcomes
+    fixtures/canary/units-unclassified.json  units that would spend live requests
   reports/real-obsdb-20260922.json  real historical report from a copy of obs.db
   README.md
 ```
@@ -727,6 +731,51 @@ uncertainty abstention, fallback paths, disagreement reporting, deterministic
 replay and persistence, while `tests/fixtures/policy/` provides a reusable
 catalog plus shadow bundle.
 
+## 12. Controlled reversible policy canary (M8)
+
+`requirements.md` R4 requires every enabled policy version to carry exposure
+logs, budget limits, stop conditions and a reversible rollback.
+`canary.py` turns one M7 shadow disagreement into a bounded, pre-registered
+experiment. It is deliberately conservative:
+
+- **Opt-in; the prior policy is the default.** `canary` only applies a
+  treatment when `--enable` is passed *and* the kill switch is not engaged.
+  Without `--enable` (or with a present `--kill-switch` file) every unit keeps
+  the prior policy; the planned assignment is still recorded for audit.
+- **Pre-registered before the run.** `canary-register --input SPEC.json`
+  validates and freezes the policy, treatment/prior candidate, seed, sample
+  size, guardrails and request cap into a registration artifact. The canary
+  run consumes that artifact; `registration_hash` ties the report to it. The
+  registration's `evidence` block carries the M7 disagreement rows that
+  justify the selected policy.
+- **Seeded, balanced, matched assignment.** Each unit is assigned by a sha256
+  over `(seed, stratum, unit_id)` and permuted inside its stratum, so control
+  and treatment are balanced without a random-number generator and a stratum
+  of two keeps both arms. The seed and every per-unit `assignment_hash` are
+  logged.
+- **Bounded spend.** `--max-requests` caps live Jev classification requests per
+  run; the owner-approved hard ceiling is `MAX_ALLOWED_REQUESTS` (50) and the
+  run never exceeds the registration cap. Units beyond the cap stay on the
+  prior policy and are listed as `deferred_units`.
+- **Tested kill switch.** Engaging the switch restores the prior policy for
+  every unit on the next run without rewriting the planned assignment.
+- **No unsupported claim.** The report carries exposure, control/treatment
+  quality, cost, acceptance and the primary-outcome net effect with an
+  uncertainty interval. `improvement_claim` is `none` unless the
+  pre-registered sample size and every guardrail pass and the interval excludes
+  zero in the beneficial direction; a missing outcome is unknown, never zero.
+
+A unit is eligible only when the M7 recommender returns the registered
+treatment candidate for the policy kind and the classification is usable
+(known intent, not injected/uncertain/contested/rare, confidence at or above
+the registration threshold, and within the request cap). Ineligible units stay
+on the prior policy.
+
+The canary is advisory evidence. `canary.executes_changes` is always `false`:
+the module writes no routing, dispatch or configuration. Applying a treatment
+inside live fleet workflows is a separate, owner-authorized integration and is
+out of scope for this slice.
+
 ## CLI reference
 
 ```
@@ -768,6 +817,9 @@ agent-observatory impact [--input BUNDLE.json] [--db DB]
     [--primary-outcome OUTCOME] [--bootstrap-resamples N] [--out FILE]
 agent-observatory shadow --catalog CATALOG.json --input BUNDLE.json
     [--db DB] [--confidence-threshold C] [--out FILE]
+agent-observatory canary-register --input SPEC.json [--out REGISTRATION.json]
+agent-observatory canary --registration REGISTRATION.json --catalog CATALOG.json
+    --input BUNDLE.json [--enable] [--kill-switch PATH] [--max-requests N] [--out FILE]
 agent-observatory --version
 ```
 
@@ -834,6 +886,16 @@ existing policy, injection/uncertainty/low-confidence/entropy abstention,
 disagreement reporting, byte-stable replay, append-only content-hash
 persistence, and the `shadow` CLI (including its clean-error contract).
 
+The canary tests add: registration validation (unknown keys, bad schema,
+policy kind, fraction, cap ceiling, outcome, sample size, naive timestamp),
+bundle validation (duplicates, unknown keys, bad outcome types), seeded and
+balanced assignment determinism, the opt-in prior-policy default, the tested
+kill switch, the request cap (deferral, zero budget, registration clamp and
+owner-ceiling refusal), eligibility (unknown/low-confidence/injected/wrong
+candidate), exposure and guardrail reporting, effect measurement with and
+without a supported claim, missing outcomes as unknown, and the
+`canary-register`/`canary` CLI (including the clean-error contract).
+
 ## Limitations and next adapter requirements
 
 - Import adapters for real provider formats (codex, claude, dsh) are **not**
@@ -856,5 +918,9 @@ persistence, and the `shadow` CLI (including its clean-error contract).
   measurable; an evidence-backed work-link/acceptance import is the next step.
   Classifier prices are also unset by default, so observed classifier cost stays
   unknown until a price is configured.
+- The M8 canary is advisory: it assigns treatment, enforces the request cap and
+  emits exposure/guardrail/net-effect evidence, but it does not apply a
+  treatment inside live fleet routing. Wiring the accepted treatment into the
+  fleet workflow is a separate owner-authorized integration.
 - Scope docs are maintained separately by the Mayor in
   `city/plans/jev-agent-observatory`.
