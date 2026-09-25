@@ -433,13 +433,13 @@ func (h *RuntimeHandle) nudgeWaitIdle(ctx context.Context, req NudgeRequest) (Nu
 		}
 		return NudgeResult{Delivered: false, Undelivered: NudgeUndeliveredNoIdleBoundary}, nil
 	}
-	if err := h.nudgeNow(formatRuntimeWaitIdleReminder(req.Source, req.Text)); err != nil {
+	if err := h.nudgeNow(formatRuntimeWaitIdleReminder(req.Source, req.Text, req.MinimalBody)); err != nil {
 		return NudgeResult{}, err
 	}
 	return NudgeResult{Delivered: true}, nil
 }
 
-func formatRuntimeWaitIdleReminder(source, message string) string {
+func formatRuntimeWaitIdleReminder(source, message string, minimalBody bool) string {
 	source = strings.TrimSpace(source)
 	if source == "" {
 		source = "session"
@@ -453,6 +453,17 @@ func formatRuntimeWaitIdleReminder(source, message string) string {
 	message = promptsafe.SanitizeForSystemReminder(message)
 	var sb strings.Builder
 	sb.WriteString("<system-reminder>\n")
+	if minimalBody {
+		// The target provider's own prompt hook injects the notification
+		// content on this same turn, so the nudge only has to start the turn;
+		// repeating the reminder body would announce the same thing twice. The
+		// body must stay non-empty because an empty nudge submits no turn at
+		// all. Keep this text byte-identical to the session manager's
+		// formatWaitIdleReminder for the same branch (internal/session/chat.go).
+		sb.WriteString("You have a new notification.\n")
+		sb.WriteString("</system-reminder>\n")
+		return sb.String()
+	}
 	sb.WriteString("You have a deferred reminder that was queued until a safe boundary:\n\n")
 	fmt.Fprintf(&sb, "- [%s] %s\n", source, message)
 	sb.WriteString("\nHandle them after this turn.\n")

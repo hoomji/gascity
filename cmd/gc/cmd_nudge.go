@@ -1330,6 +1330,27 @@ func sendMailNotifyWithProvider(target nudgeTarget, sp runtime.Provider) error {
 	return sendMailNotifyWithWorker(target, nil, sp, "human", "")
 }
 
+// targetInjectsMailOnPrompt reports whether the target session's provider has
+// provider hooks installed. Those hooks include the UserPromptSubmit
+// `gc mail check --inject` hook, which already injects the unread-mail list on
+// every prompt turn, so a direct --notify wait-idle nudge delivered on that
+// same turn only repeats a notification the session already carries. It reuses
+// the shared provider/hook detection (config.AgentHasHooks) rather than adding
+// a second one; a nil cfg cannot establish hook state, so it returns false and
+// the caller keeps the full reminder.
+//
+// This is deliberately distinct from the promptTurnInFlight gate in
+// blockedQueuedNudgeReason: that gate keys off the live hook invocation for a
+// queued drain, where a config read would wrongly withdraw mail for a session
+// whose hook install failed. Here the direct --notify path has no hook
+// invocation to observe, so config intent is the only signal available.
+func targetInjectsMailOnPrompt(target nudgeTarget) bool {
+	if target.cfg == nil {
+		return false
+	}
+	return config.AgentHasHooks(&target.agent, &target.cfg.Workspace, target.providerName(), target.cfg.Providers)
+}
+
 func sendMailNotifyWithWorker(target nudgeTarget, store beads.Store, sp runtime.Provider, sender, messageID string) error {
 	msg := fmt.Sprintf("You have mail from %s", sender)
 	now := time.Now()
@@ -1356,11 +1377,19 @@ func sendMailNotifyWithWorker(target nudgeTarget, store beads.Store, sp runtime.
 	if obs.Running {
 		handle, err := workerHandleForNudgeTarget(target, sessStore, sp)
 		if err == nil {
+			// A provider whose own UserPromptSubmit mail hook injects the
+			// unread list on this same turn needs the nudge only as a turn
+			// trigger: the full "[mail] You have mail from ..." reminder would
+			// announce the same mail a second time (#27 left this direct
+			// --notify wait-idle path for this follow-up). Providers without
+			// the hook, and any session whose hook state is unknown, keep the
+			// full reminder so the mail is still surfaced.
 			result, nudgeErr := handle.Nudge(context.Background(), worker.NudgeRequest{
-				Text:     msg,
-				Delivery: worker.NudgeDeliveryWaitIdle,
-				Source:   "mail",
-				Wake:     worker.NudgeWakeLiveOnly,
+				Text:        msg,
+				Delivery:    worker.NudgeDeliveryWaitIdle,
+				Source:      "mail",
+				Wake:        worker.NudgeWakeLiveOnly,
+				MinimalBody: targetInjectsMailOnPrompt(target),
 			})
 			delivered := nudgeErr == nil && result.Delivered
 			// The submit Enter can be delivered and the composer drained with
