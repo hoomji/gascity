@@ -1,0 +1,7 @@
+row_num,PRIMARY_INTENT,SECONDARY_ACTIVITY,TARGET,FLAGS,initial_prompt,provider,tools_used,event_count,observed_at,episode_id,group_key,session_id
+1,,,,,fix the flaky test,codex,Bash,12,2026-09-01T00:00:00Z,ep-bugfix-1,"session:[""city-a"",""host-a"",""codex"",""s-1""]",s-1
+2,,,,,add a retry option,codex,Edit,20,2026-09-02T00:00:00Z,ep-impl-2,"session:[""city-a"",""host-a"",""codex"",""s-2""]",s-2
+3,,,,,review the diff,codex,Read,8,2026-09-03T00:00:00Z,ep-review-3,"session:[""city-a"",""host-a"",""codex"",""s-3""]",s-3
+4,,,,,plan the migration,claude,Bash,15,2026-09-04T00:00:00Z,ep-plan-4,"session:[""city-a"",""host-a"",""claude"",""s-4""]",s-4
+5,,,,,describe the design,claude,Read,9,2026-09-05T00:00:00Z,ep-docs-5,"session:[""city-a"",""host-a"",""claude"",""s-5""]",s-5
+6,,,,,probe the harness,codex,Bash,3,2026-09-06T00:00:00Z,ep-research-6,"session:[""city-a"",""host-a"",""codex"",""s-6""]",s-6

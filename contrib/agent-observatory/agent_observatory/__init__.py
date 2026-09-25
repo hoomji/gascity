@@ -69,6 +69,7 @@ from .errors import (
     RequestError,
     ResponseError,
     SchemaVersionError,
+    SilverError,
     TaxonomyError,
 )
 from .evaluation import (
@@ -135,6 +136,21 @@ from .policy import (
     temporal_audit,
 )
 from .report import build_report
+from .silver import (
+    JUDGE_DEEPSEEK,
+    JUDGE_GLM,
+    KAPPA_TRUST_FLOOR,
+    SILVER_REPORT_VERSION,
+    CandidateEpisode,
+    JudgeSpec,
+    SilverEpisode,
+    SilverResult,
+    build_silver_result,
+    cohen_kappa,
+    evaluate_silver_vs_jev,
+    load_candidates_csv,
+    sample_stratified,
+)
 from .store import ObservatoryStore
 from .taxonomy import load_taxonomy
 
@@ -228,6 +244,19 @@ __all__ = [
     "assignment_digest",
     "assign_arms",
     "build_canary_report",
+    "SILVER_REPORT_VERSION",
+    "KAPPA_TRUST_FLOOR",
+    "JUDGE_GLM",
+    "JUDGE_DEEPSEEK",
+    "CandidateEpisode",
+    "SilverEpisode",
+    "SilverResult",
+    "JudgeSpec",
+    "sample_stratified",
+    "load_candidates_csv",
+    "build_silver_result",
+    "cohen_kappa",
+    "evaluate_silver_vs_jev",
     "ObservatoryError",
     "AnnotationError",
     "CanaryError",
@@ -241,6 +270,7 @@ __all__ = [
     "RegistryError",
     "RegistryConflictError",
     "SchemaVersionError",
+    "SilverError",
     "TaxonomyError",
     "RequestError",
     "RequestByteCapExceeded",

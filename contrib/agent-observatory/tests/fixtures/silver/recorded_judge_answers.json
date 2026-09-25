@@ -1,0 +1,19 @@
+{
+  "_comment": "Recorded judge answers keyed by judge_id then episode_id. Used by tests so the judge path is exercised without network.",
+  "glm-5p3-flash": {
+    "ep-bugfix-1": "{\"primary_intent\":\"bugfix\",\"confidence\":0.92}",
+    "ep-impl-2": "{\"primary_intent\":\"implementation\",\"confidence\":0.88}",
+    "ep-review-3": "{\"primary_intent\":\"pr_review\",\"confidence\":0.81}",
+    "ep-plan-4": "{\"primary_intent\":\"planning_spec\",\"confidence\":0.77}",
+    "ep-docs-5": "{\"primary_intent\":\"research_docs\",\"confidence\":0.7}",
+    "ep-research-6": "{\"primary_intent\":\"unknown\",\"confidence\":0.6}"
+  },
+  "deepseek-v4-flash": {
+    "ep-bugfix-1": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}",
+    "ep-impl-2": "{\"primary_intent\":\"implementation\",\"confidence\":0.85}",
+    "ep-review-3": "{\"primary_intent\":\"pr_review\",\"confidence\":0.79}",
+    "ep-plan-4": "{\"primary_intent\":\"planning_spec\",\"confidence\":0.74}",
+    "ep-docs-5": "{\"primary_intent\":\"implementation\",\"confidence\":0.55}",
+    "ep-research-6": "{\"primary_intent\":\"test_lint_build_ci\",\"confidence\":0.5}"
+  }
+}
