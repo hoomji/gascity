@@ -39,9 +39,11 @@ contrib/agent-observatory/
     taxonomy/jev_taxonomy_v1.json   wire taxonomy (implemented intent subset)
     taxonomy/jev_taxonomy_v2.json   wire taxonomy + full evaluation facets
     jev.py             /v1/systemone request builder + saved-response validation
+    framework.py       strips injected Gas City framework payloads from transcript text
     episodes.py        deterministic session -> task-episode segmentation
     annotations.py     versioned gold annotations (separate from predictions)
     evaluation.py      grouped temporal holdout, baselines, metrics, calibration
+    silver.py          two-judge machine-built silver reference (no hand labelling)
     collector.py       M4 checkpointed backfill, debounced collection, queue, status
     impact.py          M6 accepted-task impact reports, matched cohorts, uncertainty
     policy.py          M7 shadow policy recommendations (as-of, catalog-bounded)
@@ -63,7 +65,10 @@ contrib/agent-observatory/
     fixtures/canary/registration.json   pre-registered canary design (M8)
     fixtures/canary/units.json          canary units with observed outcomes
     fixtures/canary/units-unclassified.json  units that would spend live requests
+    fixtures/silver/candidates.csv       candidate episodes for the silver sample
+    fixtures/silver/recorded_judge_answers.json  recorded judge answers (no network)
   reports/real-obsdb-20260922.json  real historical report from a copy of obs.db
+  MEASUREMENT-SILVER.md   what the silver gate does and does not establish
   README.md
 ```
 
@@ -402,13 +407,41 @@ low-confidence predictions, and any case flagged `injected`, `uncertain`,
 regardless of model confidence. The report records every abstention and its
 reason, and asserts there are no gate violations.
 
+### Silver reference (no hand labelling)
+
+Owner decision 2026-09-25: the human gold set is replaced by a machine-built
+**silver** reference (`silver.py`). `silver-build` samples candidate episodes
+deterministically, stratified by provider, and asks two independent judges —
+GLM 5.3 Flash (`uniblock-prod/fireworks-ai/glm-5p3-flash`) and DeepSeek V4 Flash
+(`uniblock-prod/deepseek/deepseek-flash`) through the Uniblock prod gateway — to
+label `primary_intent` from the **same stripped transcript text** with the
+**same taxonomy criteria** at temperature 0 and JSON output. The judge prompt is
+fixed and versioned (`JUDGE_PROMPT_VERSION`).
+
+Adjudication reuses the existing annotation vocabulary: two agreeing judges make
+an `adjudicated` silver label; a disagreement is recorded as `disagreement`,
+excluded from the primary score and reported. Each episode records the per-judge
+labels, confidences, model ids, prompt version and text hash; the gold set keeps
+`annotator="silver-judges"` and is strictly separate from Jev predictions.
+`silver-evaluate` reports judge-judge Cohen's kappa and Jev-vs-silver
+accuracy/macro-F1 on agreed items. **Kappa below `KAPPA_TRUST_FLOOR` (0.6) means
+the silver set is not trustworthy and the gate is not claimed.** That floor is
+enforced, not just reported: `silver-build` refuses to write the gold set and
+exits nonzero on a below-floor kappa (the agreement report is still written as
+evidence), and the loader/`silver-evaluate` refuse to consume a silver set
+marked `silver_trustworthy: false`. The explicit `--allow-untrusted` flag is
+the only override.
+
+The limitation is explicit: silver labels measure agreement with two LLMs, not
+ground truth. A Jev error shared by both judges is invisible. See
+`MEASUREMENT-SILVER.md`.
+
 Reproducibility: the report pins `taxonomy_version`, `facet_hash`,
 `question_hash`, `model`, `gold_set_version`, `gold_set_hash` and an
 `evaluation_hash` over the split, provenance and every prediction hash, so a
 model or question revision produces a different, replayable report. The pinned
-`tests/fixtures/gold/` fixture proves the evaluator mechanics; establishing
-per-class quality requires an independently annotated real gold set (the 400
-episode stratified set in `measurement.md`), which remains a separate gate.
+`tests/fixtures/gold/` fixture proves the evaluator mechanics; the silver path
+above is how real per-class quality is established without hand labelling.
 
 ## 8. Optimization change and exposure registry
 
@@ -569,28 +602,42 @@ ceiling:
   each time. After `--max-item-attempts` failures the item moves to `unknown`
   and keeps its last failure. Nothing is fabricated.
 
-The drain sends **metadata-only state** by default: event-kind counts, tool
-invocation counts, command-category counts, models, duration, and
-bead/formula/parent flags. No text, titles or command lines leave the host.
-
-`queue-drain --text-state` is the explicit opt-in data scope for sending
-transcript text. It reuses the same bounded transport and requires
-`--max-requests`:
+`queue-drain` sends **redacted transcript text** by default. The owner approved
+transcript text to Jev on 2026-09-25 after the live projection showed that a
+metadata-only state cannot express task intent: all 53 live classifications were
+`primary_intent=unknown` because the state carried only event/tool counts. Pass
+`--metadata-state` to opt back into the structured-metadata scope (event-kind
+counts, tool invocation counts, command-category counts, models, duration and
+bead/formula/parent flags). The text scope reuses the same bounded transport and
+requires `--max-requests`:
 
 - Every excerpt is run through the adapter credential redactor again (key
   assignments, bearer tokens, well-known token shapes, email addresses and
   home-directory paths), so re-sending already-redacted projection text cannot
   resurrect a secret.
-- Each event's text is excerpted deterministically from the head at
+- **Injected framework payloads are stripped before the state is built.** Gas
+  City role prompts (`[city] <agent> • <time>`), runtime-context snapshots,
+  `<system-reminder>` wake/deferred reminders and skill payloads ride on
+  `role=user` records but carry no task provenance. `framework.py`
+  (`FRAMEWORK_FILTER_VERSION`) drops a whole payload that starts as framework
+  text and excises embedded reminder/skill blocks from an otherwise real
+  message, so the classifier sees the work rather than the harness.
+- Each remaining event's text is excerpted deterministically from the head at
   `DEFAULT_TEXT_EXCERPT_BYTES` (1536) UTF-8 bytes, with the dropped tail
   summarized by byte length and digest. The whole request is then fitted to the
   transport's 24 KB `REQUEST_BYTE_CAP` by dropping trailing excerpts.
 - The stored request metadata records what happened under `text_mode`:
-  `excerpt_bytes`, `excerpted_events`, `excerpt_strategy` and
-  `request_dropped_excerpts`.
+  `excerpt_bytes`, `excerpted_events`, `injected_events_dropped`,
+  `framework_filter_version`, `excerpt_strategy` and `request_dropped_excerpts`.
 - The subject snapshot is namespaced for text mode, so a text classification can
   never collide with the metadata classification of the same session. Metadata
   mode keeps the raw session snapshot, leaving existing classifications valid.
+- `--include-done` also re-classifies already-`done` rows in the new data scope
+  (the text-namespaced subject is stored separately; the old metadata
+  classification is retained, never overwritten).
+- `--sessions-file` restricts a drain to an explicit JSON list of session
+  identities or `session:[...]` group keys, so a named sample can be
+  re-classified without paying for unrelated queue rows.
 
 `collect-status` reports coverage (`current / scoped`), per-provider status
 counts, lagging sources with their lag and reason, queue counts, the oldest
@@ -811,8 +858,17 @@ agent-observatory collect --db DB --root DIR [--root DIR ...] --city CITY --host
 agent-observatory collect-status --db DB [--kill-switch PATH] [--out FILE]
 agent-observatory collector-switch --db DB on|off [--kill-switch PATH]
 agent-observatory queue-drain --db DB --max-requests N [--max-items N]
-    [--text-state] [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
+    [--metadata-state] [--include-done] [--sessions-file SESSIONS.json]
+    [--max-item-attempts N] [--retry-backoff S] [--kill-switch PATH]
     [transport options as for classify] [--out FILE]
+agent-observatory silver-build --candidates CANDIDATES.csv --db DB
+    --out-gold GOLD.json --out-report REPORT.json
+    [--sample-size N] [--seed S] [--judge JUDGE ...] [--jev-predictions-out FILE]
+    [--base-url URL] [--api-key-env ENV] [--max-judge-requests N]
+    [--taxonomy PATH] [--excerpt-bytes N] [--text-bytes N] [--judge-text-bytes N]
+    [--gold-set-version V] [--prompt-version V] [--judge-timeout S]
+agent-observatory silver-evaluate --gold GOLD.json --predictions PRED.json
+    [--taxonomy PATH] [--full-evaluator] [--out FILE]
 agent-observatory impact [--input BUNDLE.json] [--db DB]
     [--primary-outcome OUTCOME] [--bootstrap-resamples N] [--out FILE]
 agent-observatory shadow --catalog CATALOG.json --input BUNDLE.json
@@ -827,7 +883,11 @@ agent-observatory --version
 `annotate` validates a gold set and appends it (append-only) to the projection;
 `evaluate` writes the deterministic evaluation report and exits non-zero when the
 split audit is not leak-free; `impact` writes the deterministic accepted-task
-impact report (at least one of `--input`/`--db` is required).
+impact report (at least one of `--input`/`--db` is required). `silver-build`
+writes the two-judge silver gold set plus its agreement report (and optional Jev
+predictions read from the projection); `silver-evaluate` writes the Jev-vs-silver
+report. `queue-drain` sends redacted transcript text unless `--metadata-state` is
+passed.
 
 When `--snapshot-hash` is supplied together with `--db` and `--session`, the
 explicit value is cross-checked against the projection and a mismatch is refused

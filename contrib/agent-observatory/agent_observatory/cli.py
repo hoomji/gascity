@@ -43,7 +43,7 @@ from .collector import (
     set_kill_switch,
 )
 from .episodes import segment_store
-from .errors import ObservatoryError
+from .errors import ObservatoryError, SilverError
 from .evaluation import (
     DEFAULT_MULTI_LABEL_FACETS,
     EvaluationConfig,
@@ -84,6 +84,24 @@ from .policy import (
     recommendation_rows,
 )
 from .report import build_report
+from .silver import (
+    DEFAULT_API_KEY_ENV,
+    DEFAULT_BASE_URL,
+    DEFAULT_JUDGE_TEXT_BYTES,
+    DEFAULT_SAMPLE_SIZE,
+    JUDGE_DEEPSEEK,
+    JUDGE_GLM,
+    JUDGE_PROMPT_VERSION,
+    CheckpointJudgeClient,
+    HTTPJudgeClient,
+    build_silver_episodes,
+    build_silver_result,
+    evaluate_silver_vs_jev,
+    load_candidates_csv,
+    predictions_from_store,
+    sample_stratified,
+    session_key_from_group_key,
+)
 from .store import ObservatoryStore
 from .taxonomy import DEFAULT_TAXONOMY_PATH, load_taxonomy
 from .transport import TransportConfig, classify
@@ -704,6 +722,159 @@ def _cmd_shadow(args: argparse.Namespace) -> int:
     return 0
 
 
+def _silver_judges(raw: Sequence[str]) -> list[Any]:
+    """Map ``--judge`` values to ``JudgeSpec`` entries (default: both judges)."""
+
+    if not raw:
+        return [JUDGE_GLM, JUDGE_DEEPSEEK]
+    wanted = {value.strip() for value in raw if value.strip() and value != "all"}
+    chosen = []
+    for spec in (JUDGE_GLM, JUDGE_DEEPSEEK):
+        if spec.judge_id in wanted or spec.model in wanted or spec.api_model in wanted:
+            chosen.append(spec)
+    if not chosen:
+        raise ObservatoryError(
+            "--judge must name one of: glm-5p3-flash, deepseek-v4-flash, all"
+        )
+    return chosen
+
+
+def _cmd_silver_build(args: argparse.Namespace) -> int:
+    """Build a two-judge silver primary_intent reference (no human labels)."""
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    candidates = load_candidates_csv(args.candidates)
+    with _open_store(args.db) as store:
+        episodes, skipped = build_silver_episodes(
+            store, candidates, excerpt_bytes=args.excerpt_bytes, max_text_bytes=args.text_bytes
+        )
+        if len(episodes) < args.sample_size:
+            raise ObservatoryError(
+                f"only {len(episodes)} of {len(candidates)} candidates have task text; "
+                f"cannot sample {args.sample_size}"
+            )
+        sample = sample_stratified(
+            [episode.as_candidate() for episode in episodes], args.sample_size, seed=args.seed
+        )
+        text_by_id = {episode.episode_id: episode for episode in episodes}
+        sampled = tuple(text_by_id[episode.episode_id] for episode in sample)
+        judges = []
+        transports = {}
+        for spec in _silver_judges(args.judge):
+            inner = HTTPJudgeClient(
+                spec,
+                base_url=args.base_url,
+                api_key_env=args.api_key_env,
+                timeout_seconds=args.judge_timeout,
+                max_attempts=args.judge_max_attempts,
+                max_requests=args.max_judge_requests,
+            )
+            client = (
+                CheckpointJudgeClient(spec.judge_id, inner, args.checkpoint)
+                if args.checkpoint
+                else inner
+            )
+            judges.append((spec, client))
+            transports[spec.judge_id] = {"inner": inner, "client": client}
+        result = build_silver_result(
+            sampled,
+            taxonomy,
+            judges,
+            gold_set_version=args.gold_set_version,
+            seed=args.seed,
+            text_bytes=args.judge_text_bytes,
+            prompt_version=args.prompt_version,
+        )
+        if args.jev_predictions_out:
+            predictions = predictions_from_store(store, sampled)
+            from .silver import build_silver_predictions_document
+
+            _write_output(
+                json.dumps(build_silver_predictions_document(predictions), indent=2, sort_keys=True),
+                args.jev_predictions_out,
+            )
+    report = dict(result.report)
+    report["sampling"] = {"skipped": skipped, "eligible": len(episodes)}
+    report["judge_transport"] = {
+        "checkpoint": args.checkpoint,
+        "http_requests": {judge_id: entry["inner"].requests_made for judge_id, entry in transports.items()},
+        "cache_hits": {
+            judge_id: getattr(entry["client"], "cache_hits", 0) for judge_id, entry in transports.items()
+        },
+    }
+    agreement = report["agreement"]
+    # Write the report first: it is the durable evidence of *why* the gold set
+    # was refused, and it always records the reported kappa and trust verdict.
+    _write_output(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False), args.out_report)
+    print(
+        json.dumps(
+            {
+                "silver_report_version": report["silver_report_version"],
+                "episodes": report["sample"]["episodes"],
+                "judge_calls": report["judge_calls"]["total"],
+                "judge_http_requests": sum(report["judge_transport"]["http_requests"].values()),
+                "agreed": agreement["agreed"],
+                "disagreement": agreement["disagreement"],
+                "cohen_kappa": agreement["cohen_kappa"],
+                "trustworthy": agreement["trustworthy"],
+                "gold_set_hash": report["gold_set_hash"],
+                "out_gold": args.out_gold,
+                "out_report": args.out_report,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if not agreement["trustworthy"] and not args.allow_untrusted:
+        raise SilverError(
+            "refusing to write --out-gold: judge kappa "
+            f"{agreement['cohen_kappa']!r} is below the trust floor "
+            f"{agreement['kappa_trust_floor']}; the silver set is not trustworthy "
+            "(pass --allow-untrusted to write it anyway)"
+        )
+    _write_output(result.gold_set.to_json(), args.out_gold)
+    return 0
+
+
+def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
+    """Score Jev against the agreed silver labels and state the kappa gate."""
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    gold_set = load_gold_set(args.gold, taxonomy, allow_untrusted=args.allow_untrusted)
+    predictions = load_predictions(args.predictions, taxonomy)
+    report = evaluate_silver_vs_jev(
+        gold_set, predictions, taxonomy, run_full_evaluator=args.full_evaluator
+    )
+    _write_output(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False), args.out)
+    agreement = report["agreement"]
+    print(
+        json.dumps(
+            {
+                "kind": report["kind"],
+                "cohen_kappa": agreement["cohen_kappa"],
+                "trustworthy": agreement["trustworthy"],
+                "agreed": report["silver"]["agreed"],
+                "disagreement": report["silver"]["disagreement"],
+                "jev_predicted": report["jev"]["predicted"],
+                "jev_accuracy": report["jev"]["accuracy"],
+                "jev_macro_f1": report["jev"]["macro_f1"],
+                "jev_non_unknown": report["jev"]["non_unknown"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if not agreement["trustworthy"] and not args.allow_untrusted:
+        raise SilverError(
+            "silver set is not trustworthy: judge kappa "
+            f"{agreement['cohen_kappa']!r} is below the trust floor "
+            f"{agreement['kappa_trust_floor']}; refusing to report a gate it did "
+            "not pass (pass --allow-untrusted to evaluate anyway)"
+        )
+    return 0
+
+
 def _cmd_canary_register(args: argparse.Namespace) -> int:
     """Validate a canary spec and write the pre-registered artifact (M8).
 
@@ -880,12 +1051,37 @@ def _cmd_collector_switch(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_session_filter(path: str) -> frozenset[tuple[str, str, str, str]]:
+    """Load a JSON array of session identities or ``session:[...]`` group keys."""
+
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ObservatoryError(f"cannot read sessions file {path}: {exc}") from exc
+    if not isinstance(value, list) or not value:
+        raise ObservatoryError(f"sessions file {path} must contain a non-empty JSON array")
+    keys: set[tuple[str, str, str, str]] = set()
+    for entry in value:
+        if isinstance(entry, list) and len(entry) == 4 and all(isinstance(part, str) for part in entry):
+            keys.add((entry[0], entry[1], entry[2], entry[3]))
+            continue
+        if isinstance(entry, str):
+            parsed = session_key_from_group_key(entry) or _session_key(entry)
+            keys.add(parsed)
+            continue
+        raise ObservatoryError(
+            f"sessions file {path}: each entry must be a 4-item array or a session string"
+        )
+    return frozenset(keys)
+
+
 def _cmd_queue_drain(args: argparse.Namespace) -> int:
     """Classify due queued sessions within an explicit request ceiling."""
     if args.max_requests is None:
         raise ObservatoryError("queue-drain requires --max-requests (the per-run spend ceiling)")
     taxonomy = load_taxonomy(args.taxonomy)
     config = _transport_config_from_args(args)
+    session_filter = _load_session_filter(args.sessions_file) if args.sessions_file else None
     with _open_store(args.db) as store:
         result = drain_queue(
             store,
@@ -895,7 +1091,9 @@ def _cmd_queue_drain(args: argparse.Namespace) -> int:
             max_attempts=args.max_item_attempts,
             retry_backoff_seconds=args.retry_backoff,
             kill_switch_path=_kill_switch_path(args),
-            state_mode=STATE_MODE_TEXT if args.text_state else STATE_MODE_METADATA,
+            state_mode=STATE_MODE_METADATA if args.metadata_state else STATE_MODE_TEXT,
+            include_done=bool(getattr(args, "include_done", False)),
+            session_filter=session_filter,
         )
     _write_output(json.dumps(result.to_dict(), indent=2, sort_keys=True, ensure_ascii=False), args.out)
     return 0 if result.status in {"ok", "disabled", "locked"} else 1
@@ -1090,6 +1288,70 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument("--calibration-bins", type=int, default=5, help="reliability bin count")
     evaluate_parser.add_argument("--out", default=None, help="write the evaluation report to this path")
     evaluate_parser.set_defaults(func=_cmd_evaluate)
+
+    silver_build_parser = subparsers.add_parser(
+        "silver-build",
+        help="build a two-judge (GLM + DeepSeek) silver primary_intent reference; no human labels",
+    )
+    silver_build_parser.add_argument("--candidates", required=True, help="candidate CSV (episode_id/group_key/provider/observed_at)")
+    silver_build_parser.add_argument("--db", required=True, help="SQLite projection with the candidate transcripts")
+    silver_build_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    silver_build_parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE, help="episodes to sample (default 150)")
+    silver_build_parser.add_argument("--seed", default="silver-v1", help="deterministic sampling/adjudication seed")
+    silver_build_parser.add_argument("--out-gold", required=True, help="write the silver gold set JSON here")
+    silver_build_parser.add_argument("--out-report", required=True, help="write the silver agreement report JSON here")
+    silver_build_parser.add_argument(
+        "--allow-untrusted",
+        action="store_true",
+        help="write a silver gold set even when judge kappa is below the trust floor (default: refuse)",
+    )
+    silver_build_parser.add_argument("--jev-predictions-out", default=None, help="also write Jev predictions for the sampled episodes")
+    silver_build_parser.add_argument(
+        "--judge",
+        action="append",
+        default=[],
+        help="judge id or model (repeatable; default both glm-5p3-flash and deepseek-v4-flash)",
+    )
+    silver_build_parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="OpenAI-compatible gateway base URL")
+    silver_build_parser.add_argument("--api-key-env", default=DEFAULT_API_KEY_ENV, help="env var holding the gateway key")
+    silver_build_parser.add_argument("--judge-timeout", type=float, default=300.0, help="per-judge-request HTTP timeout")
+    silver_build_parser.add_argument("--judge-max-attempts", type=int, default=3, help="HTTP attempts per judge call")
+    silver_build_parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="JSON checkpoint of raw judge answers, so a partial run resumes instead of re-spending",
+    )
+    silver_build_parser.add_argument("--max-judge-requests", type=int, default=300, help="per-run judge request ceiling (owner cap: 2x150)")
+    silver_build_parser.add_argument("--excerpt-bytes", type=int, default=2048, help="per-event transcript excerpt bytes")
+    silver_build_parser.add_argument("--text-bytes", type=int, default=DEFAULT_JUDGE_TEXT_BYTES, help="per-episode judge text cap")
+    silver_build_parser.add_argument("--judge-text-bytes", type=int, default=DEFAULT_JUDGE_TEXT_BYTES, help="prompt document byte cap")
+    silver_build_parser.add_argument("--gold-set-version", default="silver-v1", help="gold_set_version recorded on the silver set")
+    silver_build_parser.add_argument("--prompt-version", default=JUDGE_PROMPT_VERSION, help="judge prompt version (default: module version)")
+    silver_build_parser.set_defaults(func=_cmd_silver_build)
+
+    silver_eval_parser = subparsers.add_parser(
+        "silver-evaluate",
+        help="score Jev against agreed silver labels and report the judge-kappa gate",
+    )
+    silver_eval_parser.add_argument("--gold", required=True, help="silver gold set JSON")
+    silver_eval_parser.add_argument("--predictions", required=True, help="Jev predictions JSON")
+    silver_eval_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    silver_eval_parser.add_argument("--full-evaluator", action="store_true", help="also run the grouped evaluator on agreed items")
+    silver_eval_parser.add_argument(
+        "--allow-untrusted",
+        action="store_true",
+        help="evaluate against a silver set whose judge kappa is below the trust floor (default: refuse)",
+    )
+    silver_eval_parser.add_argument("--out", default=None, help="write the silver evaluation report to this path")
+    silver_eval_parser.set_defaults(func=_cmd_silver_evaluate)
 
     impact_parser = subparsers.add_parser(
         "impact",
@@ -1292,14 +1554,26 @@ def build_parser() -> argparse.ArgumentParser:
     switch_parser.set_defaults(func=_cmd_collector_switch)
 
     drain_parser = subparsers.add_parser(
-        "queue-drain", help="classify queued sessions within a request ceiling (metadata-only unless --text-state)"
+        "queue-drain",
+        help=(
+            "classify queued sessions within a request ceiling "
+            "(owner-approved redacted transcript text by default; --metadata-state opts out)"
+        ),
     )
     drain_parser.add_argument("--db", required=True, help="SQLite projection path")
     drain_parser.add_argument("--taxonomy", default=None, help="taxonomy JSON path")
     drain_parser.add_argument(
+        "--metadata-state",
+        action="store_true",
+        help=(
+            "opt out of transcript text and classify from structured metadata only. "
+            "Metadata-only state cannot express task intent, so it is not the default."
+        ),
+    )
+    drain_parser.add_argument(
         "--text-state",
         action="store_true",
-        help="opt in to redacted transcript text in the classification state (default: metadata only)",
+        help="explicit opt-in to redacted transcript text (now the default; kept for compatibility)",
     )
     drain_parser.add_argument("--max-items", type=int, default=None, help="queue items to consider (default --max-requests)")
     drain_parser.add_argument(
@@ -1309,6 +1583,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--retry-backoff", type=float, default=300.0, help="base seconds before a failed item is retried"
     )
     drain_parser.add_argument("--kill-switch", default=None, help="kill switch file (default DB.collector-disabled)")
+    drain_parser.add_argument(
+        "--include-done",
+        action="store_true",
+        help="also re-classify 'done' rows (adds a new data-scope classification; never overwrites the old subject)",
+    )
+    drain_parser.add_argument(
+        "--sessions-file",
+        default=None,
+        help="JSON array of session identities or 'session:[...]' group keys to restrict the drain to",
+    )
     drain_parser.add_argument("--out", default=None, help="write the drain result to this path instead of stdout")
     _add_transport_args(drain_parser)
     drain_parser.set_defaults(func=_cmd_queue_drain)

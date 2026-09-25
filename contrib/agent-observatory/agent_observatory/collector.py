@@ -42,6 +42,11 @@ command categories, models, duration). No transcript text, titles or command
 lines are sent. Text is a separate, explicit data scope: ``queue-drain
 --text-state`` opts in, and the text state is redacted, excerpted to the
 transport byte cap, and stored under a text-namespaced subject snapshot.
+
+``text_state`` also drops injected Gas City framework payloads (role prompts,
+runtime context, ``<system-reminder>`` wakes and skill payloads) before building
+excerpts: those records are ``role=user`` but carry no task provenance. See
+:mod:`agent_observatory.framework`.
 """
 
 from __future__ import annotations
@@ -68,6 +73,7 @@ from .adapters.redaction import redact_text
 from .canonical import canonical_hash, identity_key, sha256_text
 from .commands import categorize_command
 from .errors import ContractError, ObservatoryError, RequestByteCapExceeded, RequestError
+from .framework import FRAMEWORK_FILTER_VERSION, strip_framework_text
 from .inventory import SourceRoot, _decide_generation, discover_sources, records_to_jsonl
 from .jev import build_request
 from .store import ObservatoryStore
@@ -1010,11 +1016,14 @@ def text_state(
 
     This is the explicit text data scope: every excerpt is redacted before it
     leaves the projection, and each event's text is excerpted deterministically
-    from the head when it exceeds *excerpt_bytes*. The metadata fields shared
-    with :func:`metadata_state` are preserved so classification keeps its
-    context. The per-request total is fitted to the transport byte cap by the
-    caller (see :func:`_fit_text_state`); the result records what was done under
-    ``text_mode``.
+    from the head when it exceeds *excerpt_bytes*. Injected Gas City framework
+    payloads (role prompts, runtime context, wake reminders and skill payloads)
+    are stripped first: they are ``role=user`` records with no task provenance,
+    so leaving them in makes ``primary_intent`` describe the harness rather than
+    the work. The metadata fields shared with :func:`metadata_state` are
+    preserved so classification keeps its context. The per-request total is
+    fitted to the transport byte cap by the caller (see :func:`_fit_text_state`);
+    the result records what was done under ``text_mode``.
     """
 
     if excerpt_bytes < 1:
@@ -1022,12 +1031,21 @@ def text_state(
     events = store.session_events(session_key)
     excerpts: list[dict[str, Any]] = []
     excerpted = 0
+    injected = 0
     for event in events:
         kind = event.get("kind") or "unknown"
         if kind in {"tool_call", "command"}:
             text, was_cut = _excerpt_text(event.get("command") or "", limit=excerpt_bytes)
         elif kind in _TEXT_EVENT_KINDS:
-            text, was_cut = _excerpt_text(event.get("text") or event.get("title") or "", limit=excerpt_bytes)
+            raw = event.get("text") or event.get("title") or ""
+            # Injected role prompts, runtime context, wake reminders and skill
+            # payloads ride on ``role=user`` records but carry no task
+            # provenance. Drop them before the text can dominate the state.
+            task_text = strip_framework_text(raw)
+            if not task_text.strip():
+                injected += 1
+                continue
+            text, was_cut = _excerpt_text(task_text, limit=excerpt_bytes)
         else:
             continue
         excerpted += int(was_cut)
@@ -1040,6 +1058,8 @@ def text_state(
             "redacted": True,
             "excerpt_bytes": excerpt_bytes,
             "excerpted_events": excerpted,
+            "injected_events_dropped": injected,
+            "framework_filter_version": FRAMEWORK_FILTER_VERSION,
             "excerpt_strategy": "head_truncate" if excerpted else "none",
             "request_dropped_excerpts": 0,
         },
@@ -1127,6 +1147,8 @@ def drain_queue(
     state_mode: str = STATE_MODE_METADATA,
     text_excerpt_bytes: int = DEFAULT_TEXT_EXCERPT_BYTES,
     state_builder: Callable[[ObservatoryStore, Sequence[str]], dict[str, Any]] | None = None,
+    include_done: bool = False,
+    session_filter: frozenset[tuple[str, str, str, str]] | None = None,
     classify_fn: Callable[..., ClassifyResult] = classify,
     clock: Callable[[], float] = time.time,
     environ: dict[str, str] | None = None,
@@ -1137,6 +1159,15 @@ def drain_queue(
     transcript text, while ``text`` is the explicit opt-in that adds redacted,
     byte-capped text excerpts. The stored subject snapshot is namespaced in text
     mode so the two scopes produce distinct classifications.
+
+    ``include_done`` also selects already-classified rows. It exists so a new
+    data scope (for example the owner-approved text state) can re-classify the
+    same sessions; the text-namespaced subject is stored separately, so the
+    earlier metadata classification is retained rather than overwritten.
+
+    ``session_filter`` restricts the drain to an explicit set of session
+    identities, which is how a named sample (the silver set) is re-classified
+    without paying for unrelated queue rows.
     """
 
     if max_items < 0 or max_attempts < 1 or retry_backoff_seconds < 0:
@@ -1159,11 +1190,28 @@ def drain_queue(
                 reason="another drain holds the projection lock",
                 budget=budget.to_state(),
             )
-        rows = store.conn.execute(
-            "SELECT * FROM collector_queue WHERE status = 'pending' AND next_attempt_at <= ? "
-            "ORDER BY enqueued_at, queue_id LIMIT ?",
-            (now, max_items),
-        ).fetchall()
+        statuses = ("pending", "done") if include_done else ("pending",)
+        placeholders = ", ".join(["?"] * len(statuses))
+        if session_filter is None:
+            rows = store.conn.execute(
+                f"SELECT * FROM collector_queue WHERE status IN ({placeholders}) "
+                "AND next_attempt_at <= ? ORDER BY enqueued_at, queue_id LIMIT ?",
+                (*statuses, now, max_items),
+            ).fetchall()
+        else:
+            # Targeted re-classification (for example the silver sample): fetch
+            # the due rows and keep only the requested session identities. The
+            # queue is small enough that filtering in Python is cheaper than a
+            # several-hundred-parameter SQL predicate.
+            rows = [
+                row
+                for row in store.conn.execute(
+                    f"SELECT * FROM collector_queue WHERE status IN ({placeholders}) "
+                    "AND next_attempt_at <= ? ORDER BY enqueued_at, queue_id",
+                    (*statuses, now),
+                ).fetchall()
+                if (row["city_id"], row["host_id"], row["provider"], row["session_id"]) in session_filter
+            ][:max_items]
         result = DrainResult(status="ok")
         for row in rows:
             key = (row["city_id"], row["host_id"], row["provider"], row["session_id"])

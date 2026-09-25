@@ -118,3 +118,13 @@ class CanaryError(ObservatoryError):
     and defaults to the prior policy; the module writes no routing, dispatch or
     configuration, and a kill switch restores the prior policy immediately.
     """
+
+
+class SilverError(ObservatoryError):
+    """A silver-set candidate, judge prompt, answer, or report is invalid.
+
+    Silver labels are machine-built from two independent LLM judges (see
+    :mod:`agent_observatory.silver`); they are a reference, never human ground
+    truth, and a judge answer that cannot be validated is an error rather than a
+    silently coerced ``unknown``.
+    """

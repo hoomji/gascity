@@ -110,13 +110,20 @@ class GoldEpisode:
 
 @dataclass(frozen=True)
 class GoldSet:
-    """A pinned, versioned set of gold annotations."""
+    """A pinned, versioned set of gold annotations.
+
+    ``is_silver`` and ``silver_trustworthy`` mark a machine-built silver set and
+    the judge-agreement gate it passed. They are provenance, not label content,
+    so they are deliberately outside :meth:`gold_set_hash`.
+    """
 
     gold_set_version: str
     taxonomy_version: str
     facet_hash: str
     episodes: tuple[GoldEpisode, ...]
     schema_version: str = GOLD_SCHEMA_VERSION
+    is_silver: bool = False
+    silver_trustworthy: bool | None = None
 
     def by_id(self) -> dict[str, GoldEpisode]:
         return {episode.episode_id: episode for episode in self.episodes}
@@ -136,22 +143,24 @@ class GoldSet:
         )
 
     def to_json(self) -> str:
-        return canonical_json(
-            {
-                "schema_version": self.schema_version,
-                "gold_set_version": self.gold_set_version,
-                "taxonomy_version": self.taxonomy_version,
-                "episodes": [
-                    {
-                        **episode.content(),
-                        "annotator": episode.annotator,
-                        "adjudication": episode.adjudication,
-                        "metadata": dict(episode.metadata),
-                    }
-                    for episode in self.episodes
-                ],
-            }
-        )
+        payload: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "gold_set_version": self.gold_set_version,
+            "taxonomy_version": self.taxonomy_version,
+            "episodes": [
+                {
+                    **episode.content(),
+                    "annotator": episode.annotator,
+                    "adjudication": episode.adjudication,
+                    "metadata": dict(episode.metadata),
+                }
+                for episode in self.episodes
+            ],
+        }
+        if self.is_silver:
+            payload["silver"] = True
+            payload["silver_trustworthy"] = self.silver_trustworthy
+        return canonical_json(payload)
 
 
 def _reject_json_constant(value: str) -> Any:
@@ -281,8 +290,15 @@ def load_gold_set(
     taxonomy: Taxonomy,
     *,
     expected_taxonomy_version: str | None = None,
+    allow_untrusted: bool = False,
 ) -> GoldSet:
-    """Load and validate a pinned gold annotation set."""
+    """Load and validate a pinned gold annotation set.
+
+    A set marked ``silver`` whose judge-agreement gate was not passed
+    (``silver_trustworthy`` is not ``true``) is refused unless the caller
+    explicitly opts in with *allow_untrusted*: an untrusted machine reference
+    must not be loaded by accident and then treated as ground truth.
+    """
     gold_path = Path(path)
     try:
         raw = json.loads(gold_path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
@@ -323,6 +339,31 @@ def load_gold_set(
         )
     raw_episodes = raw.get("episodes")
     _require(isinstance(raw_episodes, list) and raw_episodes, "gold set requires episodes")
+
+    # Fail closed on a silver reference whose judges never cleared the trust
+    # floor. The marker is recorded by ``silver.build_silver_result``; an older
+    # silver set with no explicit marker is treated as untrusted, not trusted.
+    top_level_silver = raw.get("silver") is True
+    per_episode_silver = any(
+        isinstance(entry, dict)
+        and isinstance(entry.get("metadata"), dict)
+        and entry["metadata"].get("silver") is True
+        for entry in raw_episodes
+    )
+    is_silver = top_level_silver or per_episode_silver
+    silver_trustworthy = raw.get("silver_trustworthy")
+    _require(
+        silver_trustworthy is None or isinstance(silver_trustworthy, bool),
+        "silver_trustworthy must be a boolean",
+    )
+    if is_silver and silver_trustworthy is not True and not allow_untrusted:
+        raise AnnotationError(
+            f"gold set {gold_path} is marked silver but its judge-agreement gate "
+            "did not pass (silver_trustworthy is not true); refusing to load an "
+            "untrusted silver reference (pass allow_untrusted=True or the "
+            "--allow-untrusted CLI flag to override)"
+        )
+
     episodes = tuple(_parse_episode(entry, taxonomy) for entry in raw_episodes)
     ids = [episode.episode_id for episode in episodes]
     duplicates = sorted({value for value in ids if ids.count(value) > 1})
@@ -333,6 +374,8 @@ def load_gold_set(
         taxonomy_version=taxonomy_version,
         facet_hash=taxonomy.facet_hash(),
         episodes=episodes,
+        is_silver=is_silver,
+        silver_trustworthy=silver_trustworthy if is_silver else None,
     )
 
 

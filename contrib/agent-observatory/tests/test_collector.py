@@ -13,7 +13,10 @@ import time
 import unittest
 from unittest import mock
 
-import support  # noqa: F401  (puts the package root on sys.path)
+try:
+    from . import support  # noqa: F401  (puts the package root on sys.path)
+except ImportError:  # pragma: no cover
+    import support  # noqa: F401
 
 from agent_observatory.cli import main
 from agent_observatory.collector import (
@@ -860,6 +863,98 @@ class StatusAndCliTests(CollectorTestCase):
         item = json.loads(out)["items"][0]
         self.assertEqual(item["state_mode"], "text")
         self.assertTrue(item["text_mode"]["enabled"])
+
+    def test_cli_queue_drain_is_text_state_by_default(self):
+        from agent_observatory.cli import build_parser
+
+        args = build_parser().parse_args(["queue-drain", "--db", self.db, "--max-requests", "1"])
+        self.assertFalse(args.metadata_state)
+        metadata = build_parser().parse_args(
+            ["queue-drain", "--db", self.db, "--max-requests", "1", "--metadata-state"]
+        )
+        self.assertTrue(metadata.metadata_state)
+
+    def test_cli_queue_drain_include_done_flag(self):
+        from agent_observatory.cli import build_parser
+
+        args = build_parser().parse_args(
+            ["queue-drain", "--db", self.db, "--max-requests", "1", "--include-done"]
+        )
+        self.assertTrue(args.include_done)
+
+
+class FrameworkStateTests(CollectorTestCase):
+    def _write_session(self, path):
+        lines = [
+            {
+                "type": "user",
+                "uuid": "u-fw",
+                "sessionId": "claude-fw",
+                "timestamp": "2026-09-21T10:00:00.000Z",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "[city] gateway-llm/gc.worker-1 • 2026-09-21T10:00:00\n\n"
+                                "# GC Role Worker\n\nYou are a role worker. gc hook --claim"
+                            ),
+                        }
+                    ],
+                },
+            },
+            {
+                "type": "user",
+                "uuid": "u-task",
+                "sessionId": "claude-fw",
+                "timestamp": "2026-09-21T10:00:01.000Z",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Please fix the flaky scheduler test"}],
+                },
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as handle:
+            for line in lines:
+                handle.write(json.dumps(line) + "\n")
+        return path
+
+    def test_text_state_drops_framework_payloads(self):
+        self._write_session(os.path.join(self.claude_dir, "fw.jsonl"))
+        with ObservatoryStore(self.db) as store:
+            self.collect(store)
+            key = store.session_keys()[0]
+            state = text_state(store, key)
+        self.assertGreaterEqual(state["text_mode"]["injected_events_dropped"], 1)
+        self.assertIn("framework_filter_version", state["text_mode"])
+        encoded = json.dumps(state)
+        self.assertIn("Please fix the flaky scheduler test", encoded)
+        self.assertNotIn("GC Role Worker", encoded)
+        self.assertNotIn("gc hook --claim", encoded)
+
+    def test_include_done_reclassifies_in_a_new_data_scope(self):
+        path = self._write_session(os.path.join(self.claude_dir, "fw.jsonl"))
+        with ObservatoryStore(self.db) as store:
+            self.collect(store)
+        fake, calls = _fake_classify([("classified", None)])
+        config = TransportConfig(budget=Budget(max_requests=10))
+        with ObservatoryStore(self.db) as store:
+            first = drain_queue(
+                store, load_taxonomy(None), transport_config=config, max_items=10,
+                classify_fn=fake, clock=_later(), environ=NO_ENV,
+            )
+            self.assertEqual((first.classified, len(calls)), (1, 1))
+            fake2, calls2 = _fake_classify([("classified", None)])
+            second = drain_queue(
+                store, load_taxonomy(None), transport_config=TransportConfig(budget=Budget(max_requests=10)),
+                max_items=10, classify_fn=fake2, clock=_later(), environ=NO_ENV,
+                state_mode="text", include_done=True,
+            )
+            self.assertEqual((second.classified, len(calls2)), (1, 1))
+            self.assertEqual(calls2[0].body["state"]["state_kind"], "session_transcript")
+            row = store.conn.execute("SELECT status FROM collector_queue").fetchone()
+            self.assertEqual(row["status"], "done")
 
 
 if __name__ == "__main__":
