@@ -865,6 +865,7 @@ class StatusAndCliTests(CollectorTestCase):
         self.assertTrue(item["text_mode"]["enabled"])
 
     def test_cli_queue_drain_is_text_state_by_default(self):
+        from agent_observatory import cli as cli_module
         from agent_observatory.cli import build_parser
 
         args = build_parser().parse_args(["queue-drain", "--db", self.db, "--max-requests", "1"])
@@ -873,6 +874,30 @@ class StatusAndCliTests(CollectorTestCase):
             ["queue-drain", "--db", self.db, "--max-requests", "1", "--metadata-state"]
         )
         self.assertTrue(metadata.metadata_state)
+
+        captured: dict[str, str] = {}
+
+        class _Result:
+            status = "ok"
+
+            def to_dict(self):
+                return {}
+
+        def fake_drain(store, taxonomy, **kwargs):
+            captured["state_mode"] = kwargs["state_mode"]
+            return _Result()
+
+        with mock.patch.object(cli_module, "drain_queue", side_effect=fake_drain):
+            with contextlib.redirect_stdout(io.StringIO()):
+                cli_module._cmd_queue_drain(args)
+        # The parser default is not enough: the handler must actually pass the
+        # text scope through to drain_queue.
+        self.assertEqual(captured["state_mode"], "text")
+
+        with mock.patch.object(cli_module, "drain_queue", side_effect=fake_drain):
+            with contextlib.redirect_stdout(io.StringIO()):
+                cli_module._cmd_queue_drain(metadata)
+        self.assertEqual(captured["state_mode"], "metadata")
 
     def test_cli_queue_drain_include_done_flag(self):
         from agent_observatory.cli import build_parser

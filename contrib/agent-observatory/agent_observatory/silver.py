@@ -11,7 +11,9 @@ gateway):
 * two agreeing judges produce an ``adjudicated`` label; a disagreement produces
   ``disagreement`` and is excluded from the primary score and reported;
 * judge-judge Cohen's kappa gates trust: below :data:`KAPPA_TRUST_FLOOR` the
-  silver set is reported as untrustworthy and the gate is not claimed.
+  silver set is reported as untrustworthy and the gate is not claimed. A sample
+  below :data:`MIN_SILVER_SAMPLE_SIZE` episodes is untrusted regardless of kappa
+  because kappa over a tiny sample is degenerate.
 
 Silver is a *reference*, not ground truth: it measures agreement with two LLMs.
 A Jev error shared by both judges is invisible. The limitation is recorded in
@@ -50,6 +52,11 @@ JUDGE_PROMPT_VERSION = "1.0.0"
 # A silver set is only trusted when two independent judges agree beyond chance
 # at this level. Below it the report says so and does not claim the gate.
 KAPPA_TRUST_FLOOR = 0.6
+# A kappa computed over a handful of episodes is degenerate: one agreed episode
+# yields kappa 1.0 by construction. Below this many episodes the silver set is
+# untrusted regardless of kappa, so a tiny ``--sample-size`` cannot claim the
+# gate. Documented in MEASUREMENT-SILVER.md.
+MIN_SILVER_SAMPLE_SIZE = 4
 DEFAULT_SAMPLE_SIZE = 150
 # Deterministic per-judge text ceiling. Both judges see the identical document.
 DEFAULT_JUDGE_TEXT_BYTES = 16000
@@ -494,7 +501,12 @@ def build_silver_result(
         ],
         judge_ids,
     )
-    trustworthy = kappa is not None and kappa >= KAPPA_TRUST_FLOOR
+    sample_size = len(episodes)
+    trustworthy = (
+        sample_size >= MIN_SILVER_SAMPLE_SIZE
+        and kappa is not None
+        and kappa >= KAPPA_TRUST_FLOOR
+    )
 
     gold_set = GoldSet(
         gold_set_version=gold_set_version,
@@ -522,7 +534,7 @@ def build_silver_result(
         "gold_set_hash": gold_set.gold_set_hash(),
         "judges": [{"judge_id": spec.judge_id, "model": spec.model} for spec, _ in judges],
         "sample": {
-            "episodes": len(episodes),
+            "episodes": sample_size,
             "by_provider": dict(sorted(by_provider.items())),
         },
         "judge_calls": {
@@ -536,6 +548,8 @@ def build_silver_result(
             "agreement_rate": agreed / len(gold_episodes) if gold_episodes else None,
             "cohen_kappa": kappa,
             "kappa_trust_floor": KAPPA_TRUST_FLOOR,
+            "min_sample_size": MIN_SILVER_SAMPLE_SIZE,
+            "sample_size": sample_size,
             "trustworthy": trustworthy,
         },
         "episodes": [
@@ -558,6 +572,10 @@ def build_silver_result(
             "A Jev error shared by both judges is invisible to this gate.",
             "Disagreement episodes are excluded from the primary score and reported.",
             f"Kappa below {KAPPA_TRUST_FLOOR} means the silver set is not trustworthy and the gate is not claimed.",
+            (
+                f"Fewer than {MIN_SILVER_SAMPLE_SIZE} episodes means the silver set is not "
+                "trustworthy regardless of kappa; a tiny sample makes kappa degenerate."
+            ),
         ],
     }
     return SilverResult(gold_set=gold_set, report=report, episode_labels=per_episode)
@@ -605,7 +623,12 @@ def evaluate_silver_vs_jev(
         ],
         judge_ids,
     )
-    trustworthy = kappa is not None and kappa >= KAPPA_TRUST_FLOOR
+    sample_size = len(gold_set.episodes)
+    trustworthy = (
+        sample_size >= MIN_SILVER_SAMPLE_SIZE
+        and kappa is not None
+        and kappa >= KAPPA_TRUST_FLOOR
+    )
 
     non_unknown_jev = sum(
         1
@@ -622,6 +645,8 @@ def evaluate_silver_vs_jev(
         "agreement": {
             "cohen_kappa": kappa,
             "kappa_trust_floor": KAPPA_TRUST_FLOOR,
+            "min_sample_size": MIN_SILVER_SAMPLE_SIZE,
+            "sample_size": sample_size,
             "trustworthy": trustworthy,
         },
         "silver": {
@@ -792,6 +817,15 @@ def predictions_from_store(
     from .collector import _text_snapshot_hash  # package-internal namespacing
     from .errors import ContractError
 
+    def lookup(snapshot_hash: str) -> Any:
+        return store.conn.execute(
+            "SELECT a.value_json FROM classifications c "
+            "JOIN classification_answers a ON a.classification_id = c.classification_id "
+            "WHERE c.subject_kind = 'session' AND a.question_id = ? "
+            "AND c.snapshot_hash = ? ORDER BY c.classification_id DESC LIMIT 1",
+            (PRIMARY_FACET, snapshot_hash),
+        ).fetchone()
+
     predictions: list[Prediction] = []
     for episode in episodes:
         key = session_key_from_group_key(episode.group_key)
@@ -803,18 +837,12 @@ def predictions_from_store(
             raw = None
         if raw is None:
             continue
-        snapshots = []
-        if prefer_text:
-            snapshots.append(_text_snapshot_hash(raw))
-        snapshots.append(raw)
-        placeholders = ", ".join(["?"] * len(snapshots))
-        row = store.conn.execute(
-            "SELECT a.value_json FROM classifications c "
-            "JOIN classification_answers a ON a.classification_id = c.classification_id "
-            "WHERE c.subject_kind = 'session' AND a.question_id = ? "
-            f"AND c.snapshot_hash IN ({placeholders}) ORDER BY c.classification_id DESC LIMIT 1",
-            (PRIMARY_FACET, *snapshots),
-        ).fetchone()
+        # The text scope wins when it exists; the metadata scope is only a
+        # fallback. Querying by scope in order stops a newer metadata row from
+        # shadowing an older text classification (they are distinct subjects).
+        row = lookup(_text_snapshot_hash(raw)) if prefer_text else None
+        if row is None:
+            row = lookup(raw)
         if row is None:
             continue
         try:

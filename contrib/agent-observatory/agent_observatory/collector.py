@@ -37,11 +37,12 @@ Guarantees:
   exhaustion, an open circuit and credential/model refusals leave items
   ``pending`` and stop the drain instead of burning attempts.
 
-The default classification state is **metadata only** (event kinds, tool names,
-command categories, models, duration). No transcript text, titles or command
-lines are sent. Text is a separate, explicit data scope: ``queue-drain
---text-state`` opts in, and the text state is redacted, excerpted to the
-transport byte cap, and stored under a text-namespaced subject snapshot.
+The default classification state is the **redacted transcript-text** scope:
+``queue-drain`` sends text unless ``--metadata-state`` opts out. The text state
+is redacted, excerpted to the transport byte cap, and stored under a
+text-namespaced subject snapshot. The metadata state (event kinds, tool names,
+command categories, models, duration) sends no transcript text, titles or
+command lines; it is an explicit opt-in.
 
 ``text_state`` also drops injected Gas City framework payloads (role prompts,
 runtime context, ``<system-reminder>`` wakes and skill payloads) before building
@@ -111,8 +112,9 @@ SOURCE_STATUSES = (
 )
 QUEUE_STATUSES = ("pending", "done", "unknown", "superseded")
 
-# Classification data scopes. ``metadata`` is the default and sends no text;
-# ``text`` is an explicit opt-in that adds redacted transcript text.
+# Classification data scopes. ``text`` (redacted transcript text) is the default
+# chosen by the ``queue-drain`` CLI; ``metadata`` sends no text and is the
+# explicit ``--metadata-state`` opt-in.
 STATE_MODE_METADATA = "metadata"
 STATE_MODE_TEXT = "text"
 STATE_MODES = (STATE_MODE_METADATA, STATE_MODE_TEXT)
@@ -1012,18 +1014,19 @@ def text_state(
     *,
     excerpt_bytes: int = DEFAULT_TEXT_EXCERPT_BYTES,
 ) -> dict[str, Any]:
-    """Return an opt-in classification state carrying redacted transcript text.
+    """Return the default classification state carrying redacted transcript text.
 
-    This is the explicit text data scope: every excerpt is redacted before it
-    leaves the projection, and each event's text is excerpted deterministically
-    from the head when it exceeds *excerpt_bytes*. Injected Gas City framework
-    payloads (role prompts, runtime context, wake reminders and skill payloads)
-    are stripped first: they are ``role=user`` records with no task provenance,
-    so leaving them in makes ``primary_intent`` describe the harness rather than
-    the work. The metadata fields shared with :func:`metadata_state` are
-    preserved so classification keeps its context. The per-request total is
-    fitted to the transport byte cap by the caller (see :func:`_fit_text_state`);
-    the result records what was done under ``text_mode``.
+    This is the text data scope used by ``queue-drain`` unless
+    ``--metadata-state`` opts out: every excerpt is redacted before it leaves the
+    projection, and each event's text is excerpted deterministically from the
+    head when it exceeds *excerpt_bytes*. Injected Gas City framework payloads
+    (role prompts, runtime context, wake reminders and skill payloads) are
+    stripped first: they are ``role=user`` records with no task provenance, so
+    leaving them in makes ``primary_intent`` describe the harness rather than the
+    work. The metadata fields shared with :func:`metadata_state` are preserved so
+    classification keeps its context. The per-request total is fitted to the
+    transport byte cap by the caller (see :func:`_fit_text_state`); the result
+    records what was done under ``text_mode``.
     """
 
     if excerpt_bytes < 1:
@@ -1155,10 +1158,11 @@ def drain_queue(
 ) -> DrainResult:
     """Classify up to *max_items* due pending sessions within the transport budget.
 
-    ``state_mode`` selects the data scope: ``metadata`` (default) never sends
-    transcript text, while ``text`` is the explicit opt-in that adds redacted,
-    byte-capped text excerpts. The stored subject snapshot is namespaced in text
-    mode so the two scopes produce distinct classifications.
+    ``state_mode`` selects the data scope: ``text`` (the default chosen by the
+    ``queue-drain`` CLI) adds redacted, byte-capped transcript excerpts, while
+    ``metadata`` (the explicit ``--metadata-state`` opt-in) never sends
+    transcript text. The stored subject snapshot is namespaced in text mode so
+    the two scopes produce distinct classifications.
 
     ``include_done`` also selects already-classified rows. It exists so a new
     data scope (for example the owner-approved text state) can re-classify the

@@ -826,10 +826,18 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     if not agreement["trustworthy"] and not args.allow_untrusted:
+        if agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+            detail = (
+                f"the sample has {agreement['sample_size']} episodes, below the "
+                f"minimum {agreement['min_sample_size']}"
+            )
+        else:
+            detail = (
+                f"judge kappa {agreement['cohen_kappa']!r} is below the trust floor "
+                f"{agreement['kappa_trust_floor']}"
+            )
         raise SilverError(
-            "refusing to write --out-gold: judge kappa "
-            f"{agreement['cohen_kappa']!r} is below the trust floor "
-            f"{agreement['kappa_trust_floor']}; the silver set is not trustworthy "
+            f"refusing to write --out-gold: {detail}; the silver set is not trustworthy "
             "(pass --allow-untrusted to write it anyway)"
         )
     _write_output(result.gold_set.to_json(), args.out_gold)
@@ -866,11 +874,19 @@ def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     if not agreement["trustworthy"] and not args.allow_untrusted:
+        if agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+            detail = (
+                f"the sample has {agreement['sample_size']} episodes, below the "
+                f"minimum {agreement['min_sample_size']}"
+            )
+        else:
+            detail = (
+                f"judge kappa {agreement['cohen_kappa']!r} is below the trust floor "
+                f"{agreement['kappa_trust_floor']}"
+            )
         raise SilverError(
-            "silver set is not trustworthy: judge kappa "
-            f"{agreement['cohen_kappa']!r} is below the trust floor "
-            f"{agreement['kappa_trust_floor']}; refusing to report a gate it did "
-            "not pass (pass --allow-untrusted to evaluate anyway)"
+            f"silver set is not trustworthy: {detail}; refusing to report a gate it "
+            "did not pass (pass --allow-untrusted to evaluate anyway)"
         )
     return 0
 

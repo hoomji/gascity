@@ -51,15 +51,18 @@ Re-classifying the same 53 sessions in the text scope produced non-`unknown`
    kept strictly separate from Jev predictions (`annotator="silver-judges"`).
 5. **Report.** `silver-evaluate` reports judge-judge Cohen's kappa and
    Jev-vs-silver accuracy/macro-F1 on agreed items.
-6. **Enforce.** The kappa floor is enforced, not merely reported.
-   `silver-build` refuses to write `--out-gold` when kappa is below `0.6`
-   (`KAPPA_TRUST_FLOOR`) and exits nonzero; the agreement report is still
-   written as evidence. `load_gold_set` (and therefore `silver-evaluate`)
-   refuses a silver set marked `silver_trustworthy: false`, and
-   `silver-evaluate` also refuses to claim a gate whose recomputed kappa is
-   below the floor. Both refusals are lifted only by the explicit
-   `--allow-untrusted` flag. The gold set records the marker top-level as
-   `"silver": true` / `"silver_trustworthy": <bool>`.
+6. **Enforce.** The kappa floor and the minimum sample size are enforced, not
+   merely reported. `silver-build` refuses to write `--out-gold` when kappa is
+   below `0.6` (`KAPPA_TRUST_FLOOR`) or when the sample has fewer than
+   `MIN_SILVER_SAMPLE_SIZE = 4` episodes, and exits nonzero; the agreement report
+   is still written as evidence. A kappa over a handful of episodes is
+   degenerate (one agreed episode yields kappa `1.0` by construction), so the
+   sample floor is checked independently of kappa. `load_gold_set` (and therefore
+   `silver-evaluate`) refuses a silver set marked `silver_trustworthy: false`,
+   and `silver-evaluate` also refuses to claim a gate whose recomputed kappa is
+   below the floor or whose sample is below the floor. Both refusals are lifted
+   only by the explicit `--allow-untrusted` flag. The gold set records the marker
+   top-level as `"silver": true` / `"silver_trustworthy": <bool>`.
 
 Budget: the judge-call ceiling is `2 x 150` (two judges over 150 episodes); the
 tool refuses to exceed the configured `--max-judge-requests`.
@@ -73,12 +76,15 @@ tool refuses to exceed the configured `--max-judge-requests`.
 - **Judge bias is shared.** Two models from the same gateway and prompt style
   may share systematic biases (for example, treating any tool-heavy session as
   `dependency_worktree_agent_ops`).
-- **Kappa gates trust and is enforced.** If Cohen's kappa is below `0.6`, the
-  judges disagree too much for the silver set to be a trustworthy reference.
-  The report says so, `silver-build` refuses to write the gold set and exits
-  nonzero, and the loader/evaluator refuse to consume an untrusted silver file
-  unless the caller passes `--allow-untrusted`. An untrusted set is never
-  treated as ground truth by accident.
+- **Kappa gates trust and is enforced; a minimum sample is required.** If
+  Cohen's kappa is below `0.6`, the judges disagree too much for the silver set
+  to be a trustworthy reference. Independently, a sample with fewer than
+  `MIN_SILVER_SAMPLE_SIZE = 4` episodes is untrusted regardless of kappa because
+  kappa over so few items is degenerate. The report says so, `silver-build`
+  refuses to write the gold set and exits nonzero, and the loader/evaluator
+  refuse to consume an untrusted silver file unless the caller passes
+  `--allow-untrusted`. An untrusted set is never treated as ground truth by
+  accident.
 - **The comparison is descriptive.** These numbers describe classifier
   agreement. They do not establish orchestration benefit or causality.
 - **Coverage is partial.** Candidates whose sessions are missing from the
