@@ -375,6 +375,38 @@ class SilverTrustGateTests(unittest.TestCase):
         self.assertTrue(loaded.silver_trustworthy)
         self.assertEqual(loaded.gold_set_hash(), result.gold_set.gold_set_hash())
 
+    # F4: a single agreeing episode yields kappa 1.0 by construction (the
+    # degenerate branch in ``cohen_kappa``), so a minimum sample floor is needed
+    # for the gate to mean anything.
+    def test_tiny_sample_is_untrusted_even_with_perfect_agreement(self):
+        candidates = load_candidates_csv(CANDIDATES)
+        bugfix = [c for c in candidates if c.episode_id == "ep-bugfix-1"]
+        episodes = _episodes(bugfix, {"ep-bugfix-1": "fix the flaky test"})
+        result = build_silver_result(episodes, self.taxonomy, self._judges())
+        agreement = result.report["agreement"]
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(agreement["cohen_kappa"], 1.0)
+        self.assertIn("min_sample_size", agreement)
+        self.assertGreaterEqual(agreement["min_sample_size"], 2)
+        self.assertFalse(agreement["trustworthy"])
+        self.assertFalse(result.gold_set.silver_trustworthy)
+
+    def test_sample_at_or_above_the_floor_with_good_kappa_is_trusted(self):
+        result = self._build(4)  # deterministic draw: kappa 0.692 >= 0.6 floor
+        agreement = result.report["agreement"]
+        self.assertGreaterEqual(result.report["sample"]["episodes"], agreement["min_sample_size"])
+        self.assertTrue(agreement["trustworthy"])
+
+    def test_evaluate_keeps_a_tiny_gold_set_untrusted(self):
+        candidates = load_candidates_csv(CANDIDATES)
+        bugfix = [c for c in candidates if c.episode_id == "ep-bugfix-1"]
+        episodes = _episodes(bugfix, {"ep-bugfix-1": "fix the flaky test"})
+        result = build_silver_result(episodes, self.taxonomy, self._judges())
+        report = evaluate_silver_vs_jev(result.gold_set, [], self.taxonomy)
+        self.assertEqual(report["agreement"]["sample_size"], 1)
+        self.assertFalse(report["agreement"]["trustworthy"])
+        self.assertFalse(report["gate"]["silver_trustworthy"])
+
     def test_silver_marker_without_a_trust_verdict_is_untrusted(self):
         fixture = os.path.join(HERE, "fixtures", "gold", "gold_episodes_v1.json")
         with open(fixture, encoding="utf-8") as handle:
@@ -596,6 +628,59 @@ class SilverProjectionTests(unittest.TestCase):
         )
         from agent_observatory.silver import SilverEpisode
 
+        episode = SilverEpisode(
+            episode_id="ep-1",
+            group_key='session:["city-a","host-a","codex","session-1"]',
+            provider="codex",
+            observed_at="2026-09-01T00:00:00Z",
+            text="Please fix the flaky scheduler test",
+        )
+        predictions = predictions_from_store(self.store, [episode])
+        self.assertEqual(len(predictions), 1)
+        self.assertEqual(predictions[0].primary("primary_intent"), "bugfix")
+
+    def test_predictions_from_store_prefers_text_scope_over_newer_metadata(self):
+        # F3: the docstring promises text scope wins when present, but the
+        # newest-classification lookup let a newer metadata row shadow an older
+        # (text-scope) bugfix row.
+        from agent_observatory.collector import _text_snapshot_hash
+        from agent_observatory.silver import SilverEpisode
+
+        key = ("city-a", "host-a", "codex", "session-1")
+        raw = self.store.session_snapshot(key)
+        self.store.save_classification(
+            subject_kind="session",
+            snapshot_hash=_text_snapshot_hash(raw),
+            taxonomy_version="1.1.0",
+            question_hash="q" * 64,
+            model_version="jev-1.13.0",
+            request_hash="t" * 64,
+            response_hash="a" * 64,
+            answers=[
+                {
+                    "question_id": "primary_intent",
+                    "question_type": "choice",
+                    "answer": {"choice": "bugfix", "confidence": 0.9},
+                }
+            ],
+        )
+        # The metadata row is newer, so classification_id is larger.
+        self.store.save_classification(
+            subject_kind="session",
+            snapshot_hash=raw,
+            taxonomy_version="1.1.0",
+            question_hash="q" * 64,
+            model_version="jev-1.13.0",
+            request_hash="m" * 64,
+            response_hash="b" * 64,
+            answers=[
+                {
+                    "question_id": "primary_intent",
+                    "question_type": "choice",
+                    "answer": {"choice": "unknown", "confidence": 0.5},
+                }
+            ],
+        )
         episode = SilverEpisode(
             episode_id="ep-1",
             group_key='session:["city-a","host-a","codex","session-1"]',
