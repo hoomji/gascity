@@ -373,6 +373,35 @@ def cohen_kappa(pairs: Sequence[tuple[str | None, str | None]]) -> float | None:
     return (observed - expected) / (1.0 - expected)
 
 
+def kappa_over_judges(
+    labels_by_episode: Sequence[Mapping[str, str | None]],
+    judge_ids: Sequence[str],
+) -> float | None:
+    """Judge-agreement kappa over every pair of judges, conservatively the minimum.
+
+    Two judges reproduce a single Cohen's kappa. More than two judges are
+    compared pairwise and the *minimum* pair kappa is returned, so the trust gate
+    passes only when every judge pair agrees beyond chance. ``None`` when fewer
+    than two judges exist or any pair has no usable overlapping labels.
+    """
+
+    if len(judge_ids) < 2:
+        return None
+    kappas: list[float] = []
+    for left in range(len(judge_ids)):
+        for right in range(left + 1, len(judge_ids)):
+            kappa = cohen_kappa(
+                [
+                    (labels.get(judge_ids[left]), labels.get(judge_ids[right]))
+                    for labels in labels_by_episode
+                ]
+            )
+            if kappa is None:
+                return None
+            kappas.append(kappa)
+    return min(kappas)
+
+
 # -- silver construction ----------------------------------------------------
 
 
@@ -458,25 +487,29 @@ def build_silver_result(
             )
         )
 
+    kappa = kappa_over_judges(
+        [
+            {judge_id: per_episode[ep.episode_id][judge_id].label for judge_id in judge_ids}
+            for ep in episodes
+        ],
+        judge_ids,
+    )
+    trustworthy = kappa is not None and kappa >= KAPPA_TRUST_FLOOR
+
     gold_set = GoldSet(
         gold_set_version=gold_set_version,
         taxonomy_version=taxonomy.taxonomy_version,
         facet_hash=taxonomy.facet_hash(),
         episodes=tuple(gold_episodes),
         schema_version=SILVER_SCHEMA_VERSION,
+        is_silver=True,
+        silver_trustworthy=trustworthy,
     )
 
-    kappa = cohen_kappa(
-        [
-            (per_episode[ep.episode_id][judge_ids[0]].label, per_episode[ep.episode_id][judge_ids[1]].label)
-            for ep in episodes
-        ]
-    )
     agreed = sum(1 for ep in gold_episodes if ep.adjudication == "adjudicated")
     by_provider: dict[str, int] = {}
     for episode in episodes:
         by_provider[episode.provider] = by_provider.get(episode.provider, 0) + 1
-    trustworthy = kappa is not None and kappa >= KAPPA_TRUST_FLOOR
     report = {
         "silver_report_version": SILVER_REPORT_VERSION,
         "schema_version": SILVER_SCHEMA_VERSION,
@@ -565,17 +598,13 @@ def evaluate_silver_vs_jev(
     metrics = single_label_metrics(pairs)
 
     judge_ids = _judge_ids_from_gold(gold_set)
-    kappa = None
-    if len(judge_ids) >= 2:
-        kappa = cohen_kappa(
-            [
-                (
-                    _judge_label(episode, judge_ids[0]),
-                    _judge_label(episode, judge_ids[1]),
-                )
-                for episode in gold_set.episodes
-            ]
-        )
+    kappa = kappa_over_judges(
+        [
+            {judge_id: _judge_label(episode, judge_id) for judge_id in judge_ids}
+            for episode in gold_set.episodes
+        ],
+        judge_ids,
+    )
     trustworthy = kappa is not None and kappa >= KAPPA_TRUST_FLOOR
 
     non_unknown_jev = sum(

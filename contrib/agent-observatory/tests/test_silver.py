@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover
     import support
 
 from agent_observatory.annotations import load_gold_set
-from agent_observatory.errors import SilverError
+from agent_observatory.errors import AnnotationError, SilverError
 from agent_observatory.evaluation import Prediction, load_predictions
 from agent_observatory.silver import (
     JUDGE_DEEPSEEK,
@@ -21,12 +21,14 @@ from agent_observatory.silver import (
     JUDGE_PROMPT_VERSION,
     HTTP_USER_AGENT,
     HTTPJudgeClient,
+    JudgeSpec,
     build_judge_prompt,
     build_silver_episodes,
     build_silver_predictions_document,
     build_silver_result,
     cohen_kappa,
     evaluate_silver_vs_jev,
+    kappa_over_judges,
     load_candidates_csv,
     parse_judge_answer,
     predictions_from_store,
@@ -56,6 +58,17 @@ class RecordedJudgeClient:
             return self.recorded[self.judge_id][episode_id]
         except KeyError as exc:  # pragma: no cover - test bug
             raise AssertionError(f"no recorded answer for {self.judge_id}/{episode_id}") from exc
+
+
+class ConstantJudgeClient:
+    """Return one fixed raw answer for every episode (test helper)."""
+
+    def __init__(self, judge_id, raw):
+        self.judge_id = judge_id
+        self.raw = raw
+
+    def label(self, prompt, *, episode_id):
+        return self.raw
 
 
 def _recorded():
@@ -150,6 +163,50 @@ class KappaTests(unittest.TestCase):
         self.assertAlmostEqual(cohen_kappa(pairs), 0.6, places=6)
 
 
+class KappaOverJudgesTests(unittest.TestCase):
+    def test_two_judges_matches_the_single_pair(self):
+        labels = [
+            {"a": "x", "b": "x"},
+            {"a": "x", "b": "y"},
+            {"a": "y", "b": "y"},
+            {"a": "y", "b": "x"},
+        ]
+        self.assertEqual(
+            kappa_over_judges(labels, ["a", "b"]),
+            cohen_kappa([("x", "x"), ("x", "y"), ("y", "y"), ("y", "x")]),
+        )
+
+    def test_more_than_two_judges_returns_the_minimum_pair(self):
+        # a/b agree perfectly; c is inverted against both, so the minimum pair
+        # (-1.0) must drive the gate rather than the first pair (1.0).
+        labels = [
+            {"a": "x", "b": "x", "c": "y"},
+            {"a": "x", "b": "x", "c": "y"},
+            {"a": "y", "b": "y", "c": "x"},
+            {"a": "y", "b": "y", "c": "x"},
+        ]
+        pairwise = [
+            cohen_kappa([(row[left], row[right]) for row in labels])
+            for left, right in (("a", "b"), ("a", "c"), ("b", "c"))
+        ]
+        self.assertEqual(pairwise[0], 1.0)
+        self.assertEqual(kappa_over_judges(labels, ["a", "b", "c"]), min(pairwise))
+        self.assertLess(kappa_over_judges(labels, ["a", "b", "c"]), 1.0)
+
+    def test_fewer_than_two_judges_or_no_overlap_is_none(self):
+        self.assertIsNone(kappa_over_judges([{"a": "x"}], ["a"]))
+        self.assertIsNone(
+            kappa_over_judges([{"a": None, "b": "x"}], ["a", "b"])
+        )
+
+    def test_missing_pair_in_a_three_judge_set_fails_closed(self):
+        labels = [
+            {"a": "x", "b": "x", "c": None},
+            {"a": "y", "b": "y", "c": None},
+        ]
+        self.assertIsNone(kappa_over_judges(labels, ["a", "b", "c"]))
+
+
 class SilverBuildTests(unittest.TestCase):
     def setUp(self):
         self.taxonomy = load_taxonomy(V2_PATH)
@@ -198,6 +255,28 @@ class SilverBuildTests(unittest.TestCase):
         episodes = self._sample()
         with self.assertRaises(SilverError):
             build_silver_result(episodes, self.taxonomy, self._judges()[:1])
+
+    def test_build_kappa_uses_every_judge_pair(self):
+        episodes = self._sample()
+        third = JudgeSpec(judge_id="judge-c", model="test/judge-c", api_model="test/judge-c")
+        judges = self._judges() + [
+            (third, ConstantJudgeClient("judge-c", '{"primary_intent":"unknown","confidence":0.5}'))
+        ]
+        result = build_silver_result(episodes, self.taxonomy, judges)
+        report = result.report
+        judge_ids = [entry["judge_id"] for entry in report["judges"]]
+        self.assertEqual(judge_ids, ["glm-5p3-flash", "deepseek-v4-flash", "judge-c"])
+        pairwise = [
+            cohen_kappa(
+                [
+                    (row["judge_labels"][judge_ids[i]], row["judge_labels"][judge_ids[j]])
+                    for row in report["episodes"]
+                ]
+            )
+            for i in range(len(judge_ids))
+            for j in range(i + 1, len(judge_ids))
+        ]
+        self.assertEqual(report["agreement"]["cohen_kappa"], min(pairwise))
 
     def test_evaluate_silver_vs_jev_scores_agreed_items(self):
         episodes = self._sample()
@@ -248,6 +327,74 @@ class SilverBuildTests(unittest.TestCase):
                 json.dump(document, handle)
             loaded = load_predictions(path, self.taxonomy)
         self.assertEqual([p.episode_id for p in loaded], ["e1", "e2"])
+
+
+class SilverTrustGateTests(unittest.TestCase):
+    """The kappa floor is enforced on load, not merely reported."""
+
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+        self.candidates = load_candidates_csv(CANDIDATES)
+        self.recorded = _recorded()
+
+    def _judges(self):
+        return [
+            (JUDGE_GLM, RecordedJudgeClient(JUDGE_GLM.judge_id, self.recorded)),
+            (JUDGE_DEEPSEEK, RecordedJudgeClient(JUDGE_DEEPSEEK.judge_id, self.recorded)),
+        ]
+
+    def _build(self, sample_size):
+        sample = sample_stratified(self.candidates, sample_size, seed="silver-v1")
+        text = {episode.episode_id: f"Work for {episode.episode_id}." for episode in sample}
+        return build_silver_result(_episodes(sample, text), self.taxonomy, self._judges())
+
+    def _write(self, result, directory):
+        path = os.path.join(directory, "silver.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(result.gold_set.to_json())
+        return path
+
+    def test_untrusted_silver_is_refused_unless_opted_in(self):
+        result = self._build(2)  # deterministic draw: kappa 0.333 < 0.6 floor
+        self.assertFalse(result.report["agreement"]["trustworthy"])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(result, tmp)
+            with self.assertRaises(AnnotationError):
+                load_gold_set(path, self.taxonomy)
+            loaded = load_gold_set(path, self.taxonomy, allow_untrusted=True)
+        self.assertTrue(loaded.is_silver)
+        self.assertFalse(loaded.silver_trustworthy)
+
+    def test_trusted_silver_loads_without_an_override(self):
+        result = self._build(4)  # deterministic draw: kappa 0.692 >= 0.6 floor
+        self.assertTrue(result.report["agreement"]["trustworthy"])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(result, tmp)
+            loaded = load_gold_set(path, self.taxonomy)
+        self.assertTrue(loaded.is_silver)
+        self.assertTrue(loaded.silver_trustworthy)
+        self.assertEqual(loaded.gold_set_hash(), result.gold_set.gold_set_hash())
+
+    def test_silver_marker_without_a_trust_verdict_is_untrusted(self):
+        fixture = os.path.join(HERE, "fixtures", "gold", "gold_episodes_v1.json")
+        with open(fixture, encoding="utf-8") as handle:
+            document = json.load(handle)
+        document["silver"] = True  # an older silver set with no trust verdict
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "silver.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(document, handle)
+            with self.assertRaises(AnnotationError):
+                load_gold_set(path, self.taxonomy)
+            loaded = load_gold_set(path, self.taxonomy, allow_untrusted=True)
+        self.assertTrue(loaded.is_silver)
+        self.assertIsNone(loaded.silver_trustworthy)
+
+    def test_human_gold_set_is_not_affected(self):
+        fixture = os.path.join(HERE, "fixtures", "gold", "gold_episodes_v1.json")
+        loaded = load_gold_set(fixture, self.taxonomy)
+        self.assertFalse(loaded.is_silver)
+        self.assertIsNone(loaded.silver_trustworthy)
 
 
 class HTTPJudgeClientTests(unittest.TestCase):

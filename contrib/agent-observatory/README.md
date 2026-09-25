@@ -425,7 +425,12 @@ labels, confidences, model ids, prompt version and text hash; the gold set keeps
 `annotator="silver-judges"` and is strictly separate from Jev predictions.
 `silver-evaluate` reports judge-judge Cohen's kappa and Jev-vs-silver
 accuracy/macro-F1 on agreed items. **Kappa below `KAPPA_TRUST_FLOOR` (0.6) means
-the silver set is not trustworthy and the gate is not claimed.**
+the silver set is not trustworthy and the gate is not claimed.** That floor is
+enforced, not just reported: `silver-build` refuses to write the gold set and
+exits nonzero on a below-floor kappa (the agreement report is still written as
+evidence), and the loader/`silver-evaluate` refuse to consume a silver set
+marked `silver_trustworthy: false`. The explicit `--allow-untrusted` flag is
+the only override.
 
 The limitation is explicit: silver labels measure agreement with two LLMs, not
 ground truth. A Jev error shared by both judges is invisible. See

@@ -51,6 +51,15 @@ Re-classifying the same 53 sessions in the text scope produced non-`unknown`
    kept strictly separate from Jev predictions (`annotator="silver-judges"`).
 5. **Report.** `silver-evaluate` reports judge-judge Cohen's kappa and
    Jev-vs-silver accuracy/macro-F1 on agreed items.
+6. **Enforce.** The kappa floor is enforced, not merely reported.
+   `silver-build` refuses to write `--out-gold` when kappa is below `0.6`
+   (`KAPPA_TRUST_FLOOR`) and exits nonzero; the agreement report is still
+   written as evidence. `load_gold_set` (and therefore `silver-evaluate`)
+   refuses a silver set marked `silver_trustworthy: false`, and
+   `silver-evaluate` also refuses to claim a gate whose recomputed kappa is
+   below the floor. Both refusals are lifted only by the explicit
+   `--allow-untrusted` flag. The gold set records the marker top-level as
+   `"silver": true` / `"silver_trustworthy": <bool>`.
 
 Budget: the judge-call ceiling is `2 x 150` (two judges over 150 episodes); the
 tool refuses to exceed the configured `--max-judge-requests`.
@@ -64,9 +73,12 @@ tool refuses to exceed the configured `--max-judge-requests`.
 - **Judge bias is shared.** Two models from the same gateway and prompt style
   may share systematic biases (for example, treating any tool-heavy session as
   `dependency_worktree_agent_ops`).
-- **Kappa gates trust.** If Cohen's kappa is below `0.6`, the judges disagree
-  too much for the silver set to be a trustworthy reference; the report says so
-  and the gate is **not** claimed.
+- **Kappa gates trust and is enforced.** If Cohen's kappa is below `0.6`, the
+  judges disagree too much for the silver set to be a trustworthy reference.
+  The report says so, `silver-build` refuses to write the gold set and exits
+  nonzero, and the loader/evaluator refuse to consume an untrusted silver file
+  unless the caller passes `--allow-untrusted`. An untrusted set is never
+  treated as ground truth by accident.
 - **The comparison is descriptive.** These numbers describe classifier
   agreement. They do not establish orchestration benefit or causality.
 - **Coverage is partial.** Candidates whose sessions are missing from the
@@ -88,7 +100,10 @@ was never collected — so they were skipped and reported, not fabricated).
 - Judge calls: 300 (150 per judge), 0 parse failures.
 - Agreement: 112 `adjudicated`, 38 `disagreement` (agreement rate 0.747).
 - **Cohen's kappa: 0.406**, below the 0.6 trust floor → **the silver set is not
-  trustworthy and the gate was not claimed.**
+  trustworthy and the gate was not claimed.** With the enforced gate,
+  `silver-build` refuses to write this gold set and exits nonzero; reproducing
+  the measured artifact requires the explicit `--allow-untrusted` opt-in, and
+  any pre-enforcement file is treated as untrusted on load.
 - Jev vs silver on the 110 agreed items that also had a Jev prediction:
   accuracy 0.636, macro-F1 0.511, 77/110 (70.0%) non-`unknown`; 2 agreed
   episodes had no stored Jev classification.

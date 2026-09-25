@@ -43,7 +43,7 @@ from .collector import (
     set_kill_switch,
 )
 from .episodes import segment_store
-from .errors import ObservatoryError
+from .errors import ObservatoryError, SilverError
 from .evaluation import (
     DEFAULT_MULTI_LABEL_FACETS,
     EvaluationConfig,
@@ -793,7 +793,6 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
                 json.dumps(build_silver_predictions_document(predictions), indent=2, sort_keys=True),
                 args.jev_predictions_out,
             )
-    _write_output(result.gold_set.to_json(), args.out_gold)
     report = dict(result.report)
     report["sampling"] = {"skipped": skipped, "eligible": len(episodes)}
     report["judge_transport"] = {
@@ -803,6 +802,9 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
             judge_id: getattr(entry["client"], "cache_hits", 0) for judge_id, entry in transports.items()
         },
     }
+    agreement = report["agreement"]
+    # Write the report first: it is the durable evidence of *why* the gold set
+    # was refused, and it always records the reported kappa and trust verdict.
     _write_output(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False), args.out_report)
     print(
         json.dumps(
@@ -811,10 +813,10 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
                 "episodes": report["sample"]["episodes"],
                 "judge_calls": report["judge_calls"]["total"],
                 "judge_http_requests": sum(report["judge_transport"]["http_requests"].values()),
-                "agreed": report["agreement"]["agreed"],
-                "disagreement": report["agreement"]["disagreement"],
-                "cohen_kappa": report["agreement"]["cohen_kappa"],
-                "trustworthy": report["agreement"]["trustworthy"],
+                "agreed": agreement["agreed"],
+                "disagreement": agreement["disagreement"],
+                "cohen_kappa": agreement["cohen_kappa"],
+                "trustworthy": agreement["trustworthy"],
                 "gold_set_hash": report["gold_set_hash"],
                 "out_gold": args.out_gold,
                 "out_report": args.out_report,
@@ -823,6 +825,14 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
         ),
         file=sys.stderr,
     )
+    if not agreement["trustworthy"] and not args.allow_untrusted:
+        raise SilverError(
+            "refusing to write --out-gold: judge kappa "
+            f"{agreement['cohen_kappa']!r} is below the trust floor "
+            f"{agreement['kappa_trust_floor']}; the silver set is not trustworthy "
+            "(pass --allow-untrusted to write it anyway)"
+        )
+    _write_output(result.gold_set.to_json(), args.out_gold)
     return 0
 
 
@@ -830,7 +840,7 @@ def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
     """Score Jev against the agreed silver labels and state the kappa gate."""
 
     taxonomy = load_taxonomy(args.taxonomy)
-    gold_set = load_gold_set(args.gold, taxonomy)
+    gold_set = load_gold_set(args.gold, taxonomy, allow_untrusted=args.allow_untrusted)
     predictions = load_predictions(args.predictions, taxonomy)
     report = evaluate_silver_vs_jev(
         gold_set, predictions, taxonomy, run_full_evaluator=args.full_evaluator
@@ -855,6 +865,13 @@ def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
         ),
         file=sys.stderr,
     )
+    if not agreement["trustworthy"] and not args.allow_untrusted:
+        raise SilverError(
+            "silver set is not trustworthy: judge kappa "
+            f"{agreement['cohen_kappa']!r} is below the trust floor "
+            f"{agreement['kappa_trust_floor']}; refusing to report a gate it did "
+            "not pass (pass --allow-untrusted to evaluate anyway)"
+        )
     return 0
 
 
@@ -1287,6 +1304,11 @@ def build_parser() -> argparse.ArgumentParser:
     silver_build_parser.add_argument("--seed", default="silver-v1", help="deterministic sampling/adjudication seed")
     silver_build_parser.add_argument("--out-gold", required=True, help="write the silver gold set JSON here")
     silver_build_parser.add_argument("--out-report", required=True, help="write the silver agreement report JSON here")
+    silver_build_parser.add_argument(
+        "--allow-untrusted",
+        action="store_true",
+        help="write a silver gold set even when judge kappa is below the trust floor (default: refuse)",
+    )
     silver_build_parser.add_argument("--jev-predictions-out", default=None, help="also write Jev predictions for the sampled episodes")
     silver_build_parser.add_argument(
         "--judge",
@@ -1323,6 +1345,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="taxonomy JSON path (default: v2)",
     )
     silver_eval_parser.add_argument("--full-evaluator", action="store_true", help="also run the grouped evaluator on agreed items")
+    silver_eval_parser.add_argument(
+        "--allow-untrusted",
+        action="store_true",
+        help="evaluate against a silver set whose judge kappa is below the trust floor (default: refuse)",
+    )
     silver_eval_parser.add_argument("--out", default=None, help="write the silver evaluation report to this path")
     silver_eval_parser.set_defaults(func=_cmd_silver_evaluate)
 
