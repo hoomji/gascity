@@ -1,0 +1,9 @@
+bead_id,event_kind,ordinal,source_id,occurred_at,text,status,assignee,priority,issue_type,labels
+gl-bead-a,title,0,title,2026-09-20 10:00:00,Fix the router stall,open,alice,2,task,"bug,infra"
+gl-bead-a,description,1,description,2026-09-20 10:00:00,"Why did the router stall?
+Investigate the router config and report.",open,alice,2,task,"bug,infra"
+gl-bead-a,notes,2,notes,2026-09-20 10:00:00,Owner asked for a Friday fix.,open,alice,2,task,"bug,infra"
+gl-bead-a,comment,3,11111111-1111-1111-1111-111111111111,2026-09-20 11:00:00,First comment with api_key=supersecretvalue,open,alice,2,task,"bug,infra"
+gl-bead-a,comment,3,22222222-2222-2222-2222-222222222222,2026-09-20 12:00:00,Second comment with token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345,open,alice,2,task,"bug,infra"
+gl-bead-b,title,0,title,2026-09-21 09:00:00,Add adapter tests,closed,bob,1,bug,
+gl-bead-b,description,1,description,2026-09-21 09:00:00,Write synthetic fixture tests.,closed,bob,1,bug,

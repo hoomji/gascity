@@ -1,0 +1,3 @@
+bead_id,title,description,notes,status,assignee,priority,issue_type
+gl-bead-a,Fix the router stall,LOCAL description text,Local note,open,alice,2,task
+gl-bead-c,Local only bead,,,open,,2,task
