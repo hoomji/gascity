@@ -877,6 +877,71 @@ the module writes no routing, dispatch or configuration. Applying a treatment
 inside live fleet workflows is a separate, owner-authorized integration and is
 out of scope for this slice.
 
+## 13. Read-only bead-store (Dolt) adapter
+
+`adapters/beads.py` reads the Gas City bead store held in Dolt without going
+through `collect`: a Dolt database is one logical source but many sessions, so it
+cannot be discovered from the filesystem like a transcript. The adapter shells
+out to `gc dolt sql` in the city directory (`--city` defaults to
+`/home/coolhenrylinux/city`, database `gl`), reads the CSV result as a stream and
+never issues a writing statement. `assert_read_only` refuses anything that is not
+`USE`/`SELECT`, and `normalize_ref` validates the interpolated ref against a
+conservative Dolt-ref character set, so a ref can neither inject SQL nor widen
+the query.
+
+Mapping into the import contract:
+
+- **one bead -> one episode/session** (`session_id = "<bead-id>@<ref>"`), so the
+  store segments exactly one episode per bead;
+- the episode body is the bead `title`, `description` and `notes` plus every
+  `comment` in time order, each emitted as a `note` event (the only non-tool kind
+  the text state carries);
+- `status`, `assignee`, `priority`, `issue_type` and labels ride on the first
+  event as a `[beads] status=... assignee=... labels=...` header, so Jev sees the
+  bead's state as well as its prose;
+- every text value passes through `adapters/redaction.py` (`redact_and_bound`)
+  before it can reach disk or the wire; credentials, bearer tokens, email
+  addresses and home-directory paths are removed first.
+
+Two scopes are supported with the same reader:
+
+- `main` — the live branch;
+- `remotes/origin/main` — the pre-compaction remote-tracking ref, read locally
+  without a fetch.
+
+```python
+from agent_observatory.adapters import (
+    AdapterContext, read_beads, fetch_bead_fields, diff_bead_snapshots,
+)
+from agent_observatory.inventory import records_to_jsonl
+
+context = AdapterContext(city_id="coolhenry", host_id="ryzen", repo="gascity")
+result = read_beads("remotes/origin/main", context=context, max_bytes=256 * 1024 * 1024)
+open("beads-remote.jsonl", "w", encoding="utf-8").write(records_to_jsonl(result.records))
+
+# Field-level ref diff (bead ids, field names and differing metadata values only).
+local = fetch_bead_fields("main")
+remote = fetch_bead_fields("remotes/origin/main")
+for item in diff_bead_snapshots(local, remote):
+    print(item["bead_id"], item["change"], item["changed_fields"])
+```
+
+`title`, `description` and `notes` are read **as of the selected ref**: they are
+snapshots, not an edit history, so an intermediate edit the ref no longer carries
+is not recoverable from the diff. Field values are redacted and bounded by the
+same redactor the event path uses before they enter the snapshot map, so a
+secret in a description or notes can never appear in the diff output.
+
+`--max-source-bytes` is honoured the way the file adapters honour it: the
+subprocess stdout is read in chunks and the read is aborted (and the child
+killed) the moment the logical source passes the cap, so a small query cannot
+materialize an unbounded result. `BeadsAdapter` is registered in
+`adapters/__init__.py` as a directly addressable provider (`ADAPTERS["beads"]`,
+`SUPPORTED_PROVIDERS`) but is deliberately kept out of `_ORDERED_ADAPTERS`, so
+file discovery and `adapter_for_path` are unchanged. Tests in
+`tests/adapters/test_beads_adapter.py` drive it entirely from a synthetic CSV
+fixture and an injected runner; no live Dolt server is needed in CI.
+
 ## CLI reference
 
 ```

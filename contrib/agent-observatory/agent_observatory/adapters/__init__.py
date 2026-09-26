@@ -1,8 +1,14 @@
 """Read-only native transcript adapters.
 
-Three providers are covered: Claude Code (``claude``), Codex (``codex``) and
-dsh (``dsh``). OpenCode, pi and remote hosts are explicitly unsupported; see
-:mod:`agent_observatory.inventory` for the manifest reasons.
+Three file providers are covered: Claude Code (``claude``), Codex (``codex``)
+and dsh (``dsh``). OpenCode, pi and remote hosts are explicitly unsupported;
+see :mod:`agent_observatory.inventory` for the manifest reasons.
+
+A fourth provider, ``beads``, reads the Gas City Dolt bead store rather than a
+file. It is registered here for direct use (:func:`read_beads`) but is kept out
+of the file-discovery order: its :class:`~agent_observatory.adapters.beads.BeadsAdapter`
+only recognizes synthetic ``dolt://`` source ids, so it can never shadow a
+transcript path.
 
 Adapters read explicit paths only. They never crawl a home directory, never
 mutate a source, and never execute transcript content.
@@ -24,18 +30,33 @@ from .base import (
     SourceSizeExceeded,
     TitleRevision,
 )
+from .beads import (
+    BeadsAdapter,
+    BeadsError,
+    DoltCommand,
+    diff_bead_snapshots,
+    fetch_bead_fields,
+    parse_bead_fields,
+    read_beads,
+)
 from .claude import ClaudeAdapter
 from .codex import CodexAdapter
 from .dsh import DshAdapter
 
+# File adapters, in detection precedence order. ``adapter_for_path`` only ever
+# consults this tuple, so adding a non-file provider below cannot change how a
+# transcript path is classified.
 _ORDERED_ADAPTERS: tuple[SourceAdapter, ...] = (
     ClaudeAdapter(),
     CodexAdapter(),
     DshAdapter(),
 )
 
-ADAPTERS: dict[str, SourceAdapter] = {adapter.provider: adapter for adapter in _ORDERED_ADAPTERS}
-SUPPORTED_PROVIDERS: tuple[str, ...] = tuple(adapter.provider for adapter in _ORDERED_ADAPTERS)
+# Directly addressable providers, including the non-file bead-store reader.
+DIRECT_ADAPTERS: tuple[SourceAdapter, ...] = (*_ORDERED_ADAPTERS, BeadsAdapter())
+
+ADAPTERS: dict[str, SourceAdapter] = {adapter.provider: adapter for adapter in DIRECT_ADAPTERS}
+SUPPORTED_PROVIDERS: tuple[str, ...] = tuple(adapter.provider for adapter in DIRECT_ADAPTERS)
 
 
 def get_adapter(provider: str) -> SourceAdapter:
@@ -149,16 +170,24 @@ def _validated(record: dict, source_path: str) -> dict:
 __all__ = [
     "ADAPTER_CONTRACT_VERSION",
     "ADAPTERS",
+    "DIRECT_ADAPTERS",
     "SUPPORTED_PROVIDERS",
     "AdapterContext",
     "AdapterError",
     "AdapterResult",
+    "BeadsAdapter",
+    "BeadsError",
+    "DoltCommand",
     "SourceAdapter",
     "SourceSizeExceeded",
     "TitleRevision",
     "adapter_for_path",
+    "diff_bead_snapshots",
+    "fetch_bead_fields",
     "get_adapter",
     "load_source_data",
+    "parse_bead_fields",
+    "read_beads",
     "read_source",
     "validated_records",
 ]
