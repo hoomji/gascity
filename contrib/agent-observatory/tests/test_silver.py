@@ -41,6 +41,7 @@ from agent_observatory.silver import (
     kappa_over_judges,
     load_candidates_csv,
     load_judge_config,
+    overlap_meets_floor,
     pairwise_cohen_kappa,
     parse_judge_answer,
     predictions_from_store,
@@ -789,6 +790,23 @@ class MultiJudgeKappaTests(unittest.TestCase):
         self.assertEqual(report["b"]["missing"], 1)
         self.assertAlmostEqual(report["b"]["unknown_rate"], 1.0)
 
+    def test_fixture_pins_its_own_kappa_values_not_the_150_episode_run(self):
+        # MEASUREMENT-SILVER.md reports the 150-episode production run
+        # (two-judge 0.406, minimum pairwise 0.199, Fleiss 0.306). This
+        # checked-in fixture is an 8-episode mechanics fixture with different
+        # values; pin its own numbers so a fixture edit cannot silently rewrite
+        # the measurement note.
+        two_judge = pairwise_cohen_kappa(self.labels, self.judge_ids[:2])
+        self.assertEqual(len(two_judge), 1)
+        self.assertAlmostEqual(two_judge[0]["cohen_kappa"], 0.6, places=9)
+        pairwise = pairwise_cohen_kappa(self.labels, self.judge_ids)
+        self.assertAlmostEqual(
+            min(row["cohen_kappa"] for row in pairwise), 1.0 / 3.0, places=9
+        )
+        self.assertAlmostEqual(
+            fleiss_kappa(self.labels, self.judge_ids), 0.528023598820059, places=9
+        )
+
     def test_agreement_reference_requires_threshold(self):
         episode_labels = [(f"e{index + 1}", row) for index, row in enumerate(self.labels)]
         majority = agreement_reference(episode_labels, self.judge_ids, min_agreement=3)
@@ -859,6 +877,110 @@ class MultiJudgeBuildTests(unittest.TestCase):
         ]
         with self.assertRaises(RuntimeError):
             build_silver_result(self.episodes, self.taxonomy, judges)
+
+
+class _ScriptedJudge:
+    """Return a fixed label per episode and optionally fail chosen episodes."""
+
+    def __init__(self, labels, *, fail_on=()):
+        self._labels = labels
+        self._fail_on = set(fail_on)
+
+    def label(self, prompt, *, episode_id):
+        if episode_id in self._fail_on:
+            raise RuntimeError("judge transport error")
+        return json.dumps({"primary_intent": self._labels[episode_id], "confidence": 0.8})
+
+
+def _scripted_episodes(count=6):
+    from agent_observatory.silver import SilverEpisode
+
+    return tuple(
+        SilverEpisode(
+            episode_id=f"e{index}",
+            group_key=f'session:["city-a","host-a","codex","s-{index}"]',
+            provider="codex",
+            observed_at=f"2026-09-0{index}T00:00:00Z",
+            text=f"Work for episode e{index}.",
+        )
+        for index in range(1, count + 1)
+    )
+
+
+class OverlapFloorTests(unittest.TestCase):
+    """A systematically failing judge must not inflate the trust gate (F6).
+
+    ``--tolerate-judge-failures`` drops ``None`` pairs from ``cohen_kappa``'s
+    denominator, so a judge that fails on exactly the episodes it would disagree
+    on can leave a perfect kappa over a thin overlap. The fail-closed coverage
+    floor must refuse that pair even though the reported kappa looks high.
+    """
+
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+        self.episodes = _scripted_episodes(6)
+        self.a_labels = {
+            "e1": "bugfix", "e2": "bugfix", "e3": "bugfix",
+            "e4": "pr_review", "e5": "pr_review", "e6": "pr_review",
+        }
+        # Judge B disagrees on e3 and e6 -- exactly the episodes it fails on.
+        self.b_labels = {
+            "e1": "bugfix", "e2": "bugfix", "e3": "implementation",
+            "e4": "pr_review", "e5": "pr_review", "e6": "unknown",
+        }
+        self.judge_a = JudgeSpec(judge_id="judge-a", model="test/judge-a", api_model="test/judge-a")
+        self.judge_b = JudgeSpec(judge_id="judge-b", model="test/judge-b", api_model="test/judge-b")
+
+    def _build(self, *, b_fail_on=()):
+        judges = [
+            (self.judge_a, _ScriptedJudge(self.a_labels)),
+            (self.judge_b, _ScriptedJudge(self.b_labels, fail_on=b_fail_on)),
+        ]
+        return build_silver_result(self.episodes, self.taxonomy, judges, strict=False)
+
+    def test_overlap_floor_requires_both_absolute_and_fractional_minimum(self):
+        self.assertFalse(overlap_meets_floor(4, 6))  # 4 < 0.9 * 6
+        self.assertTrue(overlap_meets_floor(6, 6))
+        self.assertFalse(overlap_meets_floor(3, 3))  # below the absolute floor
+        self.assertTrue(overlap_meets_floor(4, 4))
+        self.assertFalse(overlap_meets_floor(0, 0))
+
+    def test_failing_disagreements_do_not_inflate_the_pair_kappa(self):
+        result = self._build(b_fail_on={"e3", "e6"})
+        agreement = result.report["agreement"]
+        pair = agreement["pairwise_cohen_kappa"][0]
+        self.assertEqual(pair["overlap"], 4)
+        self.assertEqual(pair["cohen_kappa"], 1.0)
+        self.assertFalse(pair["meets_floor"])
+        self.assertFalse(pair["trustworthy"])
+        self.assertEqual(pair["reason"], "missing_labels_over_floor")
+        self.assertFalse(agreement["coverage_ok"])
+        self.assertFalse(agreement["trustworthy"])
+        self.assertEqual(agreement["trust_reason"], "missing_labels_over_floor")
+        self.assertFalse(result.gold_set.silver_trustworthy)
+
+    def test_full_overlap_with_two_disagreements_reports_the_honest_kappa(self):
+        result = self._build()
+        agreement = result.report["agreement"]
+        pair = agreement["pairwise_cohen_kappa"][0]
+        self.assertEqual(pair["overlap"], 6)
+        self.assertTrue(pair["meets_floor"])
+        self.assertAlmostEqual(agreement["cohen_kappa"], 0.5, places=9)
+        self.assertFalse(agreement["trustworthy"])
+        self.assertEqual(agreement["trust_reason"], "kappa_below_floor")
+
+    def test_full_overlap_and_full_agreement_is_trusted(self):
+        judges = [
+            (self.judge_a, _ScriptedJudge(self.a_labels)),
+            (self.judge_b, _ScriptedJudge(self.a_labels)),
+        ]
+        result = build_silver_result(self.episodes, self.taxonomy, judges)
+        agreement = result.report["agreement"]
+        self.assertEqual(agreement["cohen_kappa"], 1.0)
+        self.assertTrue(agreement["coverage_ok"])
+        self.assertTrue(agreement["trustworthy"])
+        self.assertEqual(agreement["trust_reason"], "ok")
+        self.assertTrue(result.gold_set.silver_trustworthy)
 
 
 class JudgeReferenceTests(unittest.TestCase):

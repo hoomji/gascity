@@ -862,7 +862,12 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     if not agreement["trustworthy"] and not args.allow_untrusted:
-        if agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+        if agreement.get("trust_reason") == "missing_labels_over_floor":
+            detail = (
+                "one or more judge pairs fall below the usable-overlap floor "
+                "(missing_labels_over_floor)"
+            )
+        elif agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
             detail = (
                 f"the sample has {agreement['sample_size']} episodes, below the "
                 f"minimum {agreement['min_sample_size']}"
@@ -910,7 +915,12 @@ def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     if not agreement["trustworthy"] and not args.allow_untrusted:
-        if agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+        if agreement.get("trust_reason") == "missing_labels_over_floor":
+            detail = (
+                "one or more judge pairs fall below the usable-overlap floor "
+                "(missing_labels_over_floor)"
+            )
+        elif agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
             detail = (
                 f"the sample has {agreement['sample_size']} episodes, below the "
                 f"minimum {agreement['min_sample_size']}"

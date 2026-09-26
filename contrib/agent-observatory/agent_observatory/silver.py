@@ -14,7 +14,10 @@ optionally joined by subscription-backed judges such as GPT 6 Luna and Gemini
 * judge-judge Cohen's kappa gates trust: below :data:`KAPPA_TRUST_FLOOR` the
   silver set is reported as untrustworthy and the gate is not claimed. A sample
   below :data:`MIN_SILVER_SAMPLE_SIZE` episodes is untrusted regardless of kappa
-  because kappa over a tiny sample is degenerate.
+  because kappa over a tiny sample is degenerate. Every judge pair must also
+  overlap on at least :data:`MIN_PAIRWISE_OVERLAP_FRACTION` of the episodes both
+  judges were asked, so a systematically failing judge cannot shrink the overlap
+  to the episodes it agrees on and inflate kappa.
 
 The judge set is configurable and each judge is bound to a pluggable
 **backend** (``gateway`` OpenAI-compatible HTTP, or the ``codex-cli`` /
@@ -68,6 +71,12 @@ KAPPA_TRUST_FLOOR = 0.6
 # untrusted regardless of kappa, so a tiny ``--sample-size`` cannot claim the
 # gate. Documented in MEASUREMENT-SILVER.md.
 MIN_SILVER_SAMPLE_SIZE = 4
+# A judge pair must overlap on at least this fraction of the episodes both
+# judges were asked, in addition to the absolute sample floor, before its kappa
+# can be trusted. A systematically failing judge otherwise shrinks the overlap
+# to the episodes it happens to agree on and inflates kappa. Fail-closed:
+# documented in MEASUREMENT-SILVER.md.
+MIN_PAIRWISE_OVERLAP_FRACTION = 0.9
 DEFAULT_SAMPLE_SIZE = 150
 # Deterministic per-judge text ceiling. Both judges see the identical document.
 DEFAULT_JUDGE_TEXT_BYTES = 16000
@@ -558,30 +567,72 @@ def kappa_over_judges(
     return min(kappas)
 
 
+def overlap_meets_floor(
+    overlap: int,
+    asked: int,
+    *,
+    min_overlap: int = MIN_SILVER_SAMPLE_SIZE,
+    min_fraction: float = MIN_PAIRWISE_OVERLAP_FRACTION,
+) -> bool:
+    """Whether a judge pair's usable overlap clears the fail-closed coverage floor.
+
+    The pair must clear an absolute floor (*min_overlap* usable labels) and a
+    relative floor (*min_fraction* of the episodes both judges were asked). The
+    helper is shared by the silver trust gate and the collapse re-score gate so
+    the two cannot drift; a systematically failing judge must not be able to
+    inflate kappa by shrinking the overlap to a handful of agreeing episodes.
+    """
+
+    if asked <= 0:
+        return False
+    if overlap < min_overlap:
+        return False
+    return overlap >= min_fraction * asked
+
+
 def pairwise_cohen_kappa(
     labels_by_episode: Sequence[Mapping[str, str | None]],
     judge_ids: Sequence[str],
+    *,
+    asked: int | None = None,
+    min_overlap: int = MIN_SILVER_SAMPLE_SIZE,
+    min_fraction: float = MIN_PAIRWISE_OVERLAP_FRACTION,
 ) -> list[dict[str, Any]]:
-    """Every judge pair's Cohen's kappa plus its usable overlap count.
+    """Every judge pair's Cohen's kappa plus its usable overlap and floor verdict.
 
-    Unlike :func:`kappa_over_judges` this never collapses to the minimum and
-    never fails closed: a pair with no overlap keeps ``cohen_kappa: null`` so the
-    report can show exactly which pair lacks evidence.
+    Unlike :func:`kappa_over_judges` the kappa is never collapsed to the minimum
+    and never fails closed: a pair with no overlap keeps ``cohen_kappa: null`` so
+    the report can show exactly which pair lacks evidence. Each row also reports
+    the ``asked`` episode count and whether the pair's ``overlap`` clears the
+    fail-closed coverage floor (:func:`overlap_meets_floor`); a pair below the
+    floor keeps its kappa but is marked ``trustworthy: false`` with
+    ``reason: missing_labels_over_floor``.
     """
 
     ids = list(judge_ids)
+    if asked is None:
+        asked = len(labels_by_episode)
     rows: list[dict[str, Any]] = []
     for left in range(len(ids)):
         for right in range(left + 1, len(ids)):
             a, b = ids[left], ids[right]
             pairs = [(labels.get(a), labels.get(b)) for labels in labels_by_episode]
             overlap = sum(1 for x, y in pairs if x is not None and y is not None)
+            kappa = cohen_kappa(pairs)
+            meets_floor = overlap_meets_floor(
+                overlap, asked, min_overlap=min_overlap, min_fraction=min_fraction
+            )
             rows.append(
                 {
                     "left": a,
                     "right": b,
-                    "cohen_kappa": cohen_kappa(pairs),
+                    "cohen_kappa": kappa,
                     "overlap": overlap,
+                    "asked": asked,
+                    "overlap_fraction": (overlap / asked) if asked else None,
+                    "meets_floor": meets_floor,
+                    "trustworthy": kappa is not None and meets_floor,
+                    "reason": "ok" if meets_floor else "missing_labels_over_floor",
                 }
             )
     return rows
@@ -815,15 +866,20 @@ def build_silver_result(
         for ep in episodes
     ]
     kappa = kappa_over_judges(labels_by_episode, judge_ids)
-    pairwise_kappa = pairwise_cohen_kappa(labels_by_episode, judge_ids)
+    sample_size = len(episodes)
+    pairwise_kappa = pairwise_cohen_kappa(labels_by_episode, judge_ids, asked=sample_size)
     fleiss = fleiss_kappa(labels_by_episode, judge_ids)
     distribution = judge_label_distribution(labels_by_episode, judge_ids)
-    sample_size = len(episodes)
-    trustworthy = (
-        sample_size >= MIN_SILVER_SAMPLE_SIZE
-        and kappa is not None
-        and kappa >= KAPPA_TRUST_FLOOR
-    )
+    coverage_ok = all(row["meets_floor"] for row in pairwise_kappa)
+    if sample_size < MIN_SILVER_SAMPLE_SIZE:
+        trust_reason = "sample_too_small"
+    elif not coverage_ok:
+        trust_reason = "missing_labels_over_floor"
+    elif kappa is None or kappa < KAPPA_TRUST_FLOOR:
+        trust_reason = "kappa_below_floor"
+    else:
+        trust_reason = "ok"
+    trustworthy = trust_reason == "ok"
 
     gold_set = GoldSet(
         gold_set_version=gold_set_version,
@@ -874,6 +930,9 @@ def build_silver_result(
             "kappa_trust_floor": KAPPA_TRUST_FLOOR,
             "min_sample_size": MIN_SILVER_SAMPLE_SIZE,
             "sample_size": sample_size,
+            "overlap_fraction_floor": MIN_PAIRWISE_OVERLAP_FRACTION,
+            "coverage_ok": coverage_ok,
+            "trust_reason": trust_reason,
             "trustworthy": trustworthy,
         },
         "episodes": [
@@ -911,6 +970,11 @@ def build_silver_result(
             (
                 f"Fewer than {MIN_SILVER_SAMPLE_SIZE} episodes means the silver set is not "
                 "trustworthy regardless of kappa; a tiny sample makes kappa degenerate."
+            ),
+            (
+                f"A judge pair must overlap on at least {MIN_PAIRWISE_OVERLAP_FRACTION:.0%} of the "
+                "episodes both judges were asked; a pair below that floor is untrusted "
+                "(missing_labels_over_floor) even when its kappa looks high."
             ),
         ],
     }
@@ -952,19 +1016,25 @@ def evaluate_silver_vs_jev(
     metrics = single_label_metrics(pairs)
 
     judge_ids = _judge_ids_from_gold(gold_set)
-    kappa = kappa_over_judges(
-        [
-            {judge_id: _judge_label(episode, judge_id) for judge_id in judge_ids}
-            for episode in gold_set.episodes
-        ],
-        judge_ids,
-    )
+    labels_by_episode = [
+        {judge_id: _judge_label(episode, judge_id) for judge_id in judge_ids}
+        for episode in gold_set.episodes
+    ]
+    kappa = kappa_over_judges(labels_by_episode, judge_ids)
     sample_size = len(gold_set.episodes)
-    trustworthy = (
-        sample_size >= MIN_SILVER_SAMPLE_SIZE
-        and kappa is not None
-        and kappa >= KAPPA_TRUST_FLOOR
-    )
+    pairwise_kappa = pairwise_cohen_kappa(labels_by_episode, judge_ids, asked=sample_size)
+    coverage_ok = bool(pairwise_kappa) and all(row["meets_floor"] for row in pairwise_kappa)
+    if len(judge_ids) < 2:
+        trust_reason = "insufficient_judges"
+    elif sample_size < MIN_SILVER_SAMPLE_SIZE:
+        trust_reason = "sample_too_small"
+    elif not coverage_ok:
+        trust_reason = "missing_labels_over_floor"
+    elif kappa is None or kappa < KAPPA_TRUST_FLOOR:
+        trust_reason = "kappa_below_floor"
+    else:
+        trust_reason = "ok"
+    trustworthy = trust_reason == "ok"
 
     non_unknown_jev = sum(
         1
@@ -980,9 +1050,13 @@ def evaluate_silver_vs_jev(
         "judges": judge_ids,
         "agreement": {
             "cohen_kappa": kappa,
+            "pairwise_cohen_kappa": pairwise_kappa,
             "kappa_trust_floor": KAPPA_TRUST_FLOOR,
             "min_sample_size": MIN_SILVER_SAMPLE_SIZE,
             "sample_size": sample_size,
+            "overlap_fraction_floor": MIN_PAIRWISE_OVERLAP_FRACTION,
+            "coverage_ok": coverage_ok,
+            "trust_reason": trust_reason,
             "trustworthy": trustworthy,
         },
         "silver": {

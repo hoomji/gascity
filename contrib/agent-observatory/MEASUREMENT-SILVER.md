@@ -116,7 +116,7 @@ was never collected — so they were skipped and reported, not fabricated).
 
 - Judge calls: 300 (150 per judge), 0 parse failures.
 - Agreement: 112 `adjudicated`, 38 `disagreement` (agreement rate 0.747).
-- **Cohen's kappa: 0.406**, below the 0.6 trust floor → **the silver set is not
+- **Cohen's kappa on the 150-episode run: 0.406**, below the 0.6 trust floor → **the silver set is not
   trustworthy and the gate was not claimed.** With the enforced gate,
   `silver-build` refuses to write this gold set and exits nonzero; reproducing
   the measured artifact requires the explicit `--allow-untrusted` opt-in, and
@@ -161,6 +161,15 @@ paid gateway key was used for the new judges. The answer is no:
 - Adding two stronger subscription judges did **not** increase agreement. No
   reference clears kappa >= 0.6, so the owner's no-pass-below-0.6 rule stands and
   the gold gate is not claimed.
+
+**These are the 150-episode run's numbers**, from the recorded checkpoint
+`judge_checkpoint_4judge.json`, not the small checked-in test fixture. The
+mechanics fixture `tests/fixtures/silver/recorded_multi_judge_answers.json` has
+only 8 episodes and necessarily different values (two-judge GLM×DeepSeek `0.6`,
+minimum pairwise `0.3333`, Fleiss `0.528`); it exists to exercise the multi-judge
+math without network or subprocess calls. The fixture's own values are pinned by
+`test_fixture_pins_its_own_kappa_values_not_the_150_episode_run` so a fixture
+edit cannot silently rewrite this measurement note.
 
 **Method note.** The #34 merge changed framework stripping to
 `FRAMEWORK_FILTER_VERSION` 1.1.0, so rebuilding from the live projection under

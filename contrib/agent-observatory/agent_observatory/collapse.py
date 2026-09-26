@@ -45,11 +45,13 @@ from .evaluation import single_label_metrics
 from .silver import (
     DEFAULT_JUDGE_TEXT_BYTES,
     KAPPA_TRUST_FLOOR,
+    MIN_PAIRWISE_OVERLAP_FRACTION,
     MIN_SILVER_SAMPLE_SIZE,
     PRIMARY_FACET,
     _bound_text,
     _strip_code_fences,
     cohen_kappa,
+    overlap_meets_floor,
 )
 
 COLLAPSE_REPORT_VERSION = "1"
@@ -751,9 +753,21 @@ def _rescore_modes(
             reference for reference in references if reference.kind in ("unanimous", "majority")
         )
         minimum = kappa["min_pairwise_cohen_kappa"]
-        clears = (
-            minimum is not None and minimum >= trust_floor and len(votes) >= min_sample_size
+        coverage_ok = all(
+            overlap_meets_floor(
+                entry["overlap"], len(votes), min_overlap=min_sample_size
+            )
+            for entry in kappa["pairwise_cohen_kappa"]
         )
+        if len(votes) < min_sample_size:
+            trust_reason = "sample_too_small"
+        elif not coverage_ok:
+            trust_reason = "missing_labels_over_floor"
+        elif minimum is None or minimum < trust_floor:
+            trust_reason = "kappa_below_floor"
+        else:
+            trust_reason = "ok"
+        clears = trust_reason == "ok"
         modes[mode] = {
             "unknown_as_abstain": unknown_as_abstain,
             "agreement": dict(kappa),
@@ -763,6 +777,9 @@ def _rescore_modes(
                 "sample_size": len(votes),
                 "min_pairwise_cohen_kappa": minimum,
                 "fleiss_kappa": kappa["fleiss_kappa"],
+                "overlap_fraction_floor": MIN_PAIRWISE_OVERLAP_FRACTION,
+                "coverage_ok": coverage_ok,
+                "trust_reason": trust_reason,
                 "clears_floor": clears,
             },
             "references": {
@@ -808,7 +825,10 @@ def rescore_collapsed(
     :func:`agent_observatory.silver.kappa_over_judges`; Fleiss' kappa is reported
     alongside but does not by itself clear the gate. ``clears_floor`` is true
     only when the minimum pair kappa is at least *trust_floor* on a sample of at
-    least *min_sample_size* episodes.
+    least *min_sample_size* episodes **and** every judge pair's usable overlap
+    clears the shared overlap floor
+    (:func:`agent_observatory.silver.overlap_meets_floor`), so an abstention
+    policy cannot clear on a thin, perfectly-agreeing overlap.
 
     ``baseline`` is the identity collapse (no label merged) so the report shows
     whether the collapse helped; it is not itself a candidate design.
@@ -858,6 +878,7 @@ def rescore_collapsed(
         "sample": {"episodes": len(votes)},
         "majority_threshold": majority,
         "trust_floor": trust_floor,
+        "overlap_fraction_floor": MIN_PAIRWISE_OVERLAP_FRACTION,
         "clears_floor": clears_floor,
         "diagnostics": {
             "disagreement_groups": disagreement_groups(votes, judge_ids),
@@ -869,8 +890,9 @@ def rescore_collapsed(
         "note": (
             "Re-scores recorded judge votes only; no judge call was made. "
             "The gate is the conservative minimum pairwise Cohen's kappa, matching "
-            "the silver builder's kappa_over_judges. Fleiss' kappa is reported as a "
-            "secondary measure but does not clear the gate on its own. A collapse "
+            "the silver builder's kappa_over_judges, and requires every judge pair "
+            "to clear the shared usable-overlap floor. Fleiss' kappa is reported as "
+            "a secondary measure but does not clear the gate on its own. A collapse "
             "below the floor must not be claimed as a pass and must not authorise a "
             "fresh confirmation run."
         ),

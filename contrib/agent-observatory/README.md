@@ -68,6 +68,7 @@ contrib/agent-observatory/
     fixtures/canary/units-unclassified.json  units that would spend live requests
     fixtures/silver/candidates.csv       candidate episodes for the silver sample
     fixtures/silver/recorded_judge_answers.json  recorded judge answers (no network)
+    fixtures/silver/recorded_multi_judge_answers.json  recorded four-judge answers (no network)
     fixtures/collapse/recorded_judge_checkpoint.json  recorded four-judge checkpoint
     fixtures/collapse/recorded_judge_report.json  the same votes as a silver report
     fixtures/collapse/jev_predictions.json  Jev predictions for the collapse rescorer
