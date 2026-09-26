@@ -17,22 +17,37 @@ from agent_observatory.errors import AnnotationError, SilverError
 from agent_observatory.evaluation import Prediction, load_predictions
 from agent_observatory.silver import (
     JUDGE_DEEPSEEK,
+    JUDGE_GEMINI38_FLASH,
     JUDGE_GLM,
+    JUDGE_GPT6_LUNA,
     JUDGE_PROMPT_VERSION,
     HTTP_USER_AGENT,
+    AgyCLIJudgeClient,
+    CodexCLIJudgeClient,
     HTTPJudgeClient,
     JudgeSpec,
+    agreement_reference,
+    build_judge_client,
     build_judge_prompt,
+    build_judge_schema,
     build_silver_episodes,
     build_silver_predictions_document,
     build_silver_result,
     cohen_kappa,
+    evaluate_jev_references,
     evaluate_silver_vs_jev,
+    fleiss_kappa,
+    judge_label_distribution,
     kappa_over_judges,
     load_candidates_csv,
+    load_judge_config,
+    overlap_meets_floor,
+    pairwise_cohen_kappa,
     parse_judge_answer,
     predictions_from_store,
     render_transcript_text,
+    resolve_judge,
+    resolve_judges,
     sample_stratified,
     session_key_from_group_key,
 )
@@ -44,6 +59,7 @@ PACKAGE_ROOT = os.path.dirname(HERE)
 V2_PATH = os.path.join(PACKAGE_ROOT, "agent_observatory", "taxonomy", "jev_taxonomy_v2.json")
 CANDIDATES = os.path.join(HERE, "fixtures", "silver", "candidates.csv")
 ANSWERS = os.path.join(HERE, "fixtures", "silver", "recorded_judge_answers.json")
+MULTI_ANSWERS = os.path.join(HERE, "fixtures", "silver", "recorded_multi_judge_answers.json")
 
 
 class RecordedJudgeClient:
@@ -691,6 +707,452 @@ class SilverProjectionTests(unittest.TestCase):
         predictions = predictions_from_store(self.store, [episode])
         self.assertEqual(len(predictions), 1)
         self.assertEqual(predictions[0].primary("primary_intent"), "bugfix")
+
+
+class _FakeCompleted:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _multi_recorded():
+    with open(MULTI_ANSWERS, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _multi_episodes():
+    from agent_observatory.silver import SilverEpisode
+
+    return tuple(
+        SilverEpisode(
+            episode_id=f"e{index}",
+            group_key=f'session:["city-a","host-a","codex","s-{index}"]',
+            provider="codex",
+            observed_at=f"2026-09-0{index}T00:00:00Z",
+            text=f"Work for episode e{index}.",
+        )
+        for index in range(1, 9)
+    )
+
+
+class MultiJudgeKappaTests(unittest.TestCase):
+    """Pairwise, Fleiss and distribution math for the multi-judge path."""
+
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+        self.recorded = _multi_recorded()
+        self.judge_ids = ["glm-5p3-flash", "deepseek-v4-flash", "gpt6-luna", "gemini-3p8-flash"]
+        self.labels = [
+            {judge_id: json.loads(self.recorded[judge_id][f"e{index}"])["primary_intent"] for judge_id in self.judge_ids}
+            for index in range(1, 9)
+        ]
+
+    def test_pairwise_kappa_has_all_six_pairs(self):
+        rows = pairwise_cohen_kappa(self.labels, self.judge_ids)
+        self.assertEqual(len(rows), 6)
+        pairs = {(row["left"], row["right"]) for row in rows}
+        self.assertEqual(len(pairs), 6)
+        for row in rows:
+            self.assertEqual(row["overlap"], 8)
+            self.assertIsInstance(row["cohen_kappa"], float)
+
+    def test_fleiss_perfect_agreement_is_one(self):
+        labels = [{"a": "x", "b": "x"}, {"a": "y", "b": "y"}]
+        self.assertEqual(fleiss_kappa(labels, ["a", "b"]), 1.0)
+        # Fleiss treats raters as exchangeable; with one rater there is no kappa.
+        self.assertIsNone(fleiss_kappa([{"a": "x"}], ["a"]))
+
+    def test_fleiss_known_value(self):
+        # 3 raters, 4 subjects: two unanimous and two 2-1 splits -> kappa 1/3.
+        labels = [
+            {"a": "x", "b": "x", "c": "x"},
+            {"a": "y", "b": "y", "c": "y"},
+            {"a": "x", "b": "x", "c": "y"},
+            {"a": "y", "b": "y", "c": "x"},
+        ]
+        self.assertAlmostEqual(fleiss_kappa(labels, ["a", "b", "c"]), 1.0 / 3.0, places=12)
+
+    def test_fleiss_is_none_without_complete_cases(self):
+        labels = [{"a": "x", "b": None, "c": "x"}, {"a": None, "b": "y", "c": "y"}]
+        self.assertIsNone(fleiss_kappa(labels, ["a", "b", "c"]))
+        self.assertIsNone(fleiss_kappa([{"a": "x"}], ["a"]))
+
+    def test_judge_label_distribution_counts_unknown_and_missing(self):
+        labels = [
+            {"a": "bugfix", "b": "unknown"},
+            {"a": "bugfix", "b": None},
+            {"a": "unknown", "b": "unknown"},
+        ]
+        report = judge_label_distribution(labels, ["a", "b"])
+        self.assertEqual(report["a"]["labelled"], 3)
+        self.assertEqual(report["a"]["unknown"], 1)
+        self.assertEqual(report["b"]["missing"], 1)
+        self.assertAlmostEqual(report["b"]["unknown_rate"], 1.0)
+
+    def test_fixture_pins_its_own_kappa_values_not_the_150_episode_run(self):
+        # MEASUREMENT-SILVER.md reports the 150-episode production run
+        # (two-judge 0.406, minimum pairwise 0.199, Fleiss 0.306). This
+        # checked-in fixture is an 8-episode mechanics fixture with different
+        # values; pin its own numbers so a fixture edit cannot silently rewrite
+        # the measurement note.
+        two_judge = pairwise_cohen_kappa(self.labels, self.judge_ids[:2])
+        self.assertEqual(len(two_judge), 1)
+        self.assertAlmostEqual(two_judge[0]["cohen_kappa"], 0.6, places=9)
+        pairwise = pairwise_cohen_kappa(self.labels, self.judge_ids)
+        self.assertAlmostEqual(
+            min(row["cohen_kappa"] for row in pairwise), 1.0 / 3.0, places=9
+        )
+        self.assertAlmostEqual(
+            fleiss_kappa(self.labels, self.judge_ids), 0.528023598820059, places=9
+        )
+
+    def test_agreement_reference_requires_threshold(self):
+        episode_labels = [(f"e{index + 1}", row) for index, row in enumerate(self.labels)]
+        majority = agreement_reference(episode_labels, self.judge_ids, min_agreement=3)
+        unanimous = agreement_reference(episode_labels, self.judge_ids, min_agreement=4)
+        self.assertEqual(set(majority), {"e1", "e2", "e3", "e5", "e8"})
+        self.assertEqual(set(unanimous), {"e1", "e3", "e5", "e8"})
+        self.assertEqual(majority["e2"], "bugfix")
+
+
+class MultiJudgeBuildTests(unittest.TestCase):
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+        self.recorded = _multi_recorded()
+        self.episodes = _multi_episodes()
+
+    def _judges(self):
+        specs = [JUDGE_GLM, JUDGE_DEEPSEEK, JUDGE_GPT6_LUNA, JUDGE_GEMINI38_FLASH]
+        return [(spec, RecordedJudgeClient(spec.judge_id, self.recorded)) for spec in specs]
+
+    def test_four_judge_build_reports_pairwise_fleiss_and_distribution(self):
+        result = build_silver_result(self.episodes, self.taxonomy, self._judges())
+        report = result.report
+        self.assertEqual(len(report["agreement"]["pairwise_cohen_kappa"]), 6)
+        self.assertIsInstance(report["agreement"]["fleiss_kappa"], float)
+        self.assertEqual(set(report["judge_distribution"]), {
+            "glm-5p3-flash", "deepseek-v4-flash", "gpt6-luna", "gemini-3p8-flash",
+        })
+        backends = {entry["judge_id"]: entry["backend"] for entry in report["judges"]}
+        self.assertEqual(backends["gpt6-luna"], "codex-cli")
+        self.assertEqual(backends["gemini-3p8-flash"], "agy-cli")
+        self.assertEqual(report["judge_calls"]["total"], 4 * len(self.episodes))
+
+    def test_default_two_judge_build_still_adjudicates_as_before(self):
+        judges = [
+            (JUDGE_GLM, RecordedJudgeClient(JUDGE_GLM.judge_id, self.recorded)),
+            (JUDGE_DEEPSEEK, RecordedJudgeClient(JUDGE_DEEPSEEK.judge_id, self.recorded)),
+        ]
+        result = build_silver_result(self.episodes, self.taxonomy, judges)
+        self.assertEqual(len(result.report["agreement"]["pairwise_cohen_kappa"]), 1)
+        # The two-judge agreement is exactly the single pair's kappa.
+        pair = result.report["agreement"]["pairwise_cohen_kappa"][0]
+        self.assertEqual(result.report["agreement"]["cohen_kappa"], pair["cohen_kappa"])
+
+    def test_non_strict_build_records_a_transport_error_without_coercion(self):
+        class Broken:
+            def label(self, prompt, *, episode_id):
+                raise RuntimeError("subscription rate limited")
+
+        judges = self._judges() + [
+            (JudgeSpec(judge_id="judge-broken", model="test/judge-broken", api_model="test/judge-broken"),
+             Broken())
+        ]
+        result = build_silver_result(self.episodes, self.taxonomy, judges, strict=False)
+        self.assertEqual(result.report["judge_calls"]["transport_errors"]["judge-broken"], len(self.episodes))
+        self.assertEqual(result.report["judge_distribution"]["judge-broken"]["missing"], len(self.episodes))
+        # No fabricated label: the episode metadata records null for the broken judge.
+        for episode in result.gold_set.episodes:
+            self.assertIsNone(episode.metadata["judge_labels"]["judge-broken"])
+
+    def test_strict_build_still_raises_on_transport_error(self):
+        class Broken:
+            def label(self, prompt, *, episode_id):
+                raise RuntimeError("boom")
+
+        judges = self._judges() + [
+            (JudgeSpec(judge_id="judge-broken", model="test/judge-broken", api_model="test/judge-broken"),
+             Broken())
+        ]
+        with self.assertRaises(RuntimeError):
+            build_silver_result(self.episodes, self.taxonomy, judges)
+
+
+class _ScriptedJudge:
+    """Return a fixed label per episode and optionally fail chosen episodes."""
+
+    def __init__(self, labels, *, fail_on=()):
+        self._labels = labels
+        self._fail_on = set(fail_on)
+
+    def label(self, prompt, *, episode_id):
+        if episode_id in self._fail_on:
+            raise RuntimeError("judge transport error")
+        return json.dumps({"primary_intent": self._labels[episode_id], "confidence": 0.8})
+
+
+def _scripted_episodes(count=6):
+    from agent_observatory.silver import SilverEpisode
+
+    return tuple(
+        SilverEpisode(
+            episode_id=f"e{index}",
+            group_key=f'session:["city-a","host-a","codex","s-{index}"]',
+            provider="codex",
+            observed_at=f"2026-09-0{index}T00:00:00Z",
+            text=f"Work for episode e{index}.",
+        )
+        for index in range(1, count + 1)
+    )
+
+
+class OverlapFloorTests(unittest.TestCase):
+    """A systematically failing judge must not inflate the trust gate (F6).
+
+    ``--tolerate-judge-failures`` drops ``None`` pairs from ``cohen_kappa``'s
+    denominator, so a judge that fails on exactly the episodes it would disagree
+    on can leave a perfect kappa over a thin overlap. The fail-closed coverage
+    floor must refuse that pair even though the reported kappa looks high.
+    """
+
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+        self.episodes = _scripted_episodes(6)
+        self.a_labels = {
+            "e1": "bugfix", "e2": "bugfix", "e3": "bugfix",
+            "e4": "pr_review", "e5": "pr_review", "e6": "pr_review",
+        }
+        # Judge B disagrees on e3 and e6 -- exactly the episodes it fails on.
+        self.b_labels = {
+            "e1": "bugfix", "e2": "bugfix", "e3": "implementation",
+            "e4": "pr_review", "e5": "pr_review", "e6": "unknown",
+        }
+        self.judge_a = JudgeSpec(judge_id="judge-a", model="test/judge-a", api_model="test/judge-a")
+        self.judge_b = JudgeSpec(judge_id="judge-b", model="test/judge-b", api_model="test/judge-b")
+
+    def _build(self, *, b_fail_on=()):
+        judges = [
+            (self.judge_a, _ScriptedJudge(self.a_labels)),
+            (self.judge_b, _ScriptedJudge(self.b_labels, fail_on=b_fail_on)),
+        ]
+        return build_silver_result(self.episodes, self.taxonomy, judges, strict=False)
+
+    def test_overlap_floor_requires_both_absolute_and_fractional_minimum(self):
+        self.assertFalse(overlap_meets_floor(4, 6))  # 4 < 0.9 * 6
+        self.assertTrue(overlap_meets_floor(6, 6))
+        self.assertFalse(overlap_meets_floor(3, 3))  # below the absolute floor
+        self.assertTrue(overlap_meets_floor(4, 4))
+        self.assertFalse(overlap_meets_floor(0, 0))
+
+    def test_failing_disagreements_do_not_inflate_the_pair_kappa(self):
+        result = self._build(b_fail_on={"e3", "e6"})
+        agreement = result.report["agreement"]
+        pair = agreement["pairwise_cohen_kappa"][0]
+        self.assertEqual(pair["overlap"], 4)
+        self.assertEqual(pair["cohen_kappa"], 1.0)
+        self.assertFalse(pair["meets_floor"])
+        self.assertFalse(pair["trustworthy"])
+        self.assertEqual(pair["reason"], "missing_labels_over_floor")
+        self.assertFalse(agreement["coverage_ok"])
+        self.assertFalse(agreement["trustworthy"])
+        self.assertEqual(agreement["trust_reason"], "missing_labels_over_floor")
+        self.assertFalse(result.gold_set.silver_trustworthy)
+
+    def test_full_overlap_with_two_disagreements_reports_the_honest_kappa(self):
+        result = self._build()
+        agreement = result.report["agreement"]
+        pair = agreement["pairwise_cohen_kappa"][0]
+        self.assertEqual(pair["overlap"], 6)
+        self.assertTrue(pair["meets_floor"])
+        self.assertAlmostEqual(agreement["cohen_kappa"], 0.5, places=9)
+        self.assertFalse(agreement["trustworthy"])
+        self.assertEqual(agreement["trust_reason"], "kappa_below_floor")
+
+    def test_full_overlap_and_full_agreement_is_trusted(self):
+        judges = [
+            (self.judge_a, _ScriptedJudge(self.a_labels)),
+            (self.judge_b, _ScriptedJudge(self.a_labels)),
+        ]
+        result = build_silver_result(self.episodes, self.taxonomy, judges)
+        agreement = result.report["agreement"]
+        self.assertEqual(agreement["cohen_kappa"], 1.0)
+        self.assertTrue(agreement["coverage_ok"])
+        self.assertTrue(agreement["trustworthy"])
+        self.assertEqual(agreement["trust_reason"], "ok")
+        self.assertTrue(result.gold_set.silver_trustworthy)
+
+
+class JudgeReferenceTests(unittest.TestCase):
+    def setUp(self):
+        self.taxonomy = load_taxonomy(V2_PATH)
+        self.recorded = _multi_recorded()
+        self.episodes = _multi_episodes()
+
+    def _result(self):
+        specs = [JUDGE_GLM, JUDGE_DEEPSEEK, JUDGE_GPT6_LUNA, JUDGE_GEMINI38_FLASH]
+        judges = [(spec, RecordedJudgeClient(spec.judge_id, self.recorded)) for spec in specs]
+        return build_silver_result(self.episodes, self.taxonomy, judges)
+
+    def test_references_cover_each_judge_majority_and_unanimous(self):
+        result = self._result()
+        predictions = [
+            Prediction(
+                episode_id=episode.episode_id,
+                predictor="jev",
+                labels={"primary_intent": (label,)},
+            )
+            for episode in result.gold_set.episodes
+            if (label := episode.primary("primary_intent")) is not None
+        ]
+        report = evaluate_jev_references(result.gold_set, predictions)
+        self.assertEqual(set(report["judges"]), {
+            "glm-5p3-flash", "deepseek-v4-flash", "gpt6-luna", "gemini-3p8-flash",
+        })
+        names = set(report["references"])
+        for judge_id in report["judges"]:
+            self.assertIn(f"judge:{judge_id}", names)
+        self.assertIn("majority_3_of_4", names)
+        self.assertIn("unanimous_4_of_4", names)
+        self.assertEqual(report["references"]["majority_3_of_4"]["episodes"], 5)
+        self.assertEqual(report["references"]["unanimous_4_of_4"]["episodes"], 4)
+        self.assertEqual(report["references"]["judge:gpt6-luna"]["episodes"], 8)
+
+    def test_evaluate_silver_vs_jev_embeds_the_multi_judge_comparison(self):
+        result = self._result()
+        predictions = [
+            Prediction(
+                episode_id=episode.episode_id,
+                predictor="jev",
+                labels={"primary_intent": (episode.primary("primary_intent"),)},
+            )
+            for episode in result.gold_set.episodes
+            if episode.primary("primary_intent") is not None
+        ]
+        report = evaluate_silver_vs_jev(result.gold_set, predictions, self.taxonomy)
+        self.assertIn("judge_references", report)
+        self.assertEqual(len(report["judge_references"]["pairwise_cohen_kappa"]), 6)
+        self.assertIn("majority_3_of_4", report["judge_references"]["references"])
+
+
+class JudgeResolutionTests(unittest.TestCase):
+    def test_default_and_known_judges(self):
+        self.assertEqual(resolve_judges([]), [JUDGE_GLM, JUDGE_DEEPSEEK])
+        self.assertEqual(resolve_judge("gpt6-luna"), JUDGE_GPT6_LUNA)
+        self.assertEqual(resolve_judge("gemini-3p8-flash"), JUDGE_GEMINI38_FLASH)
+        self.assertEqual(resolve_judge("deepseek/deepseek-flash"), JUDGE_DEEPSEEK)
+
+    def test_explicit_backend_and_bare_slug(self):
+        spec = resolve_judge("codex-cli:gpt-6-luna")
+        self.assertEqual(spec.backend, "codex-cli")
+        self.assertEqual(spec.api_model, "gpt-6-luna")
+        gateway = resolve_judge("fireworks-ai/some-model")
+        self.assertEqual(gateway.backend, "gateway")
+        self.assertEqual(gateway.api_model, "fireworks-ai/some-model")
+        with self.assertRaises(SilverError):
+            resolve_judge("bogus-backend:model")
+
+    def test_judge_config_file_round_trips(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "judges.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    [
+                        "glm-5p3-flash",
+                        {"judge_id": "gem", "model": "gemini-3.8-flash-medium", "backend": "agy-cli"},
+                    ],
+                    handle,
+                )
+            specs = load_judge_config(path)
+        self.assertEqual([spec.judge_id for spec in specs], ["glm-5p3-flash", "gem"])
+        self.assertEqual(specs[1].backend, "agy-cli")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "empty.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump([], handle)
+            with self.assertRaises(SilverError):
+                load_judge_config(path)
+
+    def test_build_judge_schema_restricts_labels(self):
+        schema = build_judge_schema(["bugfix", "unknown"])
+        self.assertEqual(schema["properties"]["primary_intent"]["enum"], ["bugfix", "unknown"])
+        self.assertFalse(schema["additionalProperties"])
+
+
+class CLIJudgeClientTests(unittest.TestCase):
+    def test_codex_client_uses_schema_read_only_and_reads_output(self):
+        captured = {}
+
+        def runner(argv, *, input_text, timeout):
+            if argv[1] == "--version":
+                return _FakeCompleted(stdout="codex-cli 9.9.9\n")
+            captured["argv"] = argv
+            captured["input"] = input_text
+            out_path = argv[argv.index("-o") + 1]
+            with open(out_path, "w", encoding="utf-8") as handle:
+                handle.write('{"primary_intent":"bugfix","confidence":0.5}')
+            return _FakeCompleted(stdout="")
+
+        client = CodexCLIJudgeClient(JUDGE_GPT6_LUNA, ["bugfix", "unknown"], runner=runner)
+        content = client.label("judge prompt text", episode_id="e1")
+        self.assertEqual(json.loads(content), {"primary_intent": "bugfix", "confidence": 0.5})
+        self.assertEqual(client.cli_version, "codex-cli 9.9.9")
+        self.assertEqual(captured["input"], "judge prompt text")
+        self.assertIn("read-only", captured["argv"])
+        self.assertIn("--ephemeral", captured["argv"])
+        self.assertEqual(captured["argv"][captured["argv"].index("-m") + 1], "gpt-6-luna")
+
+    def test_agy_client_parses_structured_output(self):
+        captured = {}
+
+        def runner(argv, *, input_text, timeout):
+            if argv[1] == "--version":
+                return _FakeCompleted(stdout="1.2.11\n")
+            captured["argv"] = argv
+            return _FakeCompleted(
+                stdout=json.dumps(
+                    {
+                        "structured_output": {"primary_intent": "unknown", "confidence": 0.4},
+                        "response": "noise",
+                    }
+                )
+            )
+
+        client = AgyCLIJudgeClient(JUDGE_GEMINI38_FLASH, ["bugfix", "unknown"], runner=runner)
+        content = client.label("judge prompt text", episode_id="e1")
+        self.assertEqual(json.loads(content), {"primary_intent": "unknown", "confidence": 0.4})
+        self.assertEqual(client.cli_version, "1.2.11")
+        self.assertIn("--json-schema", captured["argv"])
+        self.assertTrue(any(arg.startswith("--print=") for arg in captured["argv"]))
+
+    def test_cli_client_retries_transient_failure(self):
+        attempts = {"n": 0}
+
+        def runner(argv, *, input_text, timeout):
+            if argv[1] == "--version":
+                return _FakeCompleted(stdout="1.2.11\n")
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                return _FakeCompleted(returncode=1, stderr="rate limited")
+            return _FakeCompleted(stdout=json.dumps({"structured_output": {"primary_intent": "bugfix"}}))
+
+        client = AgyCLIJudgeClient(
+            JUDGE_GEMINI38_FLASH,
+            ["bugfix"],
+            runner=runner,
+            max_attempts=2,
+            retry_backoff_seconds=0,
+        )
+        self.assertEqual(json.loads(client.label("p", episode_id="e1")), {"primary_intent": "bugfix"})
+        self.assertEqual(client.calls_made, 2)
+
+    def test_build_judge_client_dispatches_on_backend(self):
+        gateway = build_judge_client(JUDGE_GLM, ["bugfix"])
+        self.assertIsInstance(gateway, HTTPJudgeClient)
+        codex = build_judge_client(JUDGE_GPT6_LUNA, ["bugfix"], runner=lambda *a, **k: _FakeCompleted())
+        self.assertIsInstance(codex, CodexCLIJudgeClient)
+        agy = build_judge_client(JUDGE_GEMINI38_FLASH, ["bugfix"], runner=lambda *a, **k: _FakeCompleted())
+        self.assertIsInstance(agy, AgyCLIJudgeClient)
 
 
 if __name__ == "__main__":

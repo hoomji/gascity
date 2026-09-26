@@ -43,7 +43,7 @@ contrib/agent-observatory/
     episodes.py        deterministic session -> task-episode segmentation
     annotations.py     versioned gold annotations (separate from predictions)
     evaluation.py      grouped temporal holdout, baselines, metrics, calibration
-    silver.py          two-judge machine-built silver reference (no hand labelling)
+    silver.py          multi-judge machine-built silver reference (pluggable gateway/CLI backends)
     collapse.py        coarse-taxonomy re-score of a recorded multi-judge checkpoint
     collector.py       M4 checkpointed backfill, debounced collection, queue, status
     impact.py          M6 accepted-task impact reports, matched cohorts, uncertainty
@@ -68,6 +68,7 @@ contrib/agent-observatory/
     fixtures/canary/units-unclassified.json  units that would spend live requests
     fixtures/silver/candidates.csv       candidate episodes for the silver sample
     fixtures/silver/recorded_judge_answers.json  recorded judge answers (no network)
+    fixtures/silver/recorded_multi_judge_answers.json  recorded four-judge answers (no network)
     fixtures/collapse/recorded_judge_checkpoint.json  recorded four-judge checkpoint
     fixtures/collapse/recorded_judge_report.json  the same votes as a silver report
     fixtures/collapse/jev_predictions.json  Jev predictions for the collapse rescorer
@@ -415,31 +416,44 @@ reason, and asserts there are no gate violations.
 
 Owner decision 2026-09-25: the human gold set is replaced by a machine-built
 **silver** reference (`silver.py`). `silver-build` samples candidate episodes
-deterministically, stratified by provider, and asks two independent judges —
-GLM 5.3 Flash (`uniblock-prod/fireworks-ai/glm-5p3-flash`) and DeepSeek V4 Flash
-(`uniblock-prod/deepseek/deepseek-flash`) through the Uniblock prod gateway — to
-label `primary_intent` from the **same stripped transcript text** with the
-**same taxonomy criteria** at temperature 0 and JSON output. The judge prompt is
-fixed and versioned (`JUDGE_PROMPT_VERSION`).
+deterministically, stratified by provider, and asks a configurable set of
+independent judges to label `primary_intent` from the **same stripped transcript
+text** with the **same taxonomy criteria** at temperature 0 and JSON output. The
+judge prompt is fixed and versioned (`JUDGE_PROMPT_VERSION`). The default set is
+still the two Uniblock prod gateway judges — GLM 5.3 Flash
+(`uniblock-prod/fireworks-ai/glm-5p3-flash`) and DeepSeek V4 Flash
+(`uniblock-prod/deepseek/deepseek-flash`). `--judge JUDGE ...` (judge id, model
+slug, or `backend:model`) and `--judges-file JUDGES.json` (a list of
+`{judge_id, model, api_model, backend}`) add or replace judges. Each judge is
+bound to a **pluggable backend**: `gateway` (OpenAI-compatible HTTP; the
+historical path), `codex-cli` (the owner's Codex subscription via
+`codex exec -m gpt-6-luna`, read-only sandbox, ephemeral) or `agy-cli` (the
+owner's Antigravity subscription via
+`agy --model gemini-3.8-flash-medium --json-schema`). Model names are never
+guessed — they are resolved from each CLI's own `--version`/model list and
+recorded per label.
 
-Adjudication reuses the existing annotation vocabulary: two agreeing judges make
-an `adjudicated` silver label; a disagreement is recorded as `disagreement`,
+Adjudication reuses the existing annotation vocabulary: judges that all agree make
+an `adjudicated` silver label; any disagreement is recorded as `disagreement`,
 excluded from the primary score and reported. Each episode records the per-judge
-labels, confidences, model ids, prompt version and text hash; the gold set keeps
-`annotator="silver-judges"` and is strictly separate from Jev predictions.
-`silver-evaluate` reports judge-judge Cohen's kappa and Jev-vs-silver
-accuracy/macro-F1 on agreed items. **Kappa below `KAPPA_TRUST_FLOOR` (0.6) means
-the silver set is not trustworthy and the gate is not claimed.** A sample with
-fewer than `MIN_SILVER_SAMPLE_SIZE` (4) episodes is also untrusted regardless of
-kappa, because kappa over a handful of items is degenerate. Those floors are
-enforced, not just reported: `silver-build` refuses to write the gold set and
-exits nonzero on a below-floor kappa or sample (the agreement report is still
-written as evidence), and the loader/`silver-evaluate` refuse to consume a silver
-set marked `silver_trustworthy: false`. The explicit `--allow-untrusted` flag is
-the only override.
+labels, confidences, model ids, backend, CLI version, prompt version and text
+hash; the gold set keeps `annotator="silver-judges"` and is strictly separate
+from Jev predictions. `silver-build` reports every pairwise Cohen's kappa,
+Fleiss' kappa across the whole judge set, and each judge's label distribution and
+`unknown` rate. `silver-evaluate` reports Jev accuracy/macro-F1 against each
+judge alone, the majority label and the unanimous label. **Kappa below
+`KAPPA_TRUST_FLOOR` (0.6) means the silver set is not trustworthy and the gate is
+not claimed** — the trust value is the minimum pairwise kappa, so every judge
+pair must clear the floor. A sample with fewer than `MIN_SILVER_SAMPLE_SIZE` (4)
+episodes is also untrusted regardless of kappa, because kappa over a handful of
+items is degenerate. Those floors are enforced, not just reported: `silver-build`
+refuses to write the gold set and exits nonzero on a below-floor kappa or sample
+(the agreement report is still written as evidence), and the loader/
+`silver-evaluate` refuse to consume a silver set marked `silver_trustworthy:
+false`. The explicit `--allow-untrusted` flag is the only override.
 
-The limitation is explicit: silver labels measure agreement with two LLMs, not
-ground truth. A Jev error shared by both judges is invisible. See
+The limitation is explicit: silver labels measure agreement between the judge
+set, not ground truth. A Jev error shared by every judge is invisible. See
 `MEASUREMENT-SILVER.md`.
 
 Reproducibility: the report pins `taxonomy_version`, `facet_hash`,
@@ -903,10 +917,12 @@ agent-observatory queue-drain --db DB --max-requests N [--max-items N]
     [transport options as for classify] [--out FILE]
 agent-observatory silver-build --candidates CANDIDATES.csv --db DB
     --out-gold GOLD.json --out-report REPORT.json
-    [--sample-size N] [--seed S] [--judge JUDGE ...] [--jev-predictions-out FILE]
+    [--sample-size N] [--seed S] [--judge JUDGE ...] [--judges-file JUDGES.json]
+    [--jev-predictions-out FILE]
     [--base-url URL] [--api-key-env ENV] [--max-judge-requests N]
     [--taxonomy PATH] [--excerpt-bytes N] [--text-bytes N] [--judge-text-bytes N]
     [--gold-set-version V] [--prompt-version V] [--judge-timeout S]
+    [--cli-judge-timeout S] [--tolerate-judge-failures]
 agent-observatory silver-evaluate --gold GOLD.json --predictions PRED.json
     [--taxonomy PATH] [--full-evaluator] [--out FILE]
 agent-observatory silver-collapse (--checkpoint CKPT.json | --report REPORT.json)
@@ -928,12 +944,12 @@ agent-observatory --version
 `evaluate` writes the deterministic evaluation report and exits non-zero when the
 split audit is not leak-free; `impact` writes the deterministic accepted-task
 impact report (at least one of `--input`/`--db` is required). `silver-build`
-writes the two-judge silver gold set plus its agreement report (and optional Jev
-predictions read from the projection); `silver-evaluate` writes the Jev-vs-silver
-report; `silver-collapse` re-scores a recorded judge checkpoint or silver report
-under the collapsed taxonomy (no judge call) and writes the collapse report.
-`queue-drain` sends redacted transcript text unless `--metadata-state` is
-passed.
+writes the multi-judge silver gold set plus its agreement report (and optional Jev
+predictions read from the projection); `silver-evaluate` writes the
+Jev-vs-reference report; `silver-collapse` re-scores a recorded judge checkpoint
+or silver report under the collapsed taxonomy (no judge call) and writes the
+collapse report. `queue-drain` sends redacted transcript text unless
+`--metadata-state` is passed.
 
 When `--snapshot-hash` is supplied together with `--db` and `--session`, the
 explicit value is cross-checked against the projection and a mismatch is refused

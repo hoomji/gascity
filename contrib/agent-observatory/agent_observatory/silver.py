@@ -1,27 +1,39 @@
 """Machine-built "silver" reference labels without human annotation.
 
 The measurement plan's gold gate historically required hand labelling. This
-module replaces that with a **silver** reference built from two independent
-judge models (GLM 5.3 Flash and DeepSeek V4 Flash through the Uniblock prod
-gateway):
+module replaces that with a **silver** reference built from independent judge
+models (GLM 5.3 Flash and DeepSeek V4 Flash through the Uniblock prod gateway,
+optionally joined by subscription-backed judges such as GPT 6 Luna and Gemini
+3.8 Flash):
 
 * candidate episodes are sampled deterministically, stratified by provider;
 * each judge labels ``primary_intent`` from the *same stripped transcript text*
   with the *same taxonomy criteria* at temperature 0 and JSON output;
-* two agreeing judges produce an ``adjudicated`` label; a disagreement produces
+* agreeing judges produce an ``adjudicated`` label; a disagreement produces
   ``disagreement`` and is excluded from the primary score and reported;
 * judge-judge Cohen's kappa gates trust: below :data:`KAPPA_TRUST_FLOOR` the
   silver set is reported as untrustworthy and the gate is not claimed. A sample
   below :data:`MIN_SILVER_SAMPLE_SIZE` episodes is untrusted regardless of kappa
-  because kappa over a tiny sample is degenerate.
+  because kappa over a tiny sample is degenerate. Every judge pair must also
+  overlap on at least :data:`MIN_PAIRWISE_OVERLAP_FRACTION` of the episodes both
+  judges were asked, so a systematically failing judge cannot shrink the overlap
+  to the episodes it agrees on and inflate kappa.
 
-Silver is a *reference*, not ground truth: it measures agreement with two LLMs.
-A Jev error shared by both judges is invisible. The limitation is recorded in
+The judge set is configurable and each judge is bound to a pluggable
+**backend** (``gateway`` OpenAI-compatible HTTP, or the ``codex-cli`` /
+``agy-cli`` subscription CLIs). The default remains the two gateway judges, so
+the historical two-judge result is unchanged. With more than two judges the
+report adds every pairwise Cohen's kappa, Fleiss' kappa across all judges, each
+judge's label distribution, and Jev accuracy/macro-F1 against each judge, the
+majority label and the unanimous label.
+
+Silver is a *reference*, not ground truth: it measures agreement between LLMs.
+A Jev error shared by the judges is invisible. The limitation is recorded in
 the report and in the README.
 
 Everything here is deterministic given the same candidates, text and recorded
-judge answers; the HTTP client is the only network path and is never used by
-tests.
+judge answers; the HTTP client and the CLI backends are the only network paths
+and are never used by tests.
 """
 
 from __future__ import annotations
@@ -30,6 +42,8 @@ import csv
 import json
 import math
 import os
+import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -57,6 +71,12 @@ KAPPA_TRUST_FLOOR = 0.6
 # untrusted regardless of kappa, so a tiny ``--sample-size`` cannot claim the
 # gate. Documented in MEASUREMENT-SILVER.md.
 MIN_SILVER_SAMPLE_SIZE = 4
+# A judge pair must overlap on at least this fraction of the episodes both
+# judges were asked, in addition to the absolute sample floor, before its kappa
+# can be trusted. A systematically failing judge otherwise shrinks the overlap
+# to the episodes it happens to agree on and inflates kappa. Fail-closed:
+# documented in MEASUREMENT-SILVER.md.
+MIN_PAIRWISE_OVERLAP_FRACTION = 0.9
 DEFAULT_SAMPLE_SIZE = 150
 # Deterministic per-judge text ceiling. Both judges see the identical document.
 DEFAULT_JUDGE_TEXT_BYTES = 16000
@@ -68,8 +88,9 @@ DEFAULT_API_KEY_ENV = "UNIBLOCK_PROD_KEY"
 # identifying user agent is required for any non-browser client.
 HTTP_USER_AGENT = "agent-observatory/1.0"
 
-# Recorded wire ids. The api_model is what the OpenAI-compatible gateway
-# receives; the model is the opencode-qualified id the city configures.
+# Recorded wire ids. The api_model is what the backend receives (the
+# OpenAI-compatible gateway model, or the CLI's own model name). The model is the
+# qualified id recorded in the report.
 @dataclass(frozen=True)
 class JudgeSpec:
     """One independent judge model."""
@@ -77,6 +98,7 @@ class JudgeSpec:
     judge_id: str
     model: str
     api_model: str
+    backend: str = "gateway"
 
 
 JUDGE_GLM = JudgeSpec(
@@ -89,7 +111,140 @@ JUDGE_DEEPSEEK = JudgeSpec(
     model="uniblock-prod/deepseek/deepseek-flash",
     api_model="deepseek/deepseek-flash",
 )
+# Subscription-backed judges. The model names are the exact slugs the installed
+# CLIs list (`codex debug models` -> gpt-6-luna; `agy models` ->
+# gemini-3.8-flash-{high,medium,low}). They are never routed through the paid
+# gateway. `medium` is the balanced default effort.
+JUDGE_GPT6_LUNA = JudgeSpec(
+    judge_id="gpt6-luna",
+    model="codex-cli/gpt-6-luna",
+    api_model="gpt-6-luna",
+    backend="codex-cli",
+)
+JUDGE_GEMINI38_FLASH = JudgeSpec(
+    judge_id="gemini-3p8-flash",
+    model="agy-cli/gemini-3.8-flash-medium",
+    api_model="gemini-3.8-flash-medium",
+    backend="agy-cli",
+)
+# The default stays exactly the two gateway judges (byte-identical behaviour).
 DEFAULT_JUDGES = (JUDGE_GLM, JUDGE_DEEPSEEK)
+# Every judge the tooling knows by name, for `--judge`.
+KNOWN_JUDGES = (JUDGE_GLM, JUDGE_DEEPSEEK, JUDGE_GPT6_LUNA, JUDGE_GEMINI38_FLASH)
+JUDGE_BACKENDS = ("gateway", "codex-cli", "agy-cli")
+
+
+def _slugify_judge_id(backend: str, model: str) -> str:
+    raw = f"{backend}-{model}" if backend else model
+    slug = "".join(ch if ch.isalnum() else "-" for ch in raw).strip("-").lower()
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    if not slug:
+        raise SilverError("judge id cannot be derived from an empty model")
+    return slug
+
+
+def resolve_judge(value: str) -> JudgeSpec:
+    """Resolve one ``--judge`` token to a :class:`JudgeSpec`.
+
+    Accepts a known judge id / model, an explicit ``backend:model`` token, or a
+    bare model slug (which defaults to the ``gateway`` backend). Values are never
+    guessed: the caller supplies the exact slug.
+    """
+
+    token = (value or "").strip()
+    if not token or token == "all":
+        raise SilverError(
+            "--judge must name a known judge, an explicit backend:model, or a model slug"
+        )
+    for spec in KNOWN_JUDGES:
+        if token in (spec.judge_id, spec.model, spec.api_model):
+            return spec
+    if ":" in token:
+        backend, model = (part.strip() for part in token.split(":", 1))
+        if backend not in JUDGE_BACKENDS:
+            raise SilverError(
+                f"unknown judge backend {backend!r}; expected one of: "
+                + ", ".join(JUDGE_BACKENDS)
+            )
+        if not model:
+            raise SilverError(f"judge token {token!r} has no model after the backend")
+        return JudgeSpec(
+            judge_id=_slugify_judge_id(backend, model),
+            model=f"{backend}/{model}",
+            api_model=model,
+            backend=backend,
+        )
+    return JudgeSpec(
+        judge_id=_slugify_judge_id("gateway", token),
+        model=token,
+        api_model=token,
+        backend="gateway",
+    )
+
+
+def resolve_judges(values: Sequence[str]) -> list[JudgeSpec]:
+    """Resolve a ``--judge`` list; empty means the default two gateway judges."""
+
+    if not values:
+        return list(DEFAULT_JUDGES)
+    specs = [resolve_judge(value) for value in values]
+    ids = [spec.judge_id for spec in specs]
+    if len(set(ids)) != len(ids):
+        raise SilverError("judge ids must be unique: " + ", ".join(ids))
+    return specs
+
+
+def load_judge_config(path: str | Path) -> list[JudgeSpec]:
+    """Load an explicit judge list from a JSON file.
+
+    The file is a list of ``{"judge_id", "model", "api_model", "backend"}``
+    objects (a bare string is resolved like ``--judge``). This is the
+    configurable judge set the owner asked for: a list of model slugs plus their
+    backend. An empty list is an error rather than a silent default.
+    """
+
+    config_path = Path(path)
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SilverError(f"cannot read judge config {config_path}: {exc}") from exc
+    if not isinstance(data, list) or not data:
+        raise SilverError(f"judge config {config_path} must be a non-empty JSON list")
+    specs: list[JudgeSpec] = []
+    for index, item in enumerate(data):
+        if isinstance(item, str):
+            specs.append(resolve_judge(item))
+            continue
+        if not isinstance(item, dict):
+            raise SilverError(f"judge config {config_path}[{index}] must be an object or string")
+        backend = str(item.get("backend") or "gateway")
+        if backend not in JUDGE_BACKENDS:
+            raise SilverError(
+                f"judge config {config_path}[{index}] backend {backend!r} is not one of: "
+                + ", ".join(JUDGE_BACKENDS)
+            )
+        model = item.get("model") or item.get("api_model")
+        if not isinstance(model, str) or not model:
+            raise SilverError(f"judge config {config_path}[{index}] needs a non-empty model")
+        api_model = item.get("api_model") or model
+        if not isinstance(api_model, str) or not api_model:
+            raise SilverError(f"judge config {config_path}[{index}] api_model must be text")
+        judge_id = item.get("judge_id") or _slugify_judge_id(backend, model)
+        if not isinstance(judge_id, str) or not judge_id:
+            raise SilverError(f"judge config {config_path}[{index}] judge_id must be text")
+        specs.append(
+            JudgeSpec(
+                judge_id=judge_id,
+                model=model,
+                api_model=api_model,
+                backend=backend,
+            )
+        )
+    ids = [spec.judge_id for spec in specs]
+    if len(set(ids)) != len(ids):
+        raise SilverError("judge config has duplicate judge ids: " + ", ".join(ids))
+    return specs
 
 
 @dataclass(frozen=True)
@@ -134,9 +289,12 @@ class SilverEpisode:
 class JudgeLabel:
     judge_id: str
     model: str
-    label: str
+    label: str | None
     confidence: float | None
     raw: Mapping[str, Any]
+    backend: str = "gateway"
+    cli_version: str | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -409,6 +567,175 @@ def kappa_over_judges(
     return min(kappas)
 
 
+def overlap_meets_floor(
+    overlap: int,
+    asked: int,
+    *,
+    min_overlap: int = MIN_SILVER_SAMPLE_SIZE,
+    min_fraction: float = MIN_PAIRWISE_OVERLAP_FRACTION,
+) -> bool:
+    """Whether a judge pair's usable overlap clears the fail-closed coverage floor.
+
+    The pair must clear an absolute floor (*min_overlap* usable labels) and a
+    relative floor (*min_fraction* of the episodes both judges were asked). The
+    helper is shared by the silver trust gate and the collapse re-score gate so
+    the two cannot drift; a systematically failing judge must not be able to
+    inflate kappa by shrinking the overlap to a handful of agreeing episodes.
+    """
+
+    if asked <= 0:
+        return False
+    if overlap < min_overlap:
+        return False
+    return overlap >= min_fraction * asked
+
+
+def pairwise_cohen_kappa(
+    labels_by_episode: Sequence[Mapping[str, str | None]],
+    judge_ids: Sequence[str],
+    *,
+    asked: int | None = None,
+    min_overlap: int = MIN_SILVER_SAMPLE_SIZE,
+    min_fraction: float = MIN_PAIRWISE_OVERLAP_FRACTION,
+) -> list[dict[str, Any]]:
+    """Every judge pair's Cohen's kappa plus its usable overlap and floor verdict.
+
+    Unlike :func:`kappa_over_judges` the kappa is never collapsed to the minimum
+    and never fails closed: a pair with no overlap keeps ``cohen_kappa: null`` so
+    the report can show exactly which pair lacks evidence. Each row also reports
+    the ``asked`` episode count and whether the pair's ``overlap`` clears the
+    fail-closed coverage floor (:func:`overlap_meets_floor`); a pair below the
+    floor keeps its kappa but is marked ``trustworthy: false`` with
+    ``reason: missing_labels_over_floor``.
+    """
+
+    ids = list(judge_ids)
+    if asked is None:
+        asked = len(labels_by_episode)
+    rows: list[dict[str, Any]] = []
+    for left in range(len(ids)):
+        for right in range(left + 1, len(ids)):
+            a, b = ids[left], ids[right]
+            pairs = [(labels.get(a), labels.get(b)) for labels in labels_by_episode]
+            overlap = sum(1 for x, y in pairs if x is not None and y is not None)
+            kappa = cohen_kappa(pairs)
+            meets_floor = overlap_meets_floor(
+                overlap, asked, min_overlap=min_overlap, min_fraction=min_fraction
+            )
+            rows.append(
+                {
+                    "left": a,
+                    "right": b,
+                    "cohen_kappa": kappa,
+                    "overlap": overlap,
+                    "asked": asked,
+                    "overlap_fraction": (overlap / asked) if asked else None,
+                    "meets_floor": meets_floor,
+                    "trustworthy": kappa is not None and meets_floor,
+                    "reason": "ok" if meets_floor else "missing_labels_over_floor",
+                }
+            )
+    return rows
+
+
+def fleiss_kappa(
+    labels_by_episode: Sequence[Mapping[str, str | None]],
+    judge_ids: Sequence[str],
+) -> float | None:
+    """Fleiss' kappa across three or more fixed raters.
+
+    Only episodes labelled by *all* judges are used (Fleiss' kappa assumes a
+    fixed rater count per subject); the caller can read the per-pair overlap from
+    :func:`pairwise_cohen_kappa`. ``None`` when fewer than two raters, no complete
+    subject, or no labels. When chance agreement is 1 the value is 1.0 for
+    perfect agreement else 0.0, matching :func:`cohen_kappa`.
+    """
+
+    ids = list(judge_ids)
+    raters = len(ids)
+    if raters < 2:
+        return None
+    complete = [
+        [labels.get(judge_id) for judge_id in ids]
+        for labels in labels_by_episode
+        if all(labels.get(judge_id) is not None for judge_id in ids)
+    ]
+    if not complete:
+        return None
+    categories = sorted({value for row in complete for value in row if value is not None})
+    if not categories:
+        return None
+    subjects = len(complete)
+    per_subject_sum = 0.0
+    category_totals = {category: 0 for category in categories}
+    for row in complete:
+        counts = {category: row.count(category) for category in categories}
+        per_subject_sum += (sum(count * count for count in counts.values()) - raters) / (
+            raters * (raters - 1)
+        )
+        for category, count in counts.items():
+            category_totals[category] += count
+    observed = per_subject_sum / subjects
+    total_ratings = subjects * raters
+    expected = sum((count / total_ratings) ** 2 for count in category_totals.values())
+    if expected >= 1.0:
+        return 1.0 if observed >= 1.0 else 0.0
+    return (observed - expected) / (1.0 - expected)
+
+
+def judge_label_distribution(
+    labels_by_episode: Sequence[Mapping[str, str | None]],
+    judge_ids: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """Per-judge label counts, ``unknown`` rate and missing (unlabelled) count."""
+
+    report: dict[str, dict[str, Any]] = {}
+    for judge_id in judge_ids:
+        values = [labels.get(judge_id) for labels in labels_by_episode]
+        present = [value for value in values if value is not None]
+        counts: dict[str, int] = {}
+        for value in present:
+            counts[value] = counts.get(value, 0) + 1
+        report[judge_id] = {
+            "episodes": len(values),
+            "labelled": len(present),
+            "missing": len(values) - len(present),
+            "unknown": counts.get("unknown", 0),
+            "unknown_rate": (counts.get("unknown", 0) / len(present)) if present else None,
+            "label_counts": dict(sorted(counts.items())),
+        }
+    return report
+
+
+def agreement_reference(
+    episode_labels: Sequence[tuple[str, Mapping[str, str | None]]],
+    judge_ids: Sequence[str],
+    *,
+    min_agreement: int,
+) -> dict[str, str]:
+    """Modal label per episode where at least *min_agreement* judges concur.
+
+    Ties break to the lexicographically first label for replay determinism.
+    Episodes that do not reach the threshold are omitted rather than guessed.
+    """
+
+    if min_agreement < 1:
+        raise SilverError("min_agreement must be >= 1")
+    reference: dict[str, str] = {}
+    for episode_id, labels in episode_labels:
+        present = [labels.get(judge_id) for judge_id in judge_ids]
+        present = [value for value in present if value is not None]
+        if len(present) < min_agreement:
+            continue
+        counts: dict[str, int] = {}
+        for value in present:
+            counts[value] = counts.get(value, 0) + 1
+        label, count = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0]
+        if count >= min_agreement:
+            reference[episode_id] = label
+    return reference
+
+
 # -- silver construction ----------------------------------------------------
 
 
@@ -421,8 +748,16 @@ def build_silver_result(
     seed: str = "silver-v1",
     text_bytes: int = DEFAULT_JUDGE_TEXT_BYTES,
     prompt_version: str = JUDGE_PROMPT_VERSION,
+    strict: bool = True,
 ) -> SilverResult:
-    """Label every episode with every judge and adjudicate the silver set."""
+    """Label every episode with every judge and adjudicate the silver set.
+
+    With ``strict=True`` (the default) a judge transport error or an
+    unparseable answer raises immediately. With ``strict=False`` the failure is
+    recorded as a missing label for that judge/episode and the run continues, so
+    a long checkpointed run is not lost to one flaky call; the report shows the
+    per-judge missing count and the episode is never coerced to ``unknown``.
+    """
 
     if len(judges) < 2:
         raise SilverError("a silver set requires at least two independent judges")
@@ -440,17 +775,47 @@ def build_silver_result(
     per_episode: dict[str, dict[str, JudgeLabel]] = {}
     judge_calls = {judge_id: 0 for judge_id in judge_ids}
     parse_failures = {judge_id: 0 for judge_id in judge_ids}
+    judge_errors = {judge_id: 0 for judge_id in judge_ids}
 
     for episode in episodes:
         prompt = build_judge_prompt(episode.text, taxonomy, max_bytes=text_bytes)
         labels: dict[str, JudgeLabel] = {}
         for spec, client in judges:
-            raw_content = client.label(prompt, episode_id=episode.episode_id)
             judge_calls[spec.judge_id] += 1
+            raw_content: str | None
+            try:
+                raw_content = client.label(prompt, episode_id=episode.episode_id)
+            except Exception as exc:  # transport/CLI failure
+                if not strict:
+                    judge_errors[spec.judge_id] += 1
+                    labels[spec.judge_id] = JudgeLabel(
+                        judge_id=spec.judge_id,
+                        model=spec.model,
+                        label=None,
+                        confidence=None,
+                        raw={},
+                        backend=spec.backend,
+                        cli_version=getattr(client, "cli_version", None),
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                    continue
+                raise
             try:
                 label, confidence = parse_judge_answer(raw_content, allowed)
-            except SilverError:
+            except SilverError as exc:
                 parse_failures[spec.judge_id] += 1
+                if not strict:
+                    labels[spec.judge_id] = JudgeLabel(
+                        judge_id=spec.judge_id,
+                        model=spec.model,
+                        label=None,
+                        confidence=None,
+                        raw={"content": _strip_code_fences(raw_content)},
+                        backend=spec.backend,
+                        cli_version=getattr(client, "cli_version", None),
+                        error=f"parse: {exc}",
+                    )
+                    continue
                 raise
             labels[spec.judge_id] = JudgeLabel(
                 judge_id=spec.judge_id,
@@ -458,13 +823,15 @@ def build_silver_result(
                 label=label,
                 confidence=confidence,
                 raw={"content": _strip_code_fences(raw_content)},
+                backend=spec.backend,
+                cli_version=getattr(client, "cli_version", None),
             )
         per_episode[episode.episode_id] = labels
         values = [labels[judge_id].label for judge_id in judge_ids]
-        agreed = len(set(values)) == 1
+        agreed = len(set(values)) == 1 and values[0] is not None
         adjudication = "adjudicated" if agreed else "disagreement"
         primary_labels: Mapping[str, tuple[str, ...]] = (
-            {PRIMARY_FACET: (values[0],)} if agreed else {}
+            {PRIMARY_FACET: (values[0],)} if agreed and values[0] is not None else {}
         )
         metadata = {
             "silver": True,
@@ -494,19 +861,25 @@ def build_silver_result(
             )
         )
 
-    kappa = kappa_over_judges(
-        [
-            {judge_id: per_episode[ep.episode_id][judge_id].label for judge_id in judge_ids}
-            for ep in episodes
-        ],
-        judge_ids,
-    )
+    labels_by_episode = [
+        {judge_id: per_episode[ep.episode_id][judge_id].label for judge_id in judge_ids}
+        for ep in episodes
+    ]
+    kappa = kappa_over_judges(labels_by_episode, judge_ids)
     sample_size = len(episodes)
-    trustworthy = (
-        sample_size >= MIN_SILVER_SAMPLE_SIZE
-        and kappa is not None
-        and kappa >= KAPPA_TRUST_FLOOR
-    )
+    pairwise_kappa = pairwise_cohen_kappa(labels_by_episode, judge_ids, asked=sample_size)
+    fleiss = fleiss_kappa(labels_by_episode, judge_ids)
+    distribution = judge_label_distribution(labels_by_episode, judge_ids)
+    coverage_ok = all(row["meets_floor"] for row in pairwise_kappa)
+    if sample_size < MIN_SILVER_SAMPLE_SIZE:
+        trust_reason = "sample_too_small"
+    elif not coverage_ok:
+        trust_reason = "missing_labels_over_floor"
+    elif kappa is None or kappa < KAPPA_TRUST_FLOOR:
+        trust_reason = "kappa_below_floor"
+    else:
+        trust_reason = "ok"
+    trustworthy = trust_reason == "ok"
 
     gold_set = GoldSet(
         gold_set_version=gold_set_version,
@@ -532,7 +905,10 @@ def build_silver_result(
         "facet_hash": taxonomy.facet_hash(),
         "gold_set_version": gold_set.gold_set_version,
         "gold_set_hash": gold_set.gold_set_hash(),
-        "judges": [{"judge_id": spec.judge_id, "model": spec.model} for spec, _ in judges],
+        "judges": [
+            {"judge_id": spec.judge_id, "model": spec.model, "backend": spec.backend}
+            for spec, _ in judges
+        ],
         "sample": {
             "episodes": sample_size,
             "by_provider": dict(sorted(by_provider.items())),
@@ -541,15 +917,22 @@ def build_silver_result(
             "per_judge": dict(sorted(judge_calls.items())),
             "total": sum(judge_calls.values()),
             "parse_failures": dict(sorted(parse_failures.items())),
+            "transport_errors": dict(sorted(judge_errors.items())),
         },
+        "judge_distribution": distribution,
         "agreement": {
             "agreed": agreed,
             "disagreement": len(gold_episodes) - agreed,
             "agreement_rate": agreed / len(gold_episodes) if gold_episodes else None,
             "cohen_kappa": kappa,
+            "pairwise_cohen_kappa": pairwise_kappa,
+            "fleiss_kappa": fleiss,
             "kappa_trust_floor": KAPPA_TRUST_FLOOR,
             "min_sample_size": MIN_SILVER_SAMPLE_SIZE,
             "sample_size": sample_size,
+            "overlap_fraction_floor": MIN_PAIRWISE_OVERLAP_FRACTION,
+            "coverage_ok": coverage_ok,
+            "trust_reason": trust_reason,
             "trustworthy": trustworthy,
         },
         "episodes": [
@@ -564,17 +947,34 @@ def build_silver_result(
                 "judge_confidence": {
                     judge_id: per_episode[ep.episode_id][judge_id].confidence for judge_id in judge_ids
                 },
+                "judge_backend": {
+                    judge_id: per_episode[ep.episode_id][judge_id].backend for judge_id in judge_ids
+                },
+                "judge_cli_version": {
+                    judge_id: per_episode[ep.episode_id][judge_id].cli_version
+                    for judge_id in judge_ids
+                },
+                "judge_error": {
+                    judge_id: per_episode[ep.episode_id][judge_id].error
+                    for judge_id in judge_ids
+                    if per_episode[ep.episode_id][judge_id].error
+                },
             }
             for ep in gold_episodes
         ],
         "limitations": [
-            "Silver labels measure agreement with two LLMs, not ground truth.",
-            "A Jev error shared by both judges is invisible to this gate.",
+            "Silver labels measure agreement between the judge set, not ground truth.",
+            "A Jev error shared by every judge is invisible to this gate.",
             "Disagreement episodes are excluded from the primary score and reported.",
             f"Kappa below {KAPPA_TRUST_FLOOR} means the silver set is not trustworthy and the gate is not claimed.",
             (
                 f"Fewer than {MIN_SILVER_SAMPLE_SIZE} episodes means the silver set is not "
                 "trustworthy regardless of kappa; a tiny sample makes kappa degenerate."
+            ),
+            (
+                f"A judge pair must overlap on at least {MIN_PAIRWISE_OVERLAP_FRACTION:.0%} of the "
+                "episodes both judges were asked; a pair below that floor is untrusted "
+                "(missing_labels_over_floor) even when its kappa looks high."
             ),
         ],
     }
@@ -616,19 +1016,25 @@ def evaluate_silver_vs_jev(
     metrics = single_label_metrics(pairs)
 
     judge_ids = _judge_ids_from_gold(gold_set)
-    kappa = kappa_over_judges(
-        [
-            {judge_id: _judge_label(episode, judge_id) for judge_id in judge_ids}
-            for episode in gold_set.episodes
-        ],
-        judge_ids,
-    )
+    labels_by_episode = [
+        {judge_id: _judge_label(episode, judge_id) for judge_id in judge_ids}
+        for episode in gold_set.episodes
+    ]
+    kappa = kappa_over_judges(labels_by_episode, judge_ids)
     sample_size = len(gold_set.episodes)
-    trustworthy = (
-        sample_size >= MIN_SILVER_SAMPLE_SIZE
-        and kappa is not None
-        and kappa >= KAPPA_TRUST_FLOOR
-    )
+    pairwise_kappa = pairwise_cohen_kappa(labels_by_episode, judge_ids, asked=sample_size)
+    coverage_ok = bool(pairwise_kappa) and all(row["meets_floor"] for row in pairwise_kappa)
+    if len(judge_ids) < 2:
+        trust_reason = "insufficient_judges"
+    elif sample_size < MIN_SILVER_SAMPLE_SIZE:
+        trust_reason = "sample_too_small"
+    elif not coverage_ok:
+        trust_reason = "missing_labels_over_floor"
+    elif kappa is None or kappa < KAPPA_TRUST_FLOOR:
+        trust_reason = "kappa_below_floor"
+    else:
+        trust_reason = "ok"
+    trustworthy = trust_reason == "ok"
 
     non_unknown_jev = sum(
         1
@@ -644,9 +1050,13 @@ def evaluate_silver_vs_jev(
         "judges": judge_ids,
         "agreement": {
             "cohen_kappa": kappa,
+            "pairwise_cohen_kappa": pairwise_kappa,
             "kappa_trust_floor": KAPPA_TRUST_FLOOR,
             "min_sample_size": MIN_SILVER_SAMPLE_SIZE,
             "sample_size": sample_size,
+            "overlap_fraction_floor": MIN_PAIRWISE_OVERLAP_FRACTION,
+            "coverage_ok": coverage_ok,
+            "trust_reason": trust_reason,
             "trustworthy": trustworthy,
         },
         "silver": {
@@ -670,11 +1080,12 @@ def evaluate_silver_vs_jev(
             "silver_trustworthy": trustworthy,
             "jev_accuracy": metrics["accuracy"],
             "note": (
-                "Silver gate measures Jev against two-LLM agreement, not ground truth; "
+                "Silver gate measures Jev against judge agreement, not ground truth; "
                 "a shared Jev error is invisible."
             ),
         },
     }
+    report["judge_references"] = evaluate_jev_references(gold_set, predictions)
     if run_full_evaluator:
         agreed_set = GoldSet(
             gold_set_version=gold_set.gold_set_version,
@@ -709,6 +1120,92 @@ def _judge_label(episode: GoldEpisode, judge_id: str) -> str | None:
         if isinstance(value, str):
             return value
     return None
+
+
+def _reference_metrics(
+    reference: Mapping[str, str],
+    predictions_by_id: Mapping[str, Prediction],
+) -> dict[str, Any]:
+    """Score Jev against one reference label map (judge / majority / unanimous)."""
+
+    pairs: list[tuple[str | None, str | None]] = []
+    missing: list[str] = []
+    for episode_id in sorted(reference):
+        prediction = predictions_by_id.get(episode_id)
+        if prediction is None:
+            missing.append(episode_id)
+            continue
+        pairs.append((reference[episode_id], prediction.primary(PRIMARY_FACET)))
+    metrics = single_label_metrics(pairs)
+    non_unknown = sum(1 for _, predicted in pairs if predicted is not None and predicted != "unknown")
+    return {
+        "episodes": len(reference),
+        "scored": len(pairs),
+        "missing": missing,
+        "accuracy": metrics["accuracy"],
+        "macro_f1": metrics["macro_f1"],
+        "micro_f1": metrics["micro_f1"],
+        "coverage": metrics["coverage"],
+        "abstentions": metrics["abstentions"],
+        "non_unknown": non_unknown,
+        "non_unknown_rate": non_unknown / len(pairs) if pairs else None,
+        "per_class": metrics["per_class"],
+    }
+
+
+def evaluate_jev_references(
+    gold_set: GoldSet,
+    predictions: Sequence[Prediction],
+) -> dict[str, Any]:
+    """Score Jev against each individual judge, the majority and the unanimous label.
+
+    This is the multi-judge comparison the owner asked for: Jev accuracy and
+    macro-F1 when the reference is (a) each judge alone, (b) the modal label where
+    at least a strict majority of judges concur, and (c) the unanimous label. The
+    pairwise Cohen's kappa, Fleiss' kappa and per-judge label distribution needed
+    to judge the references travel with it. Missing Jev predictions are listed,
+    never imputed.
+    """
+
+    predictions_by_id = _prediction_map(predictions)
+    judge_ids = _judge_ids_from_gold(gold_set)
+    labels_by_episode = [
+        {judge_id: _judge_label(episode, judge_id) for judge_id in judge_ids}
+        for episode in gold_set.episodes
+    ]
+    references: dict[str, dict[str, Any]] = {}
+    for judge_id in judge_ids:
+        reference = {
+            episode.episode_id: label
+            for episode in gold_set.episodes
+            if (label := _judge_label(episode, judge_id)) is not None
+        }
+        references[f"judge:{judge_id}"] = _reference_metrics(reference, predictions_by_id)
+    if len(judge_ids) >= 2:
+        majority_threshold = len(judge_ids) // 2 + 1
+        episode_labels = [
+            (episode.episode_id, labels_by_episode[index])
+            for index, episode in enumerate(gold_set.episodes)
+        ]
+        majority = agreement_reference(
+            episode_labels, judge_ids, min_agreement=majority_threshold
+        )
+        unanimous = agreement_reference(
+            episode_labels, judge_ids, min_agreement=len(judge_ids)
+        )
+        references[f"majority_{majority_threshold}_of_{len(judge_ids)}"] = _reference_metrics(
+            majority, predictions_by_id
+        )
+        references[f"unanimous_{len(judge_ids)}_of_{len(judge_ids)}"] = _reference_metrics(
+            unanimous, predictions_by_id
+        )
+    return {
+        "judges": judge_ids,
+        "pairwise_cohen_kappa": pairwise_cohen_kappa(labels_by_episode, judge_ids),
+        "fleiss_kappa": fleiss_kappa(labels_by_episode, judge_ids),
+        "judge_distribution": judge_label_distribution(labels_by_episode, judge_ids),
+        "references": references,
+    }
 
 
 # -- projection helpers -----------------------------------------------------
@@ -971,6 +1468,276 @@ class HTTPJudgeClient:
                 raise SilverError(f"judge {self.spec.judge_id} message content is not text")
             return content
         raise SilverError(f"judge {self.spec.judge_id} failed after {self.max_attempts} attempts: {last_error}")
+
+
+# -- subscription CLI judge backends ----------------------------------------
+
+
+def build_judge_schema(allowed_labels: Iterable[str]) -> dict[str, Any]:
+    """The JSON schema the CLI judges are constrained to return."""
+
+    labels = sorted(set(allowed_labels))
+    if not labels:
+        raise SilverError("a judge schema needs at least one allowed label")
+    return {
+        "type": "object",
+        "properties": {
+            "primary_intent": {"type": "string", "enum": labels},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        },
+        "required": ["primary_intent", "confidence"],
+        "additionalProperties": False,
+    }
+
+
+def _safe_episode_filename(episode_id: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in episode_id)
+    return (safe or "episode")[:120]
+
+
+class _CLIJudgeClient:
+    """Shared plumbing for judges driven by a non-interactive subscription CLI.
+
+    Every call runs in a private empty working directory with the CLI's sandbox
+    enabled, a JSON schema for the label, and a bounded timeout/retry budget. No
+    API key is read or written: the CLIs own their subscription auth. The exact
+    CLI version is captured once and recorded on every label. The *runner*
+    parameter exists so tests can replay recorded answers without a subprocess.
+    """
+
+    backend = "cli"
+    cli_name = "cli"
+
+    def __init__(
+        self,
+        spec: JudgeSpec,
+        allowed_labels: Iterable[str],
+        *,
+        timeout_seconds: float = 600.0,
+        max_attempts: int = 2,
+        retry_backoff_seconds: float = 10.0,
+        work_dir: str | Path | None = None,
+        binary: str | None = None,
+        runner: Callable[..., Any] | None = None,
+    ) -> None:
+        if spec.backend != self.backend:
+            raise SilverError(
+                f"{type(self).__name__} cannot drive backend {spec.backend!r}"
+            )
+        if timeout_seconds <= 0:
+            raise SilverError("timeout_seconds must be > 0")
+        if max_attempts < 1:
+            raise SilverError("max_attempts must be >= 1")
+        if retry_backoff_seconds < 0:
+            raise SilverError("retry_backoff_seconds must be >= 0")
+        labels = sorted(set(allowed_labels))
+        if not labels:
+            raise SilverError(f"judge {spec.judge_id} has no allowed labels")
+        self.spec = spec
+        self.allowed_labels = labels
+        self.timeout_seconds = timeout_seconds
+        self.max_attempts = max_attempts
+        self.retry_backoff_seconds = retry_backoff_seconds
+        self.binary = binary or self.cli_name
+        self._runner = runner or self._default_runner
+        self._owns_dir = work_dir is None
+        self.work_dir = (
+            Path(work_dir) if work_dir is not None else Path(tempfile.mkdtemp(prefix=f"silver-{spec.judge_id}-"))
+        )
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        self.schema_path = self.work_dir / "schema.json"
+        self.schema_path.write_text(
+            json.dumps(build_judge_schema(labels), sort_keys=True), encoding="utf-8"
+        )
+        self.calls_made = 0
+        self.cli_version = self._capture_version()
+
+    def _default_runner(self, argv: Sequence[str], *, input_text: str | None, timeout: float) -> Any:
+        return subprocess.run(
+            list(argv),
+            input=input_text,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(self.work_dir),
+        )
+
+    def _capture_version(self) -> str | None:
+        try:
+            proc = self._runner([self.binary, "--version"], input_text=None, timeout=60.0)
+        except Exception:  # a missing CLI is reported at call time, not here
+            return None
+        text = ((getattr(proc, "stdout", "") or "") + "\n" + (getattr(proc, "stderr", "") or "")).strip()
+        return text.splitlines()[0].strip() if text else None
+
+    @staticmethod
+    def _tail(text: str | None, limit: int = 600) -> str:
+        raw = (text or "").strip()
+        return raw[-limit:] if raw else ""
+
+    def _run(self, argv: Sequence[str], *, input_text: str | None) -> Any:
+        last_error = "no attempt made"
+        for attempt in range(1, self.max_attempts + 1):
+            self.calls_made += 1
+            try:
+                proc = self._runner(list(argv), input_text=input_text, timeout=self.timeout_seconds)
+            except subprocess.TimeoutExpired:
+                last_error = f"timeout after {self.timeout_seconds:g}s"
+            except Exception as exc:  # missing binary, OSError, ...
+                last_error = f"{type(exc).__name__}: {exc}"
+            else:
+                code = getattr(proc, "returncode", 0)
+                if code in (0, None):
+                    return proc
+                last_error = f"exit {code}: {self._tail(getattr(proc, 'stderr', None))}"
+            if attempt < self.max_attempts:
+                time.sleep(self.retry_backoff_seconds * (2 ** (attempt - 1)))
+        raise SilverError(
+            f"judge {self.spec.judge_id} ({self.backend}) failed after "
+            f"{self.max_attempts} attempts: {last_error}"
+        )
+
+
+class CodexCLIJudgeClient(_CLIJudgeClient):
+    """Judge via the owner's Codex subscription (``codex exec``).
+
+    The model is passed with ``-m``; the call is non-interactive, read-only
+    sandboxed, ephemeral (no persisted session), and schema-constrained. The
+    prompt goes on stdin, so episode text is never a command-line argument, and
+    the final message is read from Codex's ``-o`` file.
+    """
+
+    backend = "codex-cli"
+    cli_name = "codex"
+
+    def label(self, prompt: str, *, episode_id: str) -> str:
+        out_path = self.work_dir / f"codex-{_safe_episode_filename(episode_id)}.json"
+        if out_path.exists():
+            out_path.unlink()
+        argv = [
+            self.binary,
+            "exec",
+            "-m",
+            self.spec.api_model,
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--ephemeral",
+            "--color",
+            "never",
+            "-C",
+            str(self.work_dir),
+            "--output-schema",
+            str(self.schema_path),
+            "-o",
+            str(out_path),
+            "-",
+        ]
+        self._run(argv, input_text=prompt)
+        if not out_path.exists():
+            raise SilverError(f"judge {self.spec.judge_id} (codex-cli) wrote no final message")
+        content = out_path.read_text(encoding="utf-8").strip()
+        if not content:
+            raise SilverError(f"judge {self.spec.judge_id} (codex-cli) returned an empty answer")
+        return content
+
+
+class AgyCLIJudgeClient(_CLIJudgeClient):
+    """Judge via the owner's Antigravity subscription (``agy --print``).
+
+    The model is passed with ``--model`` and the prompt with ``--print=`` (the
+    CLI rejects a bare positional prompt). Output is JSON with a
+    ``structured_output`` object produced from ``--json-schema``; the raw CLI
+    version is recorded on every label.
+    """
+
+    backend = "agy-cli"
+    cli_name = "agy"
+
+    def label(self, prompt: str, *, episode_id: str) -> str:
+        argv = [
+            self.binary,
+            "--model",
+            self.spec.api_model,
+            "--sandbox",
+            "--disable-slash-commands",
+            "--output-format",
+            "json",
+            "--json-schema",
+            str(self.schema_path),
+            f"--print={prompt}",
+        ]
+        proc = self._run(argv, input_text=None)
+        stdout = getattr(proc, "stdout", "") or ""
+        try:
+            payload = json.loads(stdout)
+        except ValueError as exc:
+            raise SilverError(
+                f"judge {self.spec.judge_id} (agy-cli) returned invalid JSON: "
+                f"{self._tail(stdout)}"
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise SilverError(f"judge {self.spec.judge_id} (agy-cli) output is not an object")
+        structured = payload.get("structured_output")
+        if isinstance(structured, Mapping):
+            return json.dumps(dict(structured))
+        response = payload.get("response")
+        if isinstance(response, str) and response.strip():
+            return response
+        raise SilverError(
+            f"judge {self.spec.judge_id} (agy-cli) output has no structured_output or response"
+        )
+
+
+def build_judge_client(
+    spec: JudgeSpec,
+    allowed_labels: Iterable[str],
+    *,
+    base_url: str = DEFAULT_BASE_URL,
+    api_key_env: str = DEFAULT_API_KEY_ENV,
+    timeout_seconds: float = 300.0,
+    cli_timeout_seconds: float = 600.0,
+    max_attempts: int = 3,
+    retry_backoff_seconds: float = 5.0,
+    max_requests: int | None = None,
+    cli_work_dir: str | Path | None = None,
+    runner: Callable[..., Any] | None = None,
+) -> JudgeClient:
+    """Build the client for a :class:`JudgeSpec`'s backend."""
+
+    if spec.backend == "gateway":
+        return HTTPJudgeClient(
+            spec,
+            base_url=base_url,
+            api_key_env=api_key_env,
+            timeout_seconds=timeout_seconds,
+            max_attempts=max_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
+            max_requests=max_requests,
+        )
+    if spec.backend == "codex-cli":
+        return CodexCLIJudgeClient(
+            spec,
+            allowed_labels,
+            timeout_seconds=cli_timeout_seconds,
+            max_attempts=max_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
+            work_dir=cli_work_dir,
+            runner=runner,
+        )
+    if spec.backend == "agy-cli":
+        return AgyCLIJudgeClient(
+            spec,
+            allowed_labels,
+            timeout_seconds=cli_timeout_seconds,
+            max_attempts=max_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
+            work_dir=cli_work_dir,
+            runner=runner,
+        )
+    raise SilverError(
+        f"unknown judge backend {spec.backend!r}; expected one of: " + ", ".join(JUDGE_BACKENDS)
+    )
 
 
 class CheckpointJudgeClient:

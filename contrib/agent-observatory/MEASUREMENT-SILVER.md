@@ -32,25 +32,36 @@ Re-classifying the same 53 sessions in the text scope produced non-`unknown`
    `[city] <agent> • <time>` role prompts, runtime-context snapshots,
    `<system-reminder>` wake/deferred reminders and skill payloads. The filter is
    versioned (`FRAMEWORK_FILTER_VERSION`) and recorded on every state.
-3. **Judge.** Two independent judges label `primary_intent` from the **same
-   stripped text** with the **same taxonomy criteria text**, at temperature 0
-   with JSON output:
+3. **Judge.** A configurable set of independent judges labels `primary_intent`
+   from the **same stripped text** with the **same taxonomy criteria**, at
+   temperature 0 with JSON output. The default set is two gateway judges:
    - GLM 5.3 Flash — `uniblock-prod/fireworks-ai/glm-5p3-flash`
    - DeepSeek V4 Flash — `uniblock-prod/deepseek/deepseek-flash`
 
-   Both go through the Uniblock prod gateway (OpenAI-compatible
-   `/chat/completions`). The fixed prompt is versioned
-   (`JUDGE_PROMPT_VERSION`). The bearer key is read from an environment variable
-   at call time and is never printed or committed. A stable user agent is
-   required: the gateway rejects the default `Python-urllib` signature with
-   HTTP 403 (`error code: 1010`).
-4. **Adjudicate.** Agreement between the two judges becomes an `adjudicated`
-   silver label. Disagreement becomes `disagreement`, is excluded from the
-   primary score and is reported. Per-judge labels, confidences, model ids,
-   prompt version, text hash and the `gold_set_hash` are recorded. Silver is
-   kept strictly separate from Jev predictions (`annotator="silver-judges"`).
-5. **Report.** `silver-evaluate` reports judge-judge Cohen's kappa and
-   Jev-vs-silver accuracy/macro-F1 on agreed items.
+   `--judge` / `--judges-file` add or replace judges. Each judge is bound to a
+   pluggable backend: `gateway` (the OpenAI-compatible Uniblock prod
+   `/chat/completions` path above) or a subscription CLI — `codex-cli`
+   (`codex exec -m gpt-6-luna`, read-only sandbox, ephemeral, JSON-schema
+   constrained) for GPT 6 Luna, and `agy-cli`
+   (`agy --model gemini-3.8-flash-medium --json-schema`) for Gemini 3.8 Flash.
+   Subscription judges never touch a paid API key. Exact model slugs come from
+   each CLI's own `--version`/model list, and the CLI version plus model is
+   recorded with every label. The fixed prompt is versioned
+   (`JUDGE_PROMPT_VERSION`). The gateway bearer key is read from an environment
+   variable at call time and is never printed or committed; a stable user agent
+   is required (the gateway rejects the default `Python-urllib` signature with
+   HTTP 403, `error code: 1010`).
+4. **Adjudicate.** Judges that all agree become an `adjudicated` silver label.
+   Any disagreement becomes `disagreement`, is excluded from the primary score
+   and is reported. Per-judge labels, confidences, model/backend ids, CLI
+   version, prompt version, text hash and the `gold_set_hash` are recorded.
+   Silver is kept strictly separate from Jev predictions
+   (`annotator="silver-judges"`).
+5. **Report.** `silver-build` reports every pairwise Cohen's kappa, Fleiss'
+   kappa across the judge set, and each judge's label distribution and
+   `unknown` rate. `silver-evaluate` reports Jev accuracy/macro-F1 against each
+   judge alone, the majority label and the unanimous label. The trust verdict
+   uses the **minimum** pairwise kappa, so every pair must clear the floor.
 6. **Enforce.** The kappa floor and the minimum sample size are enforced, not
    merely reported. `silver-build` refuses to write `--out-gold` when kappa is
    below `0.6` (`KAPPA_TRUST_FLOOR`) or when the sample has fewer than
@@ -105,7 +116,7 @@ was never collected — so they were skipped and reported, not fabricated).
 
 - Judge calls: 300 (150 per judge), 0 parse failures.
 - Agreement: 112 `adjudicated`, 38 `disagreement` (agreement rate 0.747).
-- **Cohen's kappa: 0.406**, below the 0.6 trust floor → **the silver set is not
+- **Cohen's kappa on the 150-episode run: 0.406**, below the 0.6 trust floor → **the silver set is not
   trustworthy and the gate was not claimed.** With the enforced gate,
   `silver-build` refuses to write this gold set and exits nonzero; reproducing
   the measured artifact requires the explicit `--allow-untrusted` opt-in, and
@@ -125,6 +136,49 @@ The root-cause re-run is reported separately in the execution report: the same
 `bugfix`/`planning_spec`/`implementation`, 7 still `unknown`, 3 with no stored
 text label). The classifier fix is confirmed; the two-judge silver gate is not
 acceptable as a pass on this corpus.
+
+## Measured outcome, 2026-09-26 (four judges)
+
+The owner asked whether GPT 6 Luna and Gemini 3.8 Flash as additional judges lift
+the gate. The same 150 episodes and the same fixed prompt were re-used; the
+existing GLM/DeepSeek checkpoint was replayed, and only the two new judges were
+called (150 each, zero recorded failures) through their subscription CLIs
+(`codex-cli` GPT 6 Luna 0.155.1, `agy-cli` Gemini 3.8 Flash medium 1.2.11). No
+paid gateway key was used for the new judges. The answer is no:
+
+- Pairwise Cohen's kappa: GLM×DeepSeek **0.406**, GLM×GPT6 0.312,
+  GLM×Gemini 0.199, DeepSeek×GPT6 0.364, DeepSeek×Gemini 0.221,
+  GPT6×Gemini **0.406**. Minimum pairwise = 0.199.
+- **Fleiss' kappa across all four judges: 0.306** (a separate statistic from the
+  two-judge Cohen's kappa; both are far below the 0.6 floor).
+- Per-judge `unknown` rate: DeepSeek 3.3%, GPT 6 Luna 8.7%, GLM 15.3%, Gemini
+  3.8 Flash 16.7%. Every judge still skews to
+  `dependency_worktree_agent_ops` (128/150, 129/150, 99/150, 119/150).
+- Jev accuracy / macro-F1 against each reference: GLM 0.628/0.391,
+  DeepSeek 0.527/0.366, GPT 6 Luna 0.527/0.317, Gemini 0.547/0.276; majority
+  3-of-4 (126 episodes) 0.565/0.342; unanimous 4-of-4 (85 episodes)
+  0.675/0.422. Two episodes had no stored Jev classification.
+- Adding two stronger subscription judges did **not** increase agreement. No
+  reference clears kappa >= 0.6, so the owner's no-pass-below-0.6 rule stands and
+  the gold gate is not claimed.
+
+**These are the 150-episode run's numbers**, from the recorded checkpoint
+`judge_checkpoint_4judge.json`, not the small checked-in test fixture. The
+mechanics fixture `tests/fixtures/silver/recorded_multi_judge_answers.json` has
+only 8 episodes and necessarily different values (two-judge GLM×DeepSeek `0.6`,
+minimum pairwise `0.3333`, Fleiss `0.528`); it exists to exercise the multi-judge
+math without network or subprocess calls. The fixture's own values are pinned by
+`test_fixture_pins_its_own_kappa_values_not_the_150_episode_run` so a fixture
+edit cannot silently rewrite this measurement note.
+
+**Method note.** The #34 merge changed framework stripping to
+`FRAMEWORK_FILTER_VERSION` 1.1.0, so rebuilding from the live projection under
+the current branch yields different episode text. To keep all four judges on the
+identical documents the checkpoint was built from, the two-judge sample was
+reconstructed with the pre-#34 code and verified hash-for-hash against the saved
+`sample150.json` (262 eligible, 150 sampled, 0 text-hash mismatches); the judge
+prompt is byte-identical between the two code states. Artifacts:
+`/home/coolhenrylinux/reports/jev-xb17jn/4judge/`.
 
 ## Reproducing
 

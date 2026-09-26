@@ -345,6 +345,26 @@ class RescoreTests(unittest.TestCase):
         self.assertTrue(report["modes"]["label"]["trust"]["clears_floor"])
         self.assertEqual(report["modes"]["label"]["trust"]["min_pairwise_cohen_kappa"], 1.0)
 
+    def test_collapse_overlap_floor_blocks_a_thin_abstain_overlap(self):
+        # Under unknown-as-abstain the six unknown votes from judge b are dropped,
+        # leaving a perfect but thin four-episode overlap. kappa is 1.0 and the
+        # sample is ten, so only the shared overlap floor can refuse the gate.
+        votes = tuple(
+            JudgeVote(
+                f"e{index}",
+                {"a": "bugfix", "b": "unknown" if index <= 6 else "bugfix"},
+            )
+            for index in range(1, 11)
+        )
+        report = rescore_collapsed(votes, ("a", "b"), {}, include_baseline=False)
+        abstain = report["modes"]["abstain"]["trust"]
+        self.assertEqual(abstain["min_pairwise_cohen_kappa"], 1.0)
+        self.assertEqual(abstain["sample_size"], 10)
+        self.assertFalse(abstain["coverage_ok"])
+        self.assertEqual(abstain["trust_reason"], "missing_labels_over_floor")
+        self.assertFalse(abstain["clears_floor"])
+        self.assertFalse(report["clears_floor"])
+
     def test_rescore_rejects_a_collapse_that_cannot_map_the_votes(self):
         votes = (
             JudgeVote("e1", {"glm-5p3-flash": "bugfix", "deepseek-v4-flash": "implementation",

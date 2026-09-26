@@ -99,16 +99,17 @@ from .silver import (
     DEFAULT_BASE_URL,
     DEFAULT_JUDGE_TEXT_BYTES,
     DEFAULT_SAMPLE_SIZE,
-    JUDGE_DEEPSEEK,
-    JUDGE_GLM,
     JUDGE_PROMPT_VERSION,
+    PRIMARY_FACET,
     CheckpointJudgeClient,
-    HTTPJudgeClient,
+    build_judge_client,
     build_silver_episodes,
     build_silver_result,
     evaluate_silver_vs_jev,
     load_candidates_csv,
+    load_judge_config,
     predictions_from_store,
+    resolve_judges,
     sample_stratified,
     session_key_from_group_key,
 )
@@ -732,21 +733,23 @@ def _cmd_shadow(args: argparse.Namespace) -> int:
     return 0
 
 
-def _silver_judges(raw: Sequence[str]) -> list[Any]:
-    """Map ``--judge`` values to ``JudgeSpec`` entries (default: both judges)."""
+def _silver_judges(args: argparse.Namespace) -> list[Any]:
+    """Resolve the judge set from ``--judges-file`` or repeatable ``--judge``.
 
-    if not raw:
-        return [JUDGE_GLM, JUDGE_DEEPSEEK]
-    wanted = {value.strip() for value in raw if value.strip() and value != "all"}
-    chosen = []
-    for spec in (JUDGE_GLM, JUDGE_DEEPSEEK):
-        if spec.judge_id in wanted or spec.model in wanted or spec.api_model in wanted:
-            chosen.append(spec)
-    if not chosen:
-        raise ObservatoryError(
-            "--judge must name one of: glm-5p3-flash, deepseek-v4-flash, all"
-        )
-    return chosen
+    The default (neither flag) is exactly the two gateway judges, so the
+    historical two-judge behaviour is unchanged.
+    """
+
+    judges_file = getattr(args, "judges_file", None)
+    raw = list(getattr(args, "judge", None) or [])
+    if judges_file and raw:
+        raise ObservatoryError("use either --judge or --judges-file, not both")
+    try:
+        if judges_file:
+            return load_judge_config(judges_file)
+        return resolve_judges(raw)
+    except SilverError as exc:
+        raise ObservatoryError(str(exc)) from exc
 
 
 def _cmd_silver_build(args: argparse.Namespace) -> int:
@@ -768,14 +771,17 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
         )
         text_by_id = {episode.episode_id: episode for episode in episodes}
         sampled = tuple(text_by_id[episode.episode_id] for episode in sample)
+        allowed_labels = taxonomy.label_keys(PRIMARY_FACET)
         judges = []
         transports = {}
-        for spec in _silver_judges(args.judge):
-            inner = HTTPJudgeClient(
+        for spec in _silver_judges(args):
+            inner = build_judge_client(
                 spec,
+                allowed_labels,
                 base_url=args.base_url,
                 api_key_env=args.api_key_env,
                 timeout_seconds=args.judge_timeout,
+                cli_timeout_seconds=args.cli_judge_timeout,
                 max_attempts=args.judge_max_attempts,
                 max_requests=args.max_judge_requests,
             )
@@ -785,7 +791,7 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
                 else inner
             )
             judges.append((spec, client))
-            transports[spec.judge_id] = {"inner": inner, "client": client}
+            transports[spec.judge_id] = {"spec": spec, "inner": inner, "client": client}
         result = build_silver_result(
             sampled,
             taxonomy,
@@ -794,6 +800,7 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
             seed=args.seed,
             text_bytes=args.judge_text_bytes,
             prompt_version=args.prompt_version,
+            strict=not args.tolerate_judge_failures,
         )
         if args.jev_predictions_out:
             predictions = predictions_from_store(store, sampled)
@@ -805,12 +812,31 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
             )
     report = dict(result.report)
     report["sampling"] = {"skipped": skipped, "eligible": len(episodes)}
+    http_requests: dict[str, int] = {}
+    cli_calls: dict[str, int] = {}
+    cli_versions: dict[str, Any] = {}
+    backends: dict[str, dict[str, Any]] = {}
+    for judge_id, entry in transports.items():
+        spec = entry["spec"]
+        inner = entry["inner"]
+        http_requests[judge_id] = int(getattr(inner, "requests_made", 0) or 0)
+        cli_calls[judge_id] = int(getattr(inner, "calls_made", 0) or 0)
+        cli_versions[judge_id] = getattr(inner, "cli_version", None)
+        slot = backends.setdefault(
+            spec.backend, {"judges": [], "http_requests": 0, "cli_calls": 0}
+        )
+        slot["judges"].append(judge_id)
+        slot["http_requests"] += http_requests[judge_id]
+        slot["cli_calls"] += cli_calls[judge_id]
     report["judge_transport"] = {
         "checkpoint": args.checkpoint,
-        "http_requests": {judge_id: entry["inner"].requests_made for judge_id, entry in transports.items()},
+        "http_requests": http_requests,
+        "cli_calls": cli_calls,
         "cache_hits": {
             judge_id: getattr(entry["client"], "cache_hits", 0) for judge_id, entry in transports.items()
         },
+        "cli_versions": cli_versions,
+        "backends": backends,
     }
     agreement = report["agreement"]
     # Write the report first: it is the durable evidence of *why* the gold set
@@ -836,7 +862,12 @@ def _cmd_silver_build(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     if not agreement["trustworthy"] and not args.allow_untrusted:
-        if agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+        if agreement.get("trust_reason") == "missing_labels_over_floor":
+            detail = (
+                "one or more judge pairs fall below the usable-overlap floor "
+                "(missing_labels_over_floor)"
+            )
+        elif agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
             detail = (
                 f"the sample has {agreement['sample_size']} episodes, below the "
                 f"minimum {agreement['min_sample_size']}"
@@ -884,7 +915,12 @@ def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     if not agreement["trustworthy"] and not args.allow_untrusted:
-        if agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+        if agreement.get("trust_reason") == "missing_labels_over_floor":
+            detail = (
+                "one or more judge pairs fall below the usable-overlap floor "
+                "(missing_labels_over_floor)"
+            )
+        elif agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
             detail = (
                 f"the sample has {agreement['sample_size']} episodes, below the "
                 f"minimum {agreement['min_sample_size']}"
@@ -1404,7 +1440,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     silver_build_parser = subparsers.add_parser(
         "silver-build",
-        help="build a two-judge (GLM + DeepSeek) silver primary_intent reference; no human labels",
+        help="build a multi-judge silver primary_intent reference; no human labels",
     )
     silver_build_parser.add_argument("--candidates", required=True, help="candidate CSV (episode_id/group_key/provider/observed_at)")
     silver_build_parser.add_argument("--db", required=True, help="SQLite projection with the candidate transcripts")
@@ -1427,18 +1463,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--judge",
         action="append",
         default=[],
-        help="judge id or model (repeatable; default both glm-5p3-flash and deepseek-v4-flash)",
+        help=(
+            "judge id, model slug, or backend:model (repeatable; default the two "
+            "gateway judges glm-5p3-flash + deepseek-v4-flash)"
+        ),
+    )
+    silver_build_parser.add_argument(
+        "--judges-file",
+        default=None,
+        help="JSON list of {judge_id, model, api_model, backend} judge specs (overrides --judge)",
     )
     silver_build_parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="OpenAI-compatible gateway base URL")
     silver_build_parser.add_argument("--api-key-env", default=DEFAULT_API_KEY_ENV, help="env var holding the gateway key")
     silver_build_parser.add_argument("--judge-timeout", type=float, default=300.0, help="per-judge-request HTTP timeout")
-    silver_build_parser.add_argument("--judge-max-attempts", type=int, default=3, help="HTTP attempts per judge call")
+    silver_build_parser.add_argument(
+        "--cli-judge-timeout", type=float, default=600.0, help="per-call timeout for codex-cli/agy-cli judges"
+    )
+    silver_build_parser.add_argument("--judge-max-attempts", type=int, default=3, help="attempts per judge call")
     silver_build_parser.add_argument(
         "--checkpoint",
         default=None,
         help="JSON checkpoint of raw judge answers, so a partial run resumes instead of re-spending",
     )
-    silver_build_parser.add_argument("--max-judge-requests", type=int, default=300, help="per-run judge request ceiling (owner cap: 2x150)")
+    silver_build_parser.add_argument("--max-judge-requests", type=int, default=300, help="per-run gateway request ceiling (owner cap: 2x150)")
+    silver_build_parser.add_argument(
+        "--tolerate-judge-failures",
+        action="store_true",
+        help=(
+            "record a failed/timed-out judge call as a missing label and continue "
+            "instead of aborting the whole run (default: fail fast)"
+        ),
+    )
     silver_build_parser.add_argument("--excerpt-bytes", type=int, default=2048, help="per-event transcript excerpt bytes")
     silver_build_parser.add_argument("--text-bytes", type=int, default=DEFAULT_JUDGE_TEXT_BYTES, help="per-episode judge text cap")
     silver_build_parser.add_argument("--judge-text-bytes", type=int, default=DEFAULT_JUDGE_TEXT_BYTES, help="prompt document byte cap")
