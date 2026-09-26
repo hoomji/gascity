@@ -877,6 +877,48 @@ the module writes no routing, dispatch or configuration. Applying a treatment
 inside live fleet workflows is a separate, owner-authorized integration and is
 out of scope for this slice.
 
+## 13. Advisory live-routing hook (M8b)
+
+`canary-live-route` is the Python side of the M8b live hook. As a dispatch is
+routed, the Go hook (off by default behind `[observatory]
+live_routing_command`) pipes a small JSON payload to this command; the command
+records next to the route that was actually taken
+
+* Jev's `primary_intent` for the dispatch, and
+* the route the M7 shadow policy **would** suggest next.
+
+It is advisory only. Every advisory row carries `applied_route` equal to the
+caller's `actual_route` and `route_changed=false`; the command writes no
+routing, dispatch or configuration. The Go caller ignores the command's output
+and is fail-open on any error or timeout, so an absent or broken command cannot
+change a route.
+
+The four safety properties:
+
+* **Registration-bound.** The artifact is loaded through
+  `canary.verify_registration_output`: the hash printed by `canary-register`
+  must be supplied (`--expected-registration-hash`) or written to a
+  `<registration>.hash` sidecar, and the recomputed hash must match. A
+  registration that was edited after registration, or supplied without its
+  register-time hash, is refused before a single row is written. The catalog
+  version must equal the registered `catalog_version`.
+* **Budget re-derived at the call site.** The per-run request cap is not copied
+  from the M8 report's estimate. Every Jev attempt is appended to the durable
+  `--ledger` JSONL and remaining budget is re-read from that file immediately
+  before each attempt, so retries and batch items both consume it and a
+  process-per-dispatch caller cannot overspend across invocations.
+* **Kill switch re-polled.** `--kill-switch` is read inside every retry and
+  batch iteration, not once per run; a switch engaged mid-loop is reflected in
+  the recorded row.
+* **Unknown is abstain.** A dispatch without a usable classification records
+  `primary_intent=unknown` and `suggested_route=null`; the layer never guesses
+  and never claims an improvement.
+
+`SingleAttemptTransportClassifier` adapts the bounded transport
+(`retry.max_attempts=1`) for callers that own a built request; the live loop
+owns retries and charges each one, so the ledger is the source of truth rather
+than an in-memory counter.
+
 ## CLI reference
 
 ```
@@ -936,6 +978,9 @@ agent-observatory shadow --catalog CATALOG.json --input BUNDLE.json
 agent-observatory canary-register --input SPEC.json [--out REGISTRATION.json]
 agent-observatory canary --registration REGISTRATION.json --catalog CATALOG.json
     --input BUNDLE.json [--enable] [--kill-switch PATH] [--max-requests N] [--out FILE]
+agent-observatory canary-live-route --registration REGISTRATION.json --catalog CATALOG.json
+    --ledger LEDGER.jsonl [--expected-registration-hash HASH] [--classification MAP.json]
+    [--kill-switch PATH] [--max-requests N] [--max-attempts N] [--request REQUEST.json] [--out FILE]
 agent-observatory --version
 ```
 

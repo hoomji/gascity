@@ -290,6 +290,9 @@ type City struct {
 	Doctor DoctorConfig `toml:"doctor,omitempty"`
 	// Maintenance configures periodic store-maintenance loops.
 	Maintenance MaintenanceConfig `toml:"maintenance,omitempty"`
+	// Observatory configures advisory agent-observatory integrations. Off by
+	// default: an unset command leaves the routing path byte-identical.
+	Observatory ObservatoryConfig `toml:"observatory,omitempty"`
 	// Services declares workspace-owned HTTP services mounted on the
 	// controller edge under /svc/{name}.
 	Services []Service `toml:"service,omitempty"`

@@ -176,6 +176,9 @@ func ValidateDurations(cfg *City, source string) []string {
 	check("[maintenance.dolt]", "interval", cfg.Maintenance.Dolt.Interval)
 	check("[maintenance.dolt]", "gc_timeout", cfg.Maintenance.Dolt.GCTimeout)
 
+	// Advisory live-routing hook timeout (M8b).
+	checkPositive("[observatory.live_routing]", "timeout", cfg.Observatory.LiveRouting.Timeout)
+
 	// Session sleep config durations.
 	checkSleep("[session_sleep]", "interactive_resume", cfg.SessionSleep.InteractiveResume)
 	checkSleep("[session_sleep]", "interactive_fresh", cfg.SessionSleep.InteractiveFresh)

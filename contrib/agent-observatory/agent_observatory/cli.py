@@ -85,6 +85,14 @@ from .impact import (
     observed_evidence_from_store,
 )
 from .jev import REQUEST_BYTE_CAP, build_request, import_response, persist_request
+from .live_routing import (
+    DEFAULT_MAX_ATTEMPTS,
+    LiveRoutingAdvisor,
+    apply_classifications,
+    batch_result,
+    load_batch_request,
+    write_batch_result,
+)
 from .policy import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     PolicyConfig,
@@ -1104,6 +1112,65 @@ def _cmd_canary(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_canary_live_route(args: argparse.Namespace) -> int:
+    """Record advisory next-route evidence for routed dispatches (M8b).
+
+    This is the Python side of the advisory live-routing hook. It is
+    registration-bound (the hash from ``canary-register`` is verified before a
+    single record is written), re-derives its request budget from a durable
+    ledger on every Jev attempt, re-polls the kill switch inside every retry and
+    batch iteration, and never changes a route: ``applied_route`` is always the
+    caller's ``actual_route``. A missing classification is ``unknown`` and the
+    suggestion abstains.
+    """
+    request_raw = _read_request_object(args.request)
+    dispatches = load_batch_request(request_raw)
+    classifications: dict[str, Any] = {}
+    if args.classification:
+        classifications = _read_json_object(args.classification, "classification map")
+    dispatches = apply_classifications(dispatches, classifications)
+    advisor = LiveRoutingAdvisor.open(
+        registration_path=args.registration,
+        catalog_path=args.catalog,
+        ledger_path=args.ledger,
+        expected_registration_hash=args.expected_registration_hash,
+        kill_switch_path=args.kill_switch,
+        max_requests=args.max_requests,
+        max_attempts=args.max_attempts,
+    )
+    records = advisor.advise_batch(dispatches)
+    payload = batch_result(records, advisor)
+    write_batch_result(payload, args.out)
+    print(
+        json.dumps(
+            {
+                "kind": payload["kind"],
+                "records": len(records),
+                "requests_spent": payload["requests_spent"],
+                "requests_remaining": payload["requests_remaining"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _read_request_object(path: str | None) -> Any:
+    """Read the live-routing request from a file or stdin as a JSON object."""
+    if path:
+        return _read_json_object(path, "live routing request")
+    raw = sys.stdin.read()
+    try:
+        value = json.loads(raw, parse_constant=_reject_json_constant)
+    except ValueError as exc:
+        raise ObservatoryError(f"live routing request on stdin is not valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ObservatoryError("live routing request on stdin must be a JSON object")
+    return value
+
+
 def _cmd_evaluate(args: argparse.Namespace) -> int:
     taxonomy = load_taxonomy(args.taxonomy)
     gold_set = load_gold_set(args.gold, taxonomy)
@@ -1656,6 +1723,65 @@ def build_parser() -> argparse.ArgumentParser:
     )
     canary_parser.add_argument("--out", default=None, help="write the canary report to this path")
     canary_parser.set_defaults(func=_cmd_canary)
+
+    live_route_parser = subparsers.add_parser(
+        "canary-live-route",
+        help=(
+            "record advisory next-route evidence for routed dispatches "
+            "(M8b, registration-bound, never changes a route)"
+        ),
+    )
+    live_route_parser.add_argument(
+        "--registration", required=True, help="pre-registered canary artifact JSON"
+    )
+    live_route_parser.add_argument(
+        "--catalog", required=True, help="current configured candidate catalog JSON"
+    )
+    live_route_parser.add_argument(
+        "--ledger", required=True, help="append-only JSONL ledger for requests and advisories"
+    )
+    live_route_parser.add_argument(
+        "--expected-registration-hash",
+        default=None,
+        help=(
+            "registration_hash printed by `canary-register`; falls back to a "
+            "<registration>.hash sidecar. Refuses to start on mismatch."
+        ),
+    )
+    live_route_parser.add_argument(
+        "--classification",
+        default=None,
+        help="optional JSON map of dispatch_id/bead_id to a validated M7 classification record",
+    )
+    live_route_parser.add_argument(
+        "--kill-switch",
+        default=None,
+        help="rollback file; re-polled inside every retry and batch iteration",
+    )
+    live_route_parser.add_argument(
+        "--max-requests",
+        type=int,
+        default=None,
+        help=(
+            "live Jev request budget for this ledger "
+            f"(default and hard ceiling {MAX_ALLOWED_REQUESTS})"
+        ),
+    )
+    live_route_parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=DEFAULT_MAX_ATTEMPTS,
+        help="attempts per dispatch before it abstains (each attempt is charged)",
+    )
+    live_route_parser.add_argument(
+        "--request",
+        default=None,
+        help="live routing request JSON (default: read a JSON object from stdin)",
+    )
+    live_route_parser.add_argument(
+        "--out", default=None, help="write the advisory batch result to this path"
+    )
+    live_route_parser.set_defaults(func=_cmd_canary_live_route)
 
     episodes_parser = subparsers.add_parser(
         "episodes",

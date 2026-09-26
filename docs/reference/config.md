@@ -41,6 +41,7 @@ City is the top-level configuration for a Gas City instance.
 | `convergence` | ConvergenceConfig |  |  | Convergence configures convergence loop limits. |
 | `doctor` | DoctorConfig |  |  | Doctor configures gc doctor thresholds and policy toggles (worktree size warnings, nested-worktree auto-prune). |
 | `maintenance` | MaintenanceConfig |  |  | Maintenance configures periodic store-maintenance loops. |
+| `observatory` | ObservatoryConfig |  |  | Observatory configures advisory agent-observatory integrations. Off by default: an unset command leaves the routing path byte-identical. |
 | `service` | []Service |  |  | Services declares workspace-owned HTTP services mounted on the controller edge under /svc/&#123;name&#125;. |
 | `webhook` | []Webhook |  |  | Webhooks declares inbound HTTP receivers mounted on the supervisor edge under /hook/&#123;name&#125;. Composed like Services (pack concatenation + SourceDir provenance + the default-closed public pack-guard). |
 | `webhooks` | WebhookPolicyConfig |  |  | WebhookPolicy holds city-level webhook governance (the [webhooks] table, notably allow_public grants). Authored only in the root city.toml; never merged from packs or fragments so a pack cannot grant itself exposure. |
@@ -523,6 +524,15 @@ K8sConfig holds native K8s session provider settings.
 | `mem_limit` | string |  | `4Gi` | MemLimit is the pod memory limit. Default: "4Gi". |
 | `prebaked` | boolean |  |  | Prebaked skips init container staging and EmptyDir volumes when true. Use with images built by `gc build-image` that have city content baked in. |
 
+## LiveRoutingConfig
+
+LiveRoutingConfig configures the M8b advisory live-routing hook.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `command` | string |  |  | Command is the operator-configured advisory command. It is run with `sh -c`, receives the dispatch JSON on stdin, and its output is ignored. Empty (the default) disables the hook entirely: the routing call site performs no subprocess and produces no extra output. |
+| `timeout` | string |  | `2s` | Timeout bounds the advisory command as a duration string (e.g. "2s"). Defaults to 2s; values below 100ms are raised to the floor. |
+
 ## LocalDoctorCheck
 
 LocalDoctorCheck is a city-local doctor check declared inline in city.toml via [[doctor.check]].
@@ -584,6 +594,14 @@ NamedSessionPatch modifies an existing named session identified by canonical nam
 | `name` | string |  |  | Name is the canonical named-session identity. Use this to disambiguate sessions that share the same template. |
 | `template` | string |  |  | Template is a compatibility targeting key when Name is omitted. |
 | `mode` | string |  |  | Mode overrides the named-session controller mode ("on_demand" or "always"). Enum: `on_demand`, `always` |
+
+## ObservatoryConfig
+
+ObservatoryConfig configures advisory agent-observatory integrations.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `live_routing` | LiveRoutingConfig |  |  | LiveRouting configures the M8b advisory live-routing hook. |
 
 ## OptionChoice
 

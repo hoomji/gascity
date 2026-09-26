@@ -770,6 +770,15 @@ func (r cliBeadRouter) Route(_ context.Context, req sling.RouteRequest) error {
 	if err := r.deps.Store.SetMetadata(req.BeadID, beadmeta.RoutedToMetadataKey, routedTo); err != nil {
 		return fmt.Errorf("setting gc.routed_to on %s: %w", req.BeadID, err)
 	}
+	// M8b advisory live-routing hook: record Jev's primary_intent and the route
+	// the M7 shadow policy would suggest next to the route that was just
+	// written. Off by default and fail-open; it never changes routedTo.
+	recordLiveRoutingAdvisory(r.deps.Cfg, liveRoutingDispatch{
+		BeadID:      req.BeadID,
+		ActualRoute: routedTo,
+		Target:      req.Target,
+		CityName:    r.deps.CityName,
+	})
 	return nil
 }
 
