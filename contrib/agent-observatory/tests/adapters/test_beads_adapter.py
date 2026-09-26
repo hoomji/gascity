@@ -123,6 +123,47 @@ class BeadsSqlSafetyTest(unittest.TestCase):
                 with self.assertRaises(BeadsError):
                     assert_read_only(bad)
 
+    def test_read_only_guard_rejects_comment_split_write_escapes(self):
+        # A comment acts as whitespace, so it can satisfy the ``\s`` in the
+        # escape patterns without the escape being written as two tokens.
+        for bad in (
+            "SELECT 1 INTO/**/ OUTFILE '/tmp/x';",
+            "SELECT 1 INTO/*c*/@v;",
+            "SELECT 1 FOR/*c*/UPDATE;",
+            "SELECT 1 INTO /* c */ OUTFILE 'x';",
+            "SELECT 1 INTO-- x\n OUTFILE '/tmp/x';",
+            "SELECT 1 INTO # x\n OUTFILE '/tmp/x';",
+        ):
+            with self.subTest(sql=bad):
+                with self.assertRaises(BeadsError):
+                    assert_read_only(bad)
+
+    def test_read_only_guard_rejects_executable_comments(self):
+        # ``/*! ... */`` is executable MySQL, so it must not be stripped and
+        # scanned as a comment.
+        for bad in (
+            "SELECT /*!32302 INTO OUTFILE '/tmp/x' */ 1;",
+            "SELECT /*! INTO OUTFILE '/tmp/x' */ 1;",
+        ):
+            with self.subTest(sql=bad):
+                with self.assertRaises(BeadsError):
+                    assert_read_only(bad)
+
+    def test_read_only_guard_rejects_variable_binding_without_whitespace(self):
+        # MySQL accepts ``INTO@var``: the keyword and the symbol need no space.
+        with self.assertRaises(BeadsError):
+            assert_read_only("SELECT 1 INTO@leak;")
+
+    def test_read_only_guard_allows_comment_markers_inside_string_literals(self):
+        # A marker inside a quoted literal is data, not a comment: a ref such as
+        # ``a--b`` must survive the guard.
+        for sql in (
+            "SELECT '--not a comment', '/* not either */', '#' FROM issues;",
+            "SELECT \"--still data\", `--backtick` FROM issues;",
+        ):
+            with self.subTest(sql=sql):
+                self.assertEqual(assert_read_only(sql), sql)
+
     def test_events_sql_pins_ref_on_every_base_table(self):
         sql = _events_sql("remotes/origin/main", "gl")
         self.assertEqual(sql.count("AS OF 'remotes/origin/main'"), 6)
@@ -163,6 +204,59 @@ class BeadsParseTest(unittest.TestCase):
         for bead in ("gl-bead-a", "gl-bead-b"):
             ids = [record["event_id"] for record in self.records if record["bead_id"] == bead]
             self.assertEqual(len(ids), len(set(ids)))
+
+    def test_event_id_keeps_conforming_source_id_and_event_kind(self):
+        data = (
+            b"bead_id,event_kind,ordinal,source_id,occurred_at,text,status,assignee,priority,issue_type,labels\n"
+            b"gl-x,comment,3,11111111-1111-1111-1111-111111111111,2026-09-20 10:00:00,hello,open,,2,task,\n"
+        )
+        result = _parse(data)
+        self.assertEqual(
+            [record["event_id"] for record in result.records],
+            ["00000-comment-11111111-1111-1111-1111-111111111111"],
+        )
+
+    def test_event_id_does_not_expose_unredacted_source_id(self):
+        # N2: source_id is unconstrained bead-store text and event_id is an
+        # identity field the body redactor never touches, so a non-conforming
+        # id must not ride out verbatim. The synthetic token is built at runtime
+        # so no full credential-shaped literal appears in the source.
+        secret = "ghp_" + "A" * 36
+        data = (
+            b"bead_id,event_kind,ordinal,source_id,occurred_at,text,status,assignee,priority,issue_type,labels\n"
+            + f"gl-x,comment,3,{secret},2026-09-20 10:00:00,hello,open,,2,task,\n".encode()
+        )
+        result = _parse(data)
+        self.assertEqual(len(result.records), 1)
+        event_id = result.records[0]["event_id"]
+        self.assertNotIn(secret, event_id)
+        self.assertNotIn("ghp_", event_id)
+        self.assertRegex(event_id, r"^00000-comment-[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+    def test_event_id_does_not_expose_unredacted_event_kind(self):
+        data = (
+            b"bead_id,event_kind,ordinal,source_id,occurred_at,text,status,assignee,priority,issue_type,labels\n"
+            b"gl-x,password=supersecretvalue,3,3,2026-09-20 10:00:00,hello,open,,2,task,\n"
+        )
+        result = _parse(data)
+        self.assertEqual(len(result.records), 1)
+        event_id = result.records[0]["event_id"]
+        self.assertNotIn("supersecretvalue", event_id)
+        self.assertRegex(event_id, r"^00000-redacted-[0-9a-f]{12}-[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+    def test_nonconforming_source_ids_do_not_collide(self):
+        # Distinct malformed ids must still be distinct events so neither is
+        # silently deduplicated onto the other.
+        data = (
+            b"bead_id,event_kind,ordinal,source_id,occurred_at,text,status,assignee,priority,issue_type,labels\n"
+            b"gl-x,title,0,title,2026-09-20 10:00:00,Header,open,,2,task,\n"
+            b"gl-x,comment,3,id with spaces,2026-09-20 11:00:00,First,open,,2,task,\n"
+            b"gl-x,comment,3,id\twith\ttabs,2026-09-20 12:00:00,Second,open,,2,task,\n"
+        )
+        result = _parse(data)
+        ids = [record["event_id"] for record in result.records]
+        self.assertEqual(len(ids), 3)
+        self.assertEqual(len(set(ids)), 3)
 
     def test_labels_status_assignee_are_metadata_on_first_event(self):
         bead_a = next(record for record in self.records if record["bead_id"] == "gl-bead-a")

@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Sequence
 
-from ..canonical import sha256_bytes
+from ..canonical import sha256_bytes, sha256_text
 from ..contract import SCHEMA_VERSION
 from .base import (
     AdapterContext,
@@ -58,7 +58,7 @@ from .base import (
     SourceSizeExceeded,
     TitleRevision,
 )
-from .redaction import redact_and_bound
+from .redaction import redact_and_bound, redact_text
 
 PROVIDER = "beads"
 ADAPTER_VERSION = "1.0.0"
@@ -104,7 +104,9 @@ _READ_ONLY_STATEMENT_RE = re.compile(r"^\s*(?:USE\s+[A-Za-z0-9_]+|SELECT\b)", re
 _READ_ONLY_ESCAPES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bINTO\s+OUTFILE\b", re.IGNORECASE), "INTO OUTFILE"),
     (re.compile(r"\bINTO\s+DUMPFILE\b", re.IGNORECASE), "INTO DUMPFILE"),
-    (re.compile(r"\bINTO\s+@", re.IGNORECASE), "INTO @variable"),
+    # ``@`` is a symbol, not a word, so MySQL accepts ``INTO@var`` with no
+    # whitespace between the keyword and the variable.
+    (re.compile(r"\bINTO\s*@", re.IGNORECASE), "INTO @variable"),
     (re.compile(r"\bFOR\s+UPDATE\b", re.IGNORECASE), "FOR UPDATE"),
 )
 
@@ -150,6 +152,54 @@ def _identifier(name: str, *, what: str) -> str:
     return name
 
 
+def _find_sql_comment(sql: str) -> str | None:
+    """Return the first SQL comment marker outside a string literal, or ``None``.
+
+    Comments are refused rather than stripped. MySQL's ``/*! ... */`` is an
+    *executable* comment, so removing comment text before the escape scan would
+    let a write escape hide inside it; refusing comments sidesteps that parser
+    differential entirely. ``--`` opens a comment only when followed by
+    whitespace or a control character (MySQL's rule), while ``#`` and ``/*``
+    always do. Markers inside quoted strings or backtick identifiers are literal
+    text, so a validated ref such as ``a--b`` interpolated into ``AS OF 'a--b'``
+    is not mistaken for one.
+    """
+
+    index = 0
+    length = len(sql)
+    while index < length:
+        char = sql[index]
+        if char in ("'", '"', "`"):
+            quote = char
+            index += 1
+            while index < length:
+                inner = sql[index]
+                # Backslash escapes and doubled quotes keep a quote from ending
+                # the literal early; a backtick identifier only doubles.
+                if inner == "\\" and quote != "`":
+                    index += 2
+                    continue
+                if inner == quote:
+                    if index + 1 < length and sql[index + 1] == quote:
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            continue
+        if char == "-" and sql.startswith("--", index):
+            following = sql[index + 2] if index + 2 < length else ""
+            is_control = following == "" or (ord(following) < 0x20 or ord(following) == 0x7F)
+            if following.isspace() or is_control:
+                return "--"
+        elif char == "#":
+            return "#"
+        elif char == "/" and sql.startswith("/*", index):
+            return "/*"
+        index += 1
+    return None
+
+
 def assert_read_only(sql: str) -> str:
     """Return *sql* when every statement is ``USE`` or ``SELECT``, else refuse.
 
@@ -157,9 +207,15 @@ def assert_read_only(sql: str) -> str:
     enforced here rather than assumed. Splitting on ``;`` is adequate because
     the generated SQL contains no semicolons inside string literals. A
     ``SELECT`` that still writes or locks (``INTO OUTFILE|DUMPFILE|@var`` or
-    ``FOR UPDATE``) is refused wherever the escape appears in the statement.
+    ``FOR UPDATE``) is refused wherever the escape appears in the statement, and
+    any SQL comment is refused because a comment can stand in for the
+    whitespace the escape patterns require (``INTO/**/OUTFILE``) or hide an
+    executable ``/*! ... */`` payload.
     """
 
+    comment = _find_sql_comment(sql)
+    if comment is not None:
+        raise BeadsError(f"refusing read-only statement containing a SQL comment ({comment!r})")
     statements = [statement for statement in sql.split(";") if statement.strip()]
     if not statements:
         raise BeadsError("refusing to run an empty SQL script")
@@ -382,6 +438,34 @@ def _metadata_header(row: dict[str, str]) -> str:
     )
 
 
+# ``event_id`` is an identity field, so it is excluded from the body redactor.
+# The ``source_id``/``event_kind`` columns folded into it are unconstrained
+# bead-store text (a comment id is normally a UUID, but the column is free
+# text), so each value is redacted and then required to be a short, conforming
+# token before it can become part of the id. Anything else is replaced by a
+# deterministic digest marker, which drops the original bytes while keeping
+# distinct rows on distinct event ids.
+_IDENTITY_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def _identity_token(value: str, *, fallback: str) -> str:
+    """Return a safe, redacted ``event_id`` component for an untrusted value.
+
+    Redaction runs first so a credential that happens to use only id-safe
+    characters (``ghp_...`` is all letters, digits and underscore) cannot pass a
+    bare charset check, then a non-conforming or over-long result is replaced by
+    a digest marker rather than being truncated into a possibly shorter secret.
+    """
+
+    candidate = value.strip()
+    if not candidate:
+        candidate = fallback
+    redacted = redact_text(candidate)
+    if _IDENTITY_TOKEN_RE.match(redacted):
+        return redacted
+    return f"redacted-{sha256_text(candidate)[:12]}"
+
+
 class BeadsAdapter(SourceAdapter):
     """Read-only adapter over one Dolt ref of the bead store."""
 
@@ -453,8 +537,10 @@ class BeadsAdapter(SourceAdapter):
                 result.note_skip("no_timestamp")
                 continue
 
-            event_kind = (row.get("event_kind") or "note").strip() or "note"
-            source_id = (row.get("source_id") or event_kind).strip() or event_kind
+            # Both components feed ``event_id``, which the body redactor never
+            # sees, so each is constrained to a safe token before it is used.
+            event_kind = _identity_token(row.get("event_kind") or "note", fallback="note")
+            source_id = _identity_token(row.get("source_id") or event_kind, fallback=event_kind)
             raw_text = row.get("text") or ""
             position = position_by_bead.get(bead_id, 0)
             if position > 0 and not raw_text.strip():
