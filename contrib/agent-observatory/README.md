@@ -44,6 +44,7 @@ contrib/agent-observatory/
     annotations.py     versioned gold annotations (separate from predictions)
     evaluation.py      grouped temporal holdout, baselines, metrics, calibration
     silver.py          two-judge machine-built silver reference (no hand labelling)
+    collapse.py        coarse-taxonomy re-score of a recorded multi-judge checkpoint
     collector.py       M4 checkpointed backfill, debounced collection, queue, status
     impact.py          M6 accepted-task impact reports, matched cohorts, uncertainty
     policy.py          M7 shadow policy recommendations (as-of, catalog-bounded)
@@ -67,6 +68,9 @@ contrib/agent-observatory/
     fixtures/canary/units-unclassified.json  units that would spend live requests
     fixtures/silver/candidates.csv       candidate episodes for the silver sample
     fixtures/silver/recorded_judge_answers.json  recorded judge answers (no network)
+    fixtures/collapse/recorded_judge_checkpoint.json  recorded four-judge checkpoint
+    fixtures/collapse/recorded_judge_report.json  the same votes as a silver report
+    fixtures/collapse/jev_predictions.json  Jev predictions for the collapse rescorer
   reports/real-obsdb-20260922.json  real historical report from a copy of obs.db
   MEASUREMENT-SILVER.md   what the silver gate does and does not establish
   README.md
@@ -444,6 +448,40 @@ Reproducibility: the report pins `taxonomy_version`, `facet_hash`,
 model or question revision produces a different, replayable report. The pinned
 `tests/fixtures/gold/` fixture proves the evaluator mechanics; the silver path
 above is how real per-class quality is established without hand labelling.
+
+### Collapse re-score of a multi-judge checkpoint
+
+When more judges do not lift agreement, the taxonomy is the suspect. `collapse.py`
+re-scores an already-recorded multi-judge checkpoint under a coarser
+`primary_intent` mapping **without any judge call**: a versioned
+`LabelCollapse` (original label -> collapsed label, one disambiguating
+definition per collapsed label), pairwise confusion matrices, disagreement
+episodes grouped by the labels that compete, pairwise Cohen's and Fleiss' kappa,
+unanimous and 3-of-4 reference labels, and Jev accuracy/macro-F1 against those
+references. `unknown` can be kept as a label or treated as an abstention
+(complete-case per pair/reference); both are reported.
+
+```
+agent-observatory silver-collapse \
+  --checkpoint judge_checkpoint_4judge.json \
+  [--report silver_report.json] --jev-predictions jev_predictions.json \
+  [--collapse primary_intent_collapse_v1] [--judge JUDGE ...] [--majority 3] \
+  --out collapse_report.json [--require-clear]
+```
+
+The gate is the conservative minimum pairwise Cohen's kappa (matching
+`kappa_over_judges`); Fleiss' kappa is secondary. `baseline` in the report is the
+identity collapse, `diagnostics` holds the confusion/disagreement evidence, and
+`clears_floor` is true only for a design that reaches `KAPPA_TRUST_FLOOR` on a
+sample of at least `MIN_SILVER_SAMPLE_SIZE`. `build_collapsed_judge_prompt` builds
+the fresh-sample prompt for a confirmation run, which is authorised only after a
+collapse clears the floor. On the four-judge checkpoint the proposed
+`primary_intent_collapse_v1` raises minimum pair kappa from 0.199 to 0.236
+(0.317 -> 0.482 with `unknown` as abstain) and reaches Fleiss 0.554, so **no
+design clears 0.6 and no fresh run was spent**. A search over every partition of
+the nine labels into at least three classes of at most three source labels finds
+no minimum pair kappa above 0.243 (label) or 0.482 (abstain). See
+`MEASUREMENT-SILVER.md`.
 
 ## 8. Optimization change and exposure registry
 
@@ -871,6 +909,10 @@ agent-observatory silver-build --candidates CANDIDATES.csv --db DB
     [--gold-set-version V] [--prompt-version V] [--judge-timeout S]
 agent-observatory silver-evaluate --gold GOLD.json --predictions PRED.json
     [--taxonomy PATH] [--full-evaluator] [--out FILE]
+agent-observatory silver-collapse (--checkpoint CKPT.json | --report REPORT.json)
+    --jev-predictions PRED.json --out FILE
+    [--collapse ID] [--judge JUDGE ...] [--majority N] [--taxonomy PATH]
+    [--require-clear]
 agent-observatory impact [--input BUNDLE.json] [--db DB]
     [--primary-outcome OUTCOME] [--bootstrap-resamples N] [--out FILE]
 agent-observatory shadow --catalog CATALOG.json --input BUNDLE.json
@@ -888,7 +930,9 @@ split audit is not leak-free; `impact` writes the deterministic accepted-task
 impact report (at least one of `--input`/`--db` is required). `silver-build`
 writes the two-judge silver gold set plus its agreement report (and optional Jev
 predictions read from the projection); `silver-evaluate` writes the Jev-vs-silver
-report. `queue-drain` sends redacted transcript text unless `--metadata-state` is
+report; `silver-collapse` re-scores a recorded judge checkpoint or silver report
+under the collapsed taxonomy (no judge call) and writes the collapse report.
+`queue-drain` sends redacted transcript text unless `--metadata-state` is
 passed.
 
 When `--snapshot-hash` is supplied together with `--db` and `--session`, the

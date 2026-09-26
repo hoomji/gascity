@@ -1,0 +1,57 @@
+{
+  "deepseek-v4-flash": {
+    "e01": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e02": "{\"primary_intent\": \"pr_review\", \"confidence\": 0.9}",
+    "e03": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e04": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}",
+    "e05": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e06": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e07": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}",
+    "e08": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}",
+    "e09": "{\"primary_intent\": \"research_docs\", \"confidence\": 0.9}",
+    "e10": "{\"primary_intent\": \"research_docs\", \"confidence\": 0.9}",
+    "e11": "{\"primary_intent\": \"implementation\", \"confidence\": 0.9}",
+    "e12": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}"
+  },
+  "gemini-3p8-flash": {
+    "e01": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e02": "{\"primary_intent\": \"pr_review\", \"confidence\": 0.9}",
+    "e03": "{\"primary_intent\": \"pr_review\", \"confidence\": 0.9}",
+    "e04": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e05": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}",
+    "e06": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}",
+    "e07": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}",
+    "e08": "{\"primary_intent\": \"test_lint_build_ci\", \"confidence\": 0.9}",
+    "e09": "{\"primary_intent\": \"research_docs\", \"confidence\": 0.9}",
+    "e10": "{\"primary_intent\": \"pr_review\", \"confidence\": 0.9}",
+    "e11": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}"
+  },
+  "glm-5p3-flash": {
+    "e01": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e02": "{\"primary_intent\": \"pr_review\", \"confidence\": 0.9}",
+    "e03": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e04": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}",
+    "e05": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e06": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e07": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}",
+    "e08": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}",
+    "e09": "{\"primary_intent\": \"research_docs\", \"confidence\": 0.9}",
+    "e10": "{\"primary_intent\": \"research_docs\", \"confidence\": 0.9}",
+    "e11": "{\"primary_intent\": \"implementation\", \"confidence\": 0.9}",
+    "e12": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}"
+  },
+  "gpt6-luna": {
+    "e01": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e02": "{\"primary_intent\": \"pr_review\", \"confidence\": 0.9}",
+    "e03": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e04": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}",
+    "e05": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}",
+    "e06": "{\"primary_intent\": \"dependency_worktree_agent_ops\", \"confidence\": 0.9}",
+    "e07": "{\"primary_intent\": \"unknown\", \"confidence\": 0.9}",
+    "e08": "{\"primary_intent\": \"implementation\", \"confidence\": 0.9}",
+    "e09": "{\"primary_intent\": \"research_docs\", \"confidence\": 0.9}",
+    "e10": "{\"primary_intent\": \"pr_review\", \"confidence\": 0.9}",
+    "e11": "{\"primary_intent\": \"implementation\", \"confidence\": 0.9}",
+    "e12": "{\"primary_intent\": \"bugfix\", \"confidence\": 0.9}"
+  }
+}
