@@ -803,6 +803,23 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// MinimalWaitIdleReminderBody is the single source of truth for the turn
+// trigger emitted when the target provider's own prompt hook already injects
+// the notification content on the same turn. The body stays non-empty because
+// an empty nudge submits no turn at the provider, so a body-free trigger would
+// silently lose the wake.
+const MinimalWaitIdleReminderBody = "You have a new notification."
+
+// MinimalWaitIdleSystemReminder renders the complete minimal
+// <system-reminder> block for a hook-injected wait-idle nudge. Both wait-idle
+// formatters — this package's formatWaitIdleReminder and the worker boundary's
+// formatRuntimeWaitIdleReminder (internal/worker/runtime_handle.go) — return
+// this exact string on their minimal branch, so the byte-identical contract the
+// audit doc relies on cannot drift when one side is edited.
+func MinimalWaitIdleSystemReminder() string {
+	return "<system-reminder>\n" + MinimalWaitIdleReminderBody + "\n</system-reminder>\n"
+}
+
 func formatWaitIdleReminder(source, message string, minimalBody bool) string {
 	// Sanitize attacker-controllable fields before interpolating into the
 	// <system-reminder> block. The deferred-nudge body is sender-supplied, so
@@ -811,20 +828,15 @@ func formatWaitIdleReminder(source, message string, minimalBody bool) string {
 	// See gastownhall/gascity#2195 and the ga-vs7 notification-injection incident.
 	source = promptsafe.SanitizeForSystemReminder(source)
 	message = promptsafe.SanitizeForSystemReminder(message)
-	var sb strings.Builder
-	sb.WriteString("<system-reminder>\n")
 	if minimalBody {
 		// The target provider's own prompt hook injects the notification
 		// content on this same turn, so the nudge only has to start the turn;
-		// repeating the reminder body would announce the same thing twice. The
-		// body must stay non-empty because an empty nudge submits no turn at
-		// all. Keep this text byte-identical to the worker boundary's
-		// formatRuntimeWaitIdleReminder for the same branch
-		// (internal/worker/runtime_handle.go).
-		sb.WriteString("You have a new notification.\n")
-		sb.WriteString("</system-reminder>\n")
-		return sb.String()
+		// repeating the reminder body would announce the same thing twice.
+		// Route through the shared builder so the worker boundary cannot drift.
+		return MinimalWaitIdleSystemReminder()
 	}
+	var sb strings.Builder
+	sb.WriteString("<system-reminder>\n")
 	sb.WriteString("You have a deferred reminder that was queued until a safe boundary:\n\n")
 	fmt.Fprintf(&sb, "- [%s] %s\n", source, message)
 	sb.WriteString("\nHandle them after this turn.\n")

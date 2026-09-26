@@ -65,8 +65,14 @@ func TestFormatWaitIdleReminderBenignUnchanged(t *testing.T) {
 func TestFormatWaitIdleReminderMinimalBody(t *testing.T) {
 	out := formatWaitIdleReminder("mail", "You have mail from human", true)
 
-	if !strings.Contains(out, "<system-reminder>") {
-		t.Fatalf("minimal reminder = %q, want a system-reminder wrapper", out)
+	// Both wait-idle formatters must emit the shared block byte-for-byte; this
+	// pins the session-manager side to the single source of truth so a
+	// one-sided edit cannot make the behavior depend on the delivery layer.
+	if want := MinimalWaitIdleSystemReminder(); out != want {
+		t.Fatalf("minimal reminder = %q, want the shared block %q", out, want)
+	}
+	if !strings.Contains(out, MinimalWaitIdleReminderBody) {
+		t.Fatalf("minimal reminder = %q, want the shared trigger %q", out, MinimalWaitIdleReminderBody)
 	}
 	if strings.Contains(out, "You have mail from human") {
 		t.Fatalf("minimal reminder repeated the mail body: %q", out)

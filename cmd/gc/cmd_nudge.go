@@ -1339,6 +1339,19 @@ func sendMailNotifyWithProvider(target nudgeTarget, sp runtime.Provider) error {
 // a second one; a nil cfg cannot establish hook state, so it returns false and
 // the caller keeps the full reminder.
 //
+// This is config intent, not runtime proof, and gc keeps no receipt of a
+// successful hook run for the direct --notify path to consult. If the hook is
+// configured but does not execute — gc missing from the hook environment's
+// PATH, the 15s `gc hook run` timeout returning its fail-open
+// --timeout-exit-code 0, or a session resumed from before the mail hook was
+// installed — this still reports true, so that one wake carries only the
+// minimal turn trigger and the mail is surfaced on a later prompt turn instead
+// of that one. The mail is not lost: it stays unread for the next hook run.
+// The queued path does not share this gap because it keys on the live hook
+// invocation (blockedQueuedNudgeReason's promptTurnInFlight), which the direct
+// --notify path cannot observe. The failure mode is documented explicitly in
+// engdocs/contributors/prompt-injection-system-reminder-audit.md.
+//
 // This is deliberately distinct from the promptTurnInFlight gate in
 // blockedQueuedNudgeReason: that gate keys off the live hook invocation for a
 // queued drain, where a config read would wrongly withdraw mail for a session

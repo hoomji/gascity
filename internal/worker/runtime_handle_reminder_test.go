@@ -3,6 +3,8 @@ package worker
 import (
 	"strings"
 	"testing"
+
+	sessionpkg "github.com/gastownhall/gascity/internal/session"
 )
 
 // TestFormatRuntimeWaitIdleReminderNeutralizesTagBreakout verifies that the
@@ -55,8 +57,14 @@ func TestFormatRuntimeWaitIdleReminderDefaultsBlankSource(t *testing.T) {
 func TestFormatRuntimeWaitIdleReminderMinimalBody(t *testing.T) {
 	out := formatRuntimeWaitIdleReminder("mail", "You have mail from human", true)
 
-	if !strings.Contains(out, "<system-reminder>") {
-		t.Fatalf("minimal reminder = %q, want a system-reminder wrapper", out)
+	// Cross-formatter contract: the worker boundary and the session manager
+	// must emit the same block. session.MinimalWaitIdleSystemReminder is the
+	// single source of truth both return (see internal/session/chat.go).
+	if want := sessionpkg.MinimalWaitIdleSystemReminder(); out != want {
+		t.Fatalf("minimal reminder = %q, want the shared session block %q", out, want)
+	}
+	if !strings.Contains(out, sessionpkg.MinimalWaitIdleReminderBody) {
+		t.Fatalf("minimal reminder = %q, want the shared trigger %q", out, sessionpkg.MinimalWaitIdleReminderBody)
 	}
 	if strings.Contains(out, "You have mail from human") {
 		t.Fatalf("minimal reminder repeated the mail body: %q", out)

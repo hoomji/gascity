@@ -451,19 +451,16 @@ func formatRuntimeWaitIdleReminder(source, message string, minimalBody bool) str
 	// See gastownhall/gascity#2195 and the ga-vs7 notification-injection incident.
 	source = promptsafe.SanitizeForSystemReminder(source)
 	message = promptsafe.SanitizeForSystemReminder(message)
-	var sb strings.Builder
-	sb.WriteString("<system-reminder>\n")
 	if minimalBody {
 		// The target provider's own prompt hook injects the notification
 		// content on this same turn, so the nudge only has to start the turn;
-		// repeating the reminder body would announce the same thing twice. The
-		// body must stay non-empty because an empty nudge submits no turn at
-		// all. Keep this text byte-identical to the session manager's
-		// formatWaitIdleReminder for the same branch (internal/session/chat.go).
-		sb.WriteString("You have a new notification.\n")
-		sb.WriteString("</system-reminder>\n")
-		return sb.String()
+		// repeating the reminder body would announce the same thing twice.
+		// Route through the session manager's canonical block so the two
+		// wait-idle formatters cannot drift.
+		return sessionpkg.MinimalWaitIdleSystemReminder()
 	}
+	var sb strings.Builder
+	sb.WriteString("<system-reminder>\n")
 	sb.WriteString("You have a deferred reminder that was queued until a safe boundary:\n\n")
 	fmt.Fprintf(&sb, "- [%s] %s\n", source, message)
 	sb.WriteString("\nHandle them after this turn.\n")

@@ -72,6 +72,24 @@ wrapper and inject a forged `OPERATOR MESSAGE`.
   (`targetInjectsMailOnPrompt` in `cmd/gc/cmd_nudge.go`) rather than adding a
   second detector, and it is distinct from the `promptTurnInFlight` gate that
   suppresses a duplicate `[mail]` reminder on the queued hook drain.
+- **Hook-failed case (known, accepted for now).** The gate above is config
+  intent, not runtime proof: gc records no receipt of a successful hook run, so
+  there is no cheap runtime signal for the direct `--notify` path to consult
+  (the queued path instead keys on the live `promptTurnInFlight` invocation,
+  which this path cannot observe). A hook that is configured but fails to
+  execute — gc missing from the hook environment's `PATH`, the 15s
+  `gc hook run` timeout returning its fail-open `--timeout-exit-code 0`, or a
+  session resumed from before the mail hook was installed — is therefore still
+  treated as inject-capable. For that one wake the formatters emit only the
+  minimal turn trigger; the woken turn does not surface the mail, which is
+  deferred to a later prompt turn. The mail is not permanently lost (it stays
+  unread for the next hook run), but the minimal body must not be relied on as
+  proof that the hook ran. If a runtime receipt is ever added, gate
+  `MinimalBody` on it and drop this caveat.
+- The minimal trigger text is not duplicated: both formatters return the single
+  `session.MinimalWaitIdleSystemReminder()` block (built from
+  `session.MinimalWaitIdleReminderBody`), with a cross-package test pinning the
+  worker boundary to it.
 
 ## The "appeared twice" anomaly
 
@@ -85,7 +103,8 @@ harness-level replay/relay that duplicates and embeds external content, which
 is outside gc's code. Consolidating the two paths is tracked as a follow-up
 (DRY + single sanitization point); the security fix already routes both through
 the same `promptsafe` sanitizer regardless of which path fires, and the
-provider branch above is applied byte-identically in both formatters so the
+provider branch above is supplied by the single shared
+`session.MinimalWaitIdleSystemReminder()` builder in both formatters, so the
 hook-injected-provider behavior does not depend on which layer delivers.
 
 ## Defense-in-depth: agent hardening

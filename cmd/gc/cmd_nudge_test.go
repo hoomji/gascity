@@ -2297,6 +2297,24 @@ func TestTargetInjectsMailOnPrompt(t *testing.T) {
 			want:   false,
 		},
 		{
+			name: "provider listed in install_agent_hooks (arm 3)",
+			target: nudgeTarget{
+				cfg:      &config.City{Workspace: config.Workspace{InstallAgentHooks: []string{"opencode"}}},
+				agent:    config.Agent{Name: "mayor"},
+				resolved: &config.ResolvedProvider{Name: "opencode"},
+			},
+			want: true,
+		},
+		{
+			name: "install_agent_hooks for a different provider (arm 3 miss)",
+			target: nudgeTarget{
+				cfg:      &config.City{Workspace: config.Workspace{InstallAgentHooks: []string{"kiro"}}},
+				agent:    config.Agent{Name: "mayor"},
+				resolved: &config.ResolvedProvider{Name: "opencode"},
+			},
+			want: false,
+		},
+		{
 			name:   "nil cfg cannot establish hook state",
 			target: nudgeTarget{resolved: &config.ResolvedProvider{Name: "claude"}},
 			want:   false,
@@ -2454,6 +2472,69 @@ func TestSendMailNotifyWithProviderCodexWaitIdleQueuesFullReminder(t *testing.T)
 	}
 	if !strings.Contains(pending[0].Message, "You have mail from human") {
 		t.Fatalf("queued codex reminder = %q, want the full mail message", pending[0].Message)
+	}
+}
+
+// TestSendMailNotifyWithProviderInstallAgentHooksArm3QueuesFullReminder covers
+// the AgentHasHooks arm-3 configuration wizard-generated cities create: a
+// provider (opencode) named in the resolved install_agent_hooks list, whose
+// overlay installs the UserPromptSubmit mail hook. targetInjectsMailOnPrompt
+// reports true for it, but the direct --notify live wait-idle leg is restricted
+// to the literal claude provider (RuntimeHandle.nudgeWaitIdle and the session
+// manager's tryWaitIdleNudge*), so the wake cannot be delivered live. The full
+// reminder is queued instead, which is what keeps the mail from being lost; the
+// minimal body only applies when that live leg actually runs. Pinning both
+// halves here means an arm-3 detection regression and a stray non-claude live
+// delivery are each caught.
+func TestSendMailNotifyWithProviderInstallAgentHooksArm3QueuesFullReminder(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	dir := t.TempDir()
+	fake := runtime.NewFake()
+	if err := fake.Start(context.Background(), "sess-mayor", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	fake.WaitForIdleErrors["sess-mayor"] = nil
+
+	called := false
+	prev := startNudgePoller
+	startNudgePoller = func(_, _, _ string) error {
+		called = true
+		return nil
+	}
+	t.Cleanup(func() { startNudgePoller = prev })
+
+	target := nudgeTarget{
+		cityPath:    dir,
+		cfg:         &config.City{Workspace: config.Workspace{InstallAgentHooks: []string{"opencode"}}},
+		agent:       config.Agent{Name: "mayor", MaxActiveSessions: intPtrNudge(1)},
+		resolved:    &config.ResolvedProvider{Name: "opencode"},
+		sessionName: "sess-mayor",
+	}
+	if !targetInjectsMailOnPrompt(target) {
+		t.Fatal("install_agent_hooks arm 3 did not report the provider as mail-injecting")
+	}
+
+	if err := sendMailNotifyWithProvider(target, fake); err != nil {
+		t.Fatalf("sendMailNotifyWithProvider: %v", err)
+	}
+	if !called {
+		t.Fatal("startNudgePoller was not called for the queued opencode reminder")
+	}
+	for _, call := range fake.Calls {
+		if call.Method == "NudgeNow" {
+			t.Fatalf("opencode took a live wait-idle delivery it cannot support: %q", call.Message)
+		}
+	}
+
+	pending, inFlight, dead, err := listQueuedNudges(dir, target.agentKey(), time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudges: %v", err)
+	}
+	if len(pending) != 1 || len(inFlight) != 0 || len(dead) != 0 {
+		t.Fatalf("pending/inFlight/dead = %d/%d/%d, want 1/0/0", len(pending), len(inFlight), len(dead))
+	}
+	if !strings.Contains(pending[0].Message, "You have mail from human") {
+		t.Fatalf("queued opencode reminder = %q, want the full mail message", pending[0].Message)
 	}
 }
 
