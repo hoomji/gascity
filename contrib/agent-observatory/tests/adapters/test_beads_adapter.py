@@ -6,8 +6,11 @@ synthetic CSV fixture or an injected chunk runner.
 
 from __future__ import annotations
 
+import json
 import os
+import shlex
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -26,6 +29,8 @@ from agent_observatory.adapters import (  # noqa: E402
 )
 from agent_observatory.adapters.beads import (  # noqa: E402
     DEFAULT_DATABASE,
+    DoltCommand,
+    _default_sql_runner,
     _events_sql,
     _fields_sql,
     assert_read_only,
@@ -103,6 +108,21 @@ class BeadsSqlSafetyTest(unittest.TestCase):
                 with self.assertRaises(BeadsError):
                     assert_read_only(bad)
 
+    def test_read_only_guard_rejects_select_write_escapes(self):
+        # A SELECT head is not enough: file writes, variable binding and
+        # locking reads all hide inside an otherwise read-only statement.
+        for bad in (
+            "SELECT 1 INTO OUTFILE '/tmp/leak';",
+            "SELECT 1 INTO DUMPFILE '/tmp/leak';",
+            "SELECT 1 INTO @leak;",
+            "SELECT * FROM issues FOR UPDATE;",
+            "USE gl; select 1 into outfile '/tmp/leak';",
+            "SELECT * FROM issues for update;",
+        ):
+            with self.subTest(sql=bad):
+                with self.assertRaises(BeadsError):
+                    assert_read_only(bad)
+
     def test_events_sql_pins_ref_on_every_base_table(self):
         sql = _events_sql("remotes/origin/main", "gl")
         self.assertEqual(sql.count("AS OF 'remotes/origin/main'"), 6)
@@ -163,6 +183,20 @@ class BeadsParseTest(unittest.TestCase):
     def test_title_revision_is_recorded(self):
         titles = [revision.title for revision in self.result.title_revisions]
         self.assertIn("Fix the router stall", titles)
+
+    def test_title_revision_is_bounded(self):
+        # The title revision must use the bounding redactor, not the unbounded
+        # one, so an enormous title cannot ride out in title_revisions.
+        long_title = "T" * 5000
+        data = (
+            b"bead_id,event_kind,ordinal,source_id,occurred_at,text,status,assignee,priority,issue_type,labels\n"
+            + f"gl-long,title,0,title,2026-09-20 10:00:00,{long_title},open,,2,task,\n".encode()
+        )
+        result = _parse(data)
+        self.assertEqual(len(result.title_revisions), 1)
+        title = result.title_revisions[0].title
+        self.assertIn("[truncated:", title)
+        self.assertLess(len(title), len(long_title))
 
     def test_missing_timestamp_is_flagged_not_defaulted(self):
         data = (
@@ -230,6 +264,31 @@ class BeadsReadTest(unittest.TestCase):
         self.assertEqual(called, [])
 
 
+class BeadsDefaultRunnerTest(unittest.TestCase):
+    def test_default_runner_enforces_timeout_and_kills_the_child(self):
+        tmp = support.make_temp_dir()
+        self.addCleanup(tmp.cleanup)
+        pidfile = os.path.join(tmp.name, "child.pid")
+        script = os.path.join(tmp.name, "slow-dolt")
+        with open(script, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\n")
+            handle.write(f"echo $$ > {shlex.quote(pidfile)}\n")
+            handle.write("exec sleep 30\n")
+        os.chmod(script, 0o755)
+        command = DoltCommand(city=tmp.name, executable=script, timeout_seconds=0.5)
+
+        started = time.monotonic()
+        with self.assertRaises(BeadsError):
+            list(_default_sql_runner("SELECT 1", command))
+        elapsed = time.monotonic() - started
+        # A 30 s child must be killed at the deadline, not waited on.
+        self.assertLess(elapsed, 10.0)
+        with open(pidfile, "r", encoding="utf-8") as handle:
+            pid = int(handle.read().strip())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+
 class BeadsDiffTest(unittest.TestCase):
     def setUp(self):
         self.local = parse_bead_fields(_fixture_bytes("fields-local.csv"))
@@ -262,6 +321,29 @@ class BeadsDiffTest(unittest.TestCase):
         data = _fixture_bytes("fields-local.csv")
         fields = fetch_bead_fields("main", runner=_runner_from(data))
         self.assertEqual(fields["gl-bead-a"]["status"], "open")
+
+    def test_secret_bearing_field_never_reaches_the_diff(self):
+        # The field snapshot is built by parse_bead_fields, whose values must be
+        # redacted before they enter the map (HIGH finding).
+        data = (
+            b"bead_id,title,description,notes,status,assignee,priority,issue_type\n"
+            b"gl-secret,Title,password=supersecretvalue,Note,open,alice,2,task\n"
+        )
+        local = parse_bead_fields(data)
+        remote = parse_bead_fields(
+            b"bead_id,title,description,notes,status,assignee,priority,issue_type\n"
+            b"gl-secret,Title,password=othersecretvalue,Note,open,alice,2,task\n"
+        )
+        self.assertNotIn("supersecretvalue", json.dumps(local))
+        self.assertIn("[REDACTED]", local["gl-secret"]["description"])
+        for snapshot in (
+            diff_bead_snapshots(local, {}),
+            diff_bead_snapshots({}, local),
+            diff_bead_snapshots(local, remote),
+        ):
+            rendered = json.dumps(snapshot)
+            self.assertNotIn("supersecretvalue", rendered)
+            self.assertNotIn("othersecretvalue", rendered)
 
 
 class BeadsPipelineTest(unittest.TestCase):

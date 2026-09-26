@@ -58,7 +58,7 @@ from .base import (
     SourceSizeExceeded,
     TitleRevision,
 )
-from .redaction import redact_and_bound, redact_text
+from .redaction import redact_and_bound
 
 PROVIDER = "beads"
 ADAPTER_VERSION = "1.0.0"
@@ -95,6 +95,18 @@ _REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 # would accept writes; the guard makes the read-only contract explicit and
 # testable instead of relying on operator discipline.
 _READ_ONLY_STATEMENT_RE = re.compile(r"^\s*(?:USE\s+[A-Za-z0-9_]+|SELECT\b)", re.IGNORECASE)
+
+# A ``SELECT`` head is not enough to be read-only: Dolt also lets a SELECT write
+# a server-side file or bind variables (``INTO OUTFILE``/``INTO DUMPFILE``/
+# ``INTO @var``) and take write locks (``FOR UPDATE``). Those escape hatches
+# ride inside an otherwise read-only-looking statement, so they are rejected
+# anywhere in it rather than only at its head.
+_READ_ONLY_ESCAPES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bINTO\s+OUTFILE\b", re.IGNORECASE), "INTO OUTFILE"),
+    (re.compile(r"\bINTO\s+DUMPFILE\b", re.IGNORECASE), "INTO DUMPFILE"),
+    (re.compile(r"\bINTO\s+@", re.IGNORECASE), "INTO @variable"),
+    (re.compile(r"\bFOR\s+UPDATE\b", re.IGNORECASE), "FOR UPDATE"),
+)
 
 SqlRunner = Callable[[str, "DoltCommand"], Iterator[bytes]]
 
@@ -143,7 +155,9 @@ def assert_read_only(sql: str) -> str:
 
     ``gc dolt sql`` will happily run DDL/DML, so the read-only guarantee is
     enforced here rather than assumed. Splitting on ``;`` is adequate because
-    the generated SQL contains no semicolons inside string literals.
+    the generated SQL contains no semicolons inside string literals. A
+    ``SELECT`` that still writes or locks (``INTO OUTFILE|DUMPFILE|@var`` or
+    ``FOR UPDATE``) is refused wherever the escape appears in the statement.
     """
 
     statements = [statement for statement in sql.split(";") if statement.strip()]
@@ -153,6 +167,9 @@ def assert_read_only(sql: str) -> str:
         if not _READ_ONLY_STATEMENT_RE.match(statement):
             first = statement.strip().split(None, 1)[0] if statement.strip() else ""
             raise BeadsError(f"refusing non-read-only statement {first!r}")
+        for escape, label in _READ_ONLY_ESCAPES:
+            if escape.search(statement):
+                raise BeadsError(f"refusing read-only statement with write escape {label!r}")
     return sql
 
 
@@ -162,7 +179,9 @@ def _default_sql_runner(sql: str, command: DoltCommand) -> Iterator[bytes]:
     The query is passed as ``-q`` and the child's stdout is read in chunks so a
     caller can enforce ``--max-source-bytes`` without materializing an
     unbounded result. stderr is drained on a helper thread to avoid a
-    pipe-buffer deadlock.
+    pipe-buffer deadlock. ``DoltCommand.timeout_seconds`` is a wall-clock
+    deadline: a watchdog kills the child when it expires, so a hung Dolt call
+    fails instead of blocking the read forever.
     """
 
     argv = [
@@ -201,6 +220,24 @@ def _default_sql_runner(sql: str, command: DoltCommand) -> Iterator[bytes]:
         except (OSError, ValueError):
             pass
 
+    # The deadline is enforced out of band: the read below may block on a child
+    # that never writes or closes its stdout, so a timer thread must be what
+    # ends the wait. ``timed_out`` distinguishes an expiry from an ordinary
+    # non-zero exit after the read drains.
+    timed_out = threading.Event()
+
+    def expire() -> None:
+        timed_out.set()
+        with contextlib.suppress(Exception):
+            proc.kill()
+
+    timeout = command.timeout_seconds
+    timer: threading.Timer | None = None
+    if timeout and timeout > 0:
+        timer = threading.Timer(float(timeout), expire)
+        timer.daemon = True
+        timer.start()
+
     stderr_reader = threading.Thread(target=drain_stderr, daemon=True)
     stderr_reader.start()
     try:
@@ -211,6 +248,8 @@ def _default_sql_runner(sql: str, command: DoltCommand) -> Iterator[bytes]:
                     break
                 yield chunk
     finally:
+        if timer is not None:
+            timer.cancel()
         with contextlib.suppress(Exception):
             if proc.poll() is None:
                 proc.kill()
@@ -222,6 +261,8 @@ def _default_sql_runner(sql: str, command: DoltCommand) -> Iterator[bytes]:
                 with contextlib.suppress(OSError):
                     stream.close()
 
+    if timed_out.is_set():
+        raise BeadsError(f"gc dolt sql exceeded its {timeout:g}s timeout", "dolt")
     if proc.returncode != 0:
         reason = b"".join(stderr_chunks).decode("utf-8", "replace").strip().splitlines()
         raise BeadsError(f"gc dolt sql failed: {reason[0] if reason else 'unknown error'}", "dolt")
@@ -447,7 +488,7 @@ class BeadsAdapter(SourceAdapter):
                 title_recorded = True
                 result.title_revisions.append(
                     TitleRevision(
-                        title=redact_text(raw_text),
+                        title=redact_and_bound(raw_text),
                         position=0,
                         observed_timestamp=timestamp,
                         source="bead.title",
@@ -560,7 +601,13 @@ def read_beads(
 
 
 def parse_bead_fields(data: bytes, *, source_path: str = "dolt://beads") -> dict[str, dict[str, str]]:
-    """Parse the CSV from :func:`_fields_sql` into ``{bead_id: fields}``."""
+    """Parse the CSV from :func:`_fields_sql` into ``{bead_id: fields}``.
+
+    Every value is run through :func:`redact_and_bound` before it enters the
+    map, so the raw ``title``/``description``/``notes``/``assignee`` text can
+    never reach a snapshot diff (or the report built from it). This is the only
+    place the fields map is populated, so callers never hold unredacted values.
+    """
 
     try:
         text = data.decode("utf-8")
@@ -574,7 +621,7 @@ def parse_bead_fields(data: bytes, *, source_path: str = "dolt://beads") -> dict
         bead_id = (row.get("bead_id") or "").strip()
         if not bead_id:
             continue
-        fields[bead_id] = {name: (row.get(name) or "") for name in DIFF_FIELDS}
+        fields[bead_id] = {name: redact_and_bound(row.get(name) or "") for name in DIFF_FIELDS}
     return fields
 
 
@@ -617,7 +664,9 @@ def diff_bead_snapshots(
     where ``change`` is ``"only_local"``, ``"only_remote"`` or ``"fields"``.
     Only changed fields are copied into the local/remote maps, so the report
     quotes bead ids, field names and the differing values rather than whole
-    bead bodies.
+    bead bodies. Snapshots come from :func:`parse_bead_fields`, which redacts
+    and bounds every value before it enters the map, so the quoted values are
+    already safe to emit.
     """
 
     diffs: list[dict[str, Any]] = []

@@ -926,6 +926,12 @@ for item in diff_bead_snapshots(local, remote):
     print(item["bead_id"], item["change"], item["changed_fields"])
 ```
 
+`title`, `description` and `notes` are read **as of the selected ref**: they are
+snapshots, not an edit history, so an intermediate edit the ref no longer carries
+is not recoverable from the diff. Field values are redacted and bounded by the
+same redactor the event path uses before they enter the snapshot map, so a
+secret in a description or notes can never appear in the diff output.
+
 `--max-source-bytes` is honoured the way the file adapters honour it: the
 subprocess stdout is read in chunks and the read is aborted (and the child
 killed) the moment the logical source passes the cap, so a small query cannot
