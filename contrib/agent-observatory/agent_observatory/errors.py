@@ -120,6 +120,17 @@ class CanaryError(ObservatoryError):
     """
 
 
+class LiveRoutingError(ObservatoryError):
+    """An advisory live-routing request, registration binding, or ledger is invalid.
+
+    The live-routing layer (see :mod:`agent_observatory.live_routing`) records
+    Jev's ``primary_intent`` and the route the M7 shadow policy would suggest
+    next to each routed dispatch. It never changes the route: the recorded
+    ``applied_route`` is always the caller's actual route, and the module writes
+    no routing, dispatch or configuration.
+    """
+
+
 class SilverError(ObservatoryError):
     """A silver-set candidate, judge prompt, answer, or report is invalid.
 

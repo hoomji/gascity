@@ -1243,6 +1243,10 @@
           "$ref": "#/$defs/MaintenanceConfig",
           "description": "Maintenance configures periodic store-maintenance loops."
         },
+        "observatory": {
+          "$ref": "#/$defs/ObservatoryConfig",
+          "description": "Observatory configures advisory agent-observatory integrations. Off by\ndefault: an unset command leaves the routing path byte-identical."
+        },
         "service": {
           "items": {
             "$ref": "#/$defs/Service"
@@ -1898,6 +1902,22 @@
       "type": "object",
       "description": "K8sConfig holds native K8s session provider settings."
     },
+    "LiveRoutingConfig": {
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Command is the operator-configured advisory command. It is run with\n`sh -c`, receives the dispatch JSON on stdin, and its output is ignored.\nEmpty (the default) disables the hook entirely: the routing call site\nperforms no subprocess and produces no extra output."
+        },
+        "timeout": {
+          "type": "string",
+          "description": "Timeout bounds the advisory command as a duration string (e.g. \"2s\").\nDefaults to 2s; values below 100ms are raised to the floor.",
+          "default": "2s"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "LiveRoutingConfig configures the M8b advisory live-routing hook."
+    },
     "LocalDoctorCheck": {
       "properties": {
         "name": {
@@ -2044,6 +2064,17 @@
       "additionalProperties": false,
       "type": "object",
       "description": "NamedSessionPatch modifies an existing named session identified by canonical name or, for compatibility, by an unambiguous template."
+    },
+    "ObservatoryConfig": {
+      "properties": {
+        "live_routing": {
+          "$ref": "#/$defs/LiveRoutingConfig",
+          "description": "LiveRouting configures the M8b advisory live-routing hook."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ObservatoryConfig configures advisory agent-observatory integrations."
     },
     "OptionChoice": {
       "properties": {

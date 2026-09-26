@@ -497,6 +497,47 @@ def load_registration(path: str | Path) -> CanaryRegistration:
     return normalize_registration(_read_json_object(path, "canary registration"))
 
 
+def verify_registration_output(
+    path: str | Path,
+    expected_hash: str | None = None,
+) -> tuple[CanaryRegistration, str]:
+    """Bind a registration artifact to ``canary-register`` output.
+
+    ``canary-register`` prints the ``registration_hash`` it computed but writes
+    only the registration body to ``--out``; the body carries no hash of itself.
+    A live consumer must therefore be given the expected hash out of band (the
+    ``--expected-registration-hash`` flag) or find it in a ``<path>.hash``
+    sidecar written next to the artifact. Recomputing the hash here and refusing
+    on a mismatch is what stops a live layer from starting against a
+    registration that was edited after registration (requirement (c) of the
+    M8b brief).
+
+    Raises :class:`CanaryError` when the artifact is malformed, is not bound to
+    a register-time hash, or hashes to something other than the expected value.
+    """
+    registration = load_registration(path)
+    expected = (expected_hash or "").strip()
+    if not expected:
+        sidecar = Path(f"{path}.hash")
+        try:
+            expected = sidecar.read_text(encoding="utf-8").strip()
+        except OSError:
+            expected = ""
+    if not expected:
+        raise CanaryError(
+            f"canary registration {path} is not bound to canary-register output: "
+            "pass --expected-registration-hash (the registration_hash printed by "
+            f"`canary-register`) or write it to {path}.hash"
+        )
+    actual = registration.registration_hash()
+    if expected != actual:
+        raise CanaryError(
+            f"canary registration hash mismatch: expected canary-register output "
+            f"{expected!r} but {path} hashes to {actual!r}"
+        )
+    return registration, actual
+
+
 def _normalize_record(raw: Any, unit_id: str) -> ClassificationRecord:
     try:
         bundle = normalize_recommendation_bundle({"schema_version": "1.0", "episodes": [raw]})
