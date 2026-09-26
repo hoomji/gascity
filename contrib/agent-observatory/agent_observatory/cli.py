@@ -30,6 +30,16 @@ from .canary import (
     normalize_registration,
 )
 from .changes import normalize_change_bundle
+from .collapse import (
+    DEFAULT_MAJORITY,
+    PRIMARY_INTENT_COLLAPSE_V1,
+    load_judge_checkpoint,
+    rescore_collapsed,
+    resolve_collapse,
+    votes_from_checkpoint,
+    votes_from_report,
+    write_collapse_report,
+)
 from .collector import (
     DEFAULT_MAX_SOURCE_BYTES,
     STATE_MODE_METADATA,
@@ -891,6 +901,93 @@ def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_silver_collapse(args: argparse.Namespace) -> int:
+    """Re-score an existing multi-judge checkpoint under a coarser taxonomy.
+
+    Reads recorded judge votes (a raw judge checkpoint or a silver report) plus
+    Jev predictions, collapses the labels, and re-reports pairwise/Fleiss kappa
+    and Jev-vs-reference accuracy. No judge call or network request is made.
+    """
+
+    collapse = resolve_collapse(args.collapse)
+    judge_filter = [value.strip() for value in args.judge if value.strip() and value != "all"]
+    if args.checkpoint:
+        checkpoint = load_judge_checkpoint(args.checkpoint)
+        judge_ids = judge_filter or sorted(checkpoint)
+        votes, judge_ids = votes_from_checkpoint(checkpoint, judge_ids=judge_ids)
+        source = {"kind": "judge_checkpoint", "path": args.checkpoint}
+    elif args.report:
+        report_document = _read_json_object(args.report, "silver report")
+        votes, judge_ids = votes_from_report(report_document)
+        if judge_filter:
+            missing = sorted(set(judge_filter) - set(judge_ids))
+            if missing:
+                raise SilverError(
+                    "silver report is missing requested judge(s): " + ", ".join(missing)
+                )
+            judge_ids = tuple(judge_filter)
+        source = {"kind": "silver_report", "path": args.report}
+    else:
+        raise SilverError("silver-collapse needs --checkpoint or --report")
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    predictions = load_predictions(args.jev_predictions, taxonomy)
+    jev_labels = {prediction.episode_id: prediction.primary("primary_intent") for prediction in predictions}
+
+    report = rescore_collapsed(
+        votes,
+        judge_ids,
+        jev_labels,
+        collapse=collapse,
+        majority=args.majority,
+    )
+    report["source"] = source
+    vote_ids = {vote.episode_id for vote in votes}
+    report["jev_predictions"] = {
+        "path": args.jev_predictions,
+        "episodes": len(jev_labels),
+        "without_judge_votes": sorted(set(jev_labels) - vote_ids),
+        "without_jev": sorted(vote_ids - set(jev_labels)),
+    }
+    write_collapse_report(report, args.out)
+    for mode, data in report["modes"].items():
+        print(
+            json.dumps(
+                {
+                    "mode": mode,
+                    "min_pairwise_cohen_kappa": data["trust"]["min_pairwise_cohen_kappa"],
+                    "fleiss_kappa": data["trust"]["fleiss_kappa"],
+                    "clears_floor": data["trust"]["clears_floor"],
+                    "unanimous": data["references"]["unanimous"],
+                    "majority_or_better": data["references"]["majority_or_better"],
+                    "jev_unanimous_accuracy": data["jev"]["unanimous"]["accuracy"],
+                    "jev_majority_accuracy": data["jev"]["majority"]["accuracy"],
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+    print(
+        json.dumps(
+            {
+                "kind": report["kind"],
+                "collapse_id": collapse.collapse_id,
+                "episodes": report["sample"]["episodes"],
+                "clears_floor": report["clears_floor"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if args.require_clear and not report["clears_floor"]:
+        raise SilverError(
+            "no collapse mode cleared the "
+            f"{collapse.collapse_id} trust floor; report written to {args.out} as evidence"
+        )
+    return 0
+
+
 def _cmd_canary_register(args: argparse.Namespace) -> int:
     """Validate a canary spec and write the pre-registered artifact (M8).
 
@@ -1368,6 +1465,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     silver_eval_parser.add_argument("--out", default=None, help="write the silver evaluation report to this path")
     silver_eval_parser.set_defaults(func=_cmd_silver_evaluate)
+
+    silver_collapse_parser = subparsers.add_parser(
+        "silver-collapse",
+        help="re-score a recorded multi-judge checkpoint under a coarser primary_intent taxonomy (no judge calls)",
+    )
+    silver_collapse_parser.add_argument(
+        "--checkpoint", default=None, help="raw judge checkpoint JSON ({judge: {episode: raw answer}})"
+    )
+    silver_collapse_parser.add_argument(
+        "--report", default=None, help="silver report JSON whose episodes carry judge_labels"
+    )
+    silver_collapse_parser.add_argument(
+        "--jev-predictions", required=True, help="Jev predictions JSON to score against collapsed references"
+    )
+    silver_collapse_parser.add_argument(
+        "--collapse",
+        default=PRIMARY_INTENT_COLLAPSE_V1.collapse_id,
+        help=f"collapse id to apply (default: {PRIMARY_INTENT_COLLAPSE_V1.collapse_id})",
+    )
+    silver_collapse_parser.add_argument(
+        "--judge",
+        action="append",
+        default=[],
+        help="judge id to include (repeatable; default every judge in the source)",
+    )
+    silver_collapse_parser.add_argument(
+        "--majority", type=int, default=DEFAULT_MAJORITY, help="judges that must agree for a majority reference (default: 3)"
+    )
+    silver_collapse_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    silver_collapse_parser.add_argument("--out", required=True, help="write the collapse re-score report JSON here")
+    silver_collapse_parser.add_argument(
+        "--require-clear",
+        action="store_true",
+        help="exit nonzero (after writing the report) when no unknown policy clears the trust floor",
+    )
+    silver_collapse_parser.set_defaults(func=_cmd_silver_collapse)
 
     impact_parser = subparsers.add_parser(
         "impact",

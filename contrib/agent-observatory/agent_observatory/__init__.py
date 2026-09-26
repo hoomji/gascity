@@ -20,7 +20,7 @@ Beads and events remain the authoritative record; the SQLite file is only a
 derived analytical projection.
 """
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 from .annotations import GoldEpisode, GoldSet, load_gold_set
 from .canary import (
@@ -49,6 +49,34 @@ from .changes import (
     classify_categories,
     normalize_change_bundle,
     normalize_change,
+)
+from .collapse import (
+    ABSTAIN_LABEL,
+    COLLAPSE_PROMPT_VERSION,
+    COLLAPSE_REPORT_VERSION,
+    DEFAULT_MAJORITY,
+    PRIMARY_INTENT_COLLAPSE_V1,
+    AgreementReference,
+    JudgeVote,
+    LabelCollapse,
+    build_agreement_references,
+    build_collapsed_judge_prompt,
+    confusion_matrix,
+    disagreement_groups,
+    disagreement_pairs,
+    evaluate_references,
+    fleiss_kappa,
+    kappa_summary,
+    label_rows,
+    load_judge_checkpoint,
+    pairwise_cohen_kappa,
+    pairwise_confusion_matrices,
+    rescore_collapsed,
+    resolve_collapse,
+    identity_collapse,
+    votes_from_checkpoint,
+    votes_from_report,
+    write_collapse_report,
 )
 from .contract import SCHEMA_VERSION, validate_record
 from .episodes import Episode, EpisodeConfig, segment_events, segment_store
@@ -257,6 +285,32 @@ __all__ = [
     "build_silver_result",
     "cohen_kappa",
     "evaluate_silver_vs_jev",
+    "COLLAPSE_REPORT_VERSION",
+    "COLLAPSE_PROMPT_VERSION",
+    "DEFAULT_MAJORITY",
+    "ABSTAIN_LABEL",
+    "LabelCollapse",
+    "PRIMARY_INTENT_COLLAPSE_V1",
+    "AgreementReference",
+    "JudgeVote",
+    "resolve_collapse",
+    "identity_collapse",
+    "votes_from_report",
+    "votes_from_checkpoint",
+    "load_judge_checkpoint",
+    "label_rows",
+    "confusion_matrix",
+    "pairwise_confusion_matrices",
+    "disagreement_groups",
+    "disagreement_pairs",
+    "fleiss_kappa",
+    "pairwise_cohen_kappa",
+    "kappa_summary",
+    "build_agreement_references",
+    "evaluate_references",
+    "rescore_collapsed",
+    "build_collapsed_judge_prompt",
+    "write_collapse_report",
     "ObservatoryError",
     "AnnotationError",
     "CanaryError",

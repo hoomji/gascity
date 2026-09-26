@@ -143,3 +143,48 @@ python3 -m agent_observatory silver-evaluate \
 `--checkpoint` makes the 300-call run resumable; a partial build replays the
 answers already on disk instead of re-spending them.
 
+## Collapse re-score: the label taxonomy is not the whole story, 2026-09-26
+
+Four judges (GLM 5.3 Flash, DeepSeek V4 Flash, GPT 6 Luna, Gemini 3.8 Flash) on
+the same 150 episodes produced pairwise Cohen's kappa 0.199-0.406 and Fleiss
+0.306: adding judges did not create a trustworthy reference. `collapse.py`
+re-scores the recorded checkpoint (`judge_checkpoint_4judge.json`) with **no new
+judge call** to test whether a coarser `primary_intent` taxonomy fixes it.
+
+- **Where the disagreement lives.** 65 of 150 episodes are disagreements. They
+  are dominated by `dependency_worktree_agent_ops` vs `unknown` (40 episodes,
+  134 of the judge-pair comparisons) and `dependency_worktree_agent_ops` vs
+  `pr_review` (14 episodes, 43 comparisons); `bugfix` vs
+  `dependency_worktree_agent_ops` is a distant third (7 episodes).
+- **Proposed collapse (`primary_intent_collapse_v1`).** Merge
+  `dependency_worktree_agent_ops` with the two review labels into
+  `agent_ops_review`; keep every other label; keep `unknown` as a label, with a
+  second variant that treats it as an abstention. On the recorded checkpoint the
+  minimum pairwise Cohen's kappa moves 0.199 -> 0.236 (label policy) and
+  0.317 -> 0.482 (abstain policy); Fleiss' kappa moves 0.306 -> 0.325 and
+  0.444 -> 0.554. Jev against the unanimous reference moves from
+  accuracy/macro-F1 0.675/0.422 to 0.779/0.494 (label) and 0.671/0.501 to
+  0.777/0.624 (abstain); against the 3-of-4 reference it moves 0.565/0.342 to
+  0.689/0.396 (label) and 0.546/0.360 to 0.678/0.428 (abstain).
+- **No design clears 0.6.** The collapse is at the ceiling, not a tuning miss: a
+  search over every partition of the nine labels into at least three classes of
+  at most three source labels finds no minimum pair kappa above 0.243 (label
+  policy) or 0.482 (abstain policy), and the proposed collapse is at that
+  abstain ceiling (Fleiss 0.554). Only degenerate two-class partitions (for
+  example `planning_spec` vs everything else after dropping abstentions) reach
+  1.0, and those no longer classify intent. The owner's no-pass-below-0.6 rule
+  stands, and the fresh `silver-v2` confirmation run authorised only above the
+  floor was therefore **not spent**.
+- **What this means.** The dominant boundary is abstention calibration
+  (`dependency_worktree_agent_ops` vs `unknown`), which is why dropping unknown
+  helps most; the remaining substantive ops/review boundary still caps the
+  minimum pair kappa below 0.5. A passing gate needs a different reference
+  design (for example an explicit abstention/`known` split, adjudication, or
+  human review of the 65 contested episodes), not merely more judges or a
+  narrower label set.
+
+Reproduce with `agent-observatory silver-collapse` (see the README). The
+artifacts are `silver_collapse_4judge_150.json`, `sensitivity.json` and
+`summary.md` under `/home/coolhenrylinux/reports/jev-xb17jn/collapse/`.
+
+

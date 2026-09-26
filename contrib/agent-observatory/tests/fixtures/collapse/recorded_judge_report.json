@@ -1,0 +1,169 @@
+{
+  "episodes": [
+    {
+      "adjudication": "adjudicated",
+      "episode_id": "e01",
+      "judge_labels": {
+        "deepseek-v4-flash": "dependency_worktree_agent_ops",
+        "gemini-3p8-flash": "dependency_worktree_agent_ops",
+        "glm-5p3-flash": "dependency_worktree_agent_ops",
+        "gpt6-luna": "dependency_worktree_agent_ops"
+      },
+      "provider": "dsh-minimal-deepseek-flash",
+      "silver_label": null
+    },
+    {
+      "adjudication": "adjudicated",
+      "episode_id": "e02",
+      "judge_labels": {
+        "deepseek-v4-flash": "pr_review",
+        "gemini-3p8-flash": "pr_review",
+        "glm-5p3-flash": "pr_review",
+        "gpt6-luna": "pr_review"
+      },
+      "provider": "claude-mayor",
+      "silver_label": null
+    },
+    {
+      "adjudication": "disagreement",
+      "episode_id": "e03",
+      "judge_labels": {
+        "deepseek-v4-flash": "dependency_worktree_agent_ops",
+        "gemini-3p8-flash": "pr_review",
+        "glm-5p3-flash": "dependency_worktree_agent_ops",
+        "gpt6-luna": "dependency_worktree_agent_ops"
+      },
+      "provider": "dsh-minimal-deepseek-flash",
+      "silver_label": null
+    },
+    {
+      "adjudication": "disagreement",
+      "episode_id": "e04",
+      "judge_labels": {
+        "deepseek-v4-flash": "bugfix",
+        "gemini-3p8-flash": "dependency_worktree_agent_ops",
+        "glm-5p3-flash": "bugfix",
+        "gpt6-luna": "bugfix"
+      },
+      "provider": "claude-mayor",
+      "silver_label": null
+    },
+    {
+      "adjudication": "disagreement",
+      "episode_id": "e05",
+      "judge_labels": {
+        "deepseek-v4-flash": "dependency_worktree_agent_ops",
+        "gemini-3p8-flash": "unknown",
+        "glm-5p3-flash": "dependency_worktree_agent_ops",
+        "gpt6-luna": "unknown"
+      },
+      "provider": "dsh-minimal-deepseek-flash",
+      "silver_label": null
+    },
+    {
+      "adjudication": "disagreement",
+      "episode_id": "e06",
+      "judge_labels": {
+        "deepseek-v4-flash": "dependency_worktree_agent_ops",
+        "gemini-3p8-flash": "unknown",
+        "glm-5p3-flash": "dependency_worktree_agent_ops",
+        "gpt6-luna": "dependency_worktree_agent_ops"
+      },
+      "provider": "claude-mayor",
+      "silver_label": null
+    },
+    {
+      "adjudication": "adjudicated",
+      "episode_id": "e07",
+      "judge_labels": {
+        "deepseek-v4-flash": "unknown",
+        "gemini-3p8-flash": "unknown",
+        "glm-5p3-flash": "unknown",
+        "gpt6-luna": "unknown"
+      },
+      "provider": "dsh-minimal-deepseek-flash",
+      "silver_label": null
+    },
+    {
+      "adjudication": "disagreement",
+      "episode_id": "e08",
+      "judge_labels": {
+        "deepseek-v4-flash": "bugfix",
+        "gemini-3p8-flash": "test_lint_build_ci",
+        "glm-5p3-flash": "bugfix",
+        "gpt6-luna": "implementation"
+      },
+      "provider": "claude-mayor",
+      "silver_label": null
+    },
+    {
+      "adjudication": "adjudicated",
+      "episode_id": "e09",
+      "judge_labels": {
+        "deepseek-v4-flash": "research_docs",
+        "gemini-3p8-flash": "research_docs",
+        "glm-5p3-flash": "research_docs",
+        "gpt6-luna": "research_docs"
+      },
+      "provider": "dsh-minimal-deepseek-flash",
+      "silver_label": null
+    },
+    {
+      "adjudication": "disagreement",
+      "episode_id": "e10",
+      "judge_labels": {
+        "deepseek-v4-flash": "research_docs",
+        "gemini-3p8-flash": "pr_review",
+        "glm-5p3-flash": "research_docs",
+        "gpt6-luna": "pr_review"
+      },
+      "provider": "claude-mayor",
+      "silver_label": null
+    },
+    {
+      "adjudication": "disagreement",
+      "episode_id": "e11",
+      "judge_labels": {
+        "deepseek-v4-flash": "implementation",
+        "gemini-3p8-flash": "unknown",
+        "glm-5p3-flash": "implementation",
+        "gpt6-luna": "implementation"
+      },
+      "provider": "dsh-minimal-deepseek-flash",
+      "silver_label": null
+    },
+    {
+      "adjudication": "adjudicated",
+      "episode_id": "e12",
+      "judge_labels": {
+        "deepseek-v4-flash": "bugfix",
+        "glm-5p3-flash": "bugfix",
+        "gpt6-luna": "bugfix"
+      },
+      "provider": "claude-mayor",
+      "silver_label": null
+    }
+  ],
+  "judges": [
+    {
+      "backend": "recorded",
+      "judge_id": "glm-5p3-flash",
+      "model": "test/glm-5p3-flash"
+    },
+    {
+      "backend": "recorded",
+      "judge_id": "deepseek-v4-flash",
+      "model": "test/deepseek-v4-flash"
+    },
+    {
+      "backend": "recorded",
+      "judge_id": "gpt6-luna",
+      "model": "test/gpt6-luna"
+    },
+    {
+      "backend": "recorded",
+      "judge_id": "gemini-3p8-flash",
+      "model": "test/gemini-3p8-flash"
+    }
+  ]
+}

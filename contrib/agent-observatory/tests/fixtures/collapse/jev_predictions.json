@@ -1,0 +1,50 @@
+{
+  "model": "jev-1.13.0",
+  "predictions": [
+    {
+      "episode_id": "e01",
+      "primary_intent": "dependency_worktree_agent_ops"
+    },
+    {
+      "episode_id": "e02",
+      "primary_intent": "pr_review"
+    },
+    {
+      "episode_id": "e03",
+      "primary_intent": "dependency_worktree_agent_ops"
+    },
+    {
+      "episode_id": "e04",
+      "primary_intent": "implementation"
+    },
+    {
+      "episode_id": "e05",
+      "primary_intent": "dependency_worktree_agent_ops"
+    },
+    {
+      "episode_id": "e06",
+      "primary_intent": "dependency_worktree_agent_ops"
+    },
+    {
+      "episode_id": "e07",
+      "primary_intent": "bugfix"
+    },
+    {
+      "episode_id": "e08",
+      "primary_intent": "bugfix"
+    },
+    {
+      "episode_id": "e09",
+      "primary_intent": "implementation"
+    },
+    {
+      "episode_id": "e10",
+      "primary_intent": "research_docs"
+    },
+    {
+      "episode_id": "e11",
+      "primary_intent": "implementation"
+    }
+  ],
+  "predictor": "jev"
+}
