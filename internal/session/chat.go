@@ -803,7 +803,24 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func formatWaitIdleReminder(source, message string) string {
+// MinimalWaitIdleReminderBody is the single source of truth for the turn
+// trigger emitted when the target provider's own prompt hook already injects
+// the notification content on the same turn. The body stays non-empty because
+// an empty nudge submits no turn at the provider, so a body-free trigger would
+// silently lose the wake.
+const MinimalWaitIdleReminderBody = "You have a new notification."
+
+// MinimalWaitIdleSystemReminder renders the complete minimal
+// <system-reminder> block for a hook-injected wait-idle nudge. Both wait-idle
+// formatters — this package's formatWaitIdleReminder and the worker boundary's
+// formatRuntimeWaitIdleReminder (internal/worker/runtime_handle.go) — return
+// this exact string on their minimal branch, so the byte-identical contract the
+// audit doc relies on cannot drift when one side is edited.
+func MinimalWaitIdleSystemReminder() string {
+	return "<system-reminder>\n" + MinimalWaitIdleReminderBody + "\n</system-reminder>\n"
+}
+
+func formatWaitIdleReminder(source, message string, minimalBody bool) string {
 	// Sanitize attacker-controllable fields before interpolating into the
 	// <system-reminder> block. The deferred-nudge body is sender-supplied, so
 	// without this a sender can embed </system-reminder> sequences to break out
@@ -811,6 +828,13 @@ func formatWaitIdleReminder(source, message string) string {
 	// See gastownhall/gascity#2195 and the ga-vs7 notification-injection incident.
 	source = promptsafe.SanitizeForSystemReminder(source)
 	message = promptsafe.SanitizeForSystemReminder(message)
+	if minimalBody {
+		// The target provider's own prompt hook injects the notification
+		// content on this same turn, so the nudge only has to start the turn;
+		// repeating the reminder body would announce the same thing twice.
+		// Route through the shared builder so the worker boundary cannot drift.
+		return MinimalWaitIdleSystemReminder()
+	}
 	var sb strings.Builder
 	sb.WriteString("<system-reminder>\n")
 	sb.WriteString("You have a deferred reminder that was queued until a safe boundary:\n\n")
@@ -851,7 +875,7 @@ func normalizeWaitIdleNudgeSource(source string) string {
 	return source
 }
 
-func (m *Manager) tryWaitIdleNudgeLocked(ctx context.Context, id string, b beads.Bead, source, sessName, message, resumeCommand string, hints runtime.Config) (bool, error) {
+func (m *Manager) tryWaitIdleNudgeLocked(ctx context.Context, id string, b beads.Bead, source, sessName, message, resumeCommand string, hints runtime.Config, minimalBody bool) (bool, error) {
 	if transportFromMetadata(b) == "acp" {
 		if err := m.ensureRunning(ctx, id, b, sessName, resumeCommand, hints); err != nil {
 			return false, err
@@ -874,13 +898,13 @@ func (m *Manager) tryWaitIdleNudgeLocked(ctx context.Context, id string, b beads
 	if err := waiter.WaitForIdle(ctx, sessName, waitIdleNudgeTimeout); err != nil {
 		return false, nil
 	}
-	if err := m.nudgeSession(ctx, sessName, formatWaitIdleReminder(normalizeWaitIdleNudgeSource(source), message), true); err != nil {
+	if err := m.nudgeSession(ctx, sessName, formatWaitIdleReminder(normalizeWaitIdleNudgeSource(source), message, minimalBody), true); err != nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (m *Manager) tryWaitIdleNudgeLiveOnlyLocked(ctx context.Context, b beads.Bead, source, sessName, message string) (bool, error) {
+func (m *Manager) tryWaitIdleNudgeLiveOnlyLocked(ctx context.Context, b beads.Bead, source, sessName, message string, minimalBody bool) (bool, error) {
 	if !m.sp.IsRunning(sessName) {
 		return false, nil
 	}
@@ -900,7 +924,7 @@ func (m *Manager) tryWaitIdleNudgeLiveOnlyLocked(ctx context.Context, b beads.Be
 	if err := waiter.WaitForIdle(ctx, sessName, waitIdleNudgeTimeout); err != nil {
 		return false, nil
 	}
-	if err := m.nudgeSession(ctx, sessName, formatWaitIdleReminder(normalizeWaitIdleNudgeSource(source), message), true); err != nil {
+	if err := m.nudgeSession(ctx, sessName, formatWaitIdleReminder(normalizeWaitIdleNudgeSource(source), message, minimalBody), true); err != nil {
 		return false, nil
 	}
 	return true, nil
@@ -1046,14 +1070,14 @@ func (m *Manager) SendImmediateLiveOnly(ctx context.Context, id, message string)
 // live delivery actually happened. Unsupported providers return (false, nil)
 // so higher layers can fall back to queue semantics without treating that as
 // an operational error.
-func (m *Manager) TryWaitIdleNudge(ctx context.Context, id, source, message, resumeCommand string, hints runtime.Config) (bool, error) {
+func (m *Manager) TryWaitIdleNudge(ctx context.Context, id, source, message, resumeCommand string, hints runtime.Config, minimalBody bool) (bool, error) {
 	var delivered bool
 	err := withSessionMutationLock(id, func() error {
 		b, sessName, err := m.sessionBead(id)
 		if err != nil {
 			return err
 		}
-		delivered, err = m.tryWaitIdleNudgeLocked(ctx, id, b, source, sessName, message, resumeCommand, hints)
+		delivered, err = m.tryWaitIdleNudgeLocked(ctx, id, b, source, sessName, message, resumeCommand, hints, minimalBody)
 		return err
 	})
 	return delivered, err
@@ -1062,14 +1086,14 @@ func (m *Manager) TryWaitIdleNudge(ctx context.Context, id, source, message, res
 // TryWaitIdleNudgeLiveOnly delivers a best-effort nudge at a safe boundary
 // only when the runtime is already live. It never resumes or restarts the
 // session.
-func (m *Manager) TryWaitIdleNudgeLiveOnly(ctx context.Context, id, source, message string) (bool, error) {
+func (m *Manager) TryWaitIdleNudgeLiveOnly(ctx context.Context, id, source, message string, minimalBody bool) (bool, error) {
 	var delivered bool
 	err := withSessionMutationLock(id, func() error {
 		b, sessName, err := m.sessionBead(id)
 		if err != nil {
 			return err
 		}
-		delivered, err = m.tryWaitIdleNudgeLiveOnlyLocked(ctx, b, source, sessName, message)
+		delivered, err = m.tryWaitIdleNudgeLiveOnlyLocked(ctx, b, source, sessName, message, minimalBody)
 		return err
 	})
 	return delivered, err

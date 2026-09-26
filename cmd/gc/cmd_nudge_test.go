@@ -2271,6 +2271,273 @@ func TestSendMailNotifyWithProviderWaitIdleWrapsDirectDeliveryInSystemReminder(t
 	}
 }
 
+// TestTargetInjectsMailOnPrompt pins the provider/hook detection reused by the
+// direct --notify wait-idle path. Claude-family providers have hooks unless the
+// agent explicitly disables them; Codex does not; and a nil cfg cannot
+// establish hook state, so it must keep the full reminder.
+func TestTargetInjectsMailOnPrompt(t *testing.T) {
+	cases := []struct {
+		name   string
+		target nudgeTarget
+		want   bool
+	}{
+		{
+			name:   "claude-family default",
+			target: nudgeTarget{cfg: &config.City{}, resolved: &config.ResolvedProvider{Name: "claude"}},
+			want:   true,
+		},
+		{
+			name:   "claude-family hooks explicitly disabled",
+			target: nudgeTarget{cfg: &config.City{}, agent: config.Agent{HooksInstalled: boolPtr(false)}, resolved: &config.ResolvedProvider{Name: "claude"}},
+			want:   false,
+		},
+		{
+			name:   "codex without install hooks",
+			target: nudgeTarget{cfg: &config.City{}, resolved: &config.ResolvedProvider{Name: "codex"}},
+			want:   false,
+		},
+		{
+			name: "provider listed in install_agent_hooks (arm 3)",
+			target: nudgeTarget{
+				cfg:      &config.City{Workspace: config.Workspace{InstallAgentHooks: []string{"opencode"}}},
+				agent:    config.Agent{Name: "mayor"},
+				resolved: &config.ResolvedProvider{Name: "opencode"},
+			},
+			want: true,
+		},
+		{
+			name: "install_agent_hooks for a different provider (arm 3 miss)",
+			target: nudgeTarget{
+				cfg:      &config.City{Workspace: config.Workspace{InstallAgentHooks: []string{"kiro"}}},
+				agent:    config.Agent{Name: "mayor"},
+				resolved: &config.ResolvedProvider{Name: "opencode"},
+			},
+			want: false,
+		},
+		{
+			name:   "nil cfg cannot establish hook state",
+			target: nudgeTarget{resolved: &config.ResolvedProvider{Name: "claude"}},
+			want:   false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := targetInjectsMailOnPrompt(tc.target); got != tc.want {
+				t.Fatalf("targetInjectsMailOnPrompt = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSendMailNotifyWithProviderHookInstalledWaitIdleUsesTurnTrigger is the
+// acceptance case for the direct --notify wait-idle path: a provider whose own
+// UserPromptSubmit `gc mail check --inject` hook injects the unread list on the
+// same turn needs the nudge only as a turn trigger, so the delivered body must
+// not repeat the mail reminder. Exactly one turn is submitted, and the body
+// stays non-empty because an empty nudge submits no turn at all.
+func TestSendMailNotifyWithProviderHookInstalledWaitIdleUsesTurnTrigger(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	dir := t.TempDir()
+	fake := runtime.NewFake()
+	if err := fake.Start(context.Background(), "sess-mayor", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	fake.WaitForIdleErrors["sess-mayor"] = nil
+
+	target := nudgeTarget{
+		cityPath:    dir,
+		cfg:         &config.City{},
+		agent:       config.Agent{Name: "mayor", MaxActiveSessions: intPtrNudge(1)},
+		resolved:    &config.ResolvedProvider{Name: "claude"},
+		sessionName: "sess-mayor",
+	}
+
+	if err := sendMailNotifyWithProvider(target, fake); err != nil {
+		t.Fatalf("sendMailNotifyWithProvider: %v", err)
+	}
+
+	var waitCalls, nudgeNowCalls int
+	var delivered string
+	for _, call := range fake.Calls {
+		switch call.Method {
+		case "WaitForIdle":
+			waitCalls++
+		case "NudgeNow":
+			nudgeNowCalls++
+			delivered = call.Message
+		}
+	}
+	if waitCalls != 1 {
+		t.Fatalf("wait-idle calls = %d, want 1", waitCalls)
+	}
+	if nudgeNowCalls != 1 {
+		t.Fatalf("turn-trigger nudge calls = %d, want exactly 1", nudgeNowCalls)
+	}
+	if strings.Contains(delivered, "You have mail from human") {
+		t.Fatalf("hook-installed --notify repeated the mail reminder: %q", delivered)
+	}
+	if strings.Contains(delivered, "deferred reminder") {
+		t.Fatalf("hook-installed --notify kept the deferred-reminder body: %q", delivered)
+	}
+	if !strings.Contains(delivered, "You have a new notification.") {
+		t.Fatalf("hook-installed --notify missing the minimal turn trigger: %q", delivered)
+	}
+
+	pending, inFlight, dead, err := listQueuedNudges(dir, target.agentKey(), time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudges: %v", err)
+	}
+	if len(pending) != 0 || len(inFlight) != 0 || len(dead) != 0 {
+		t.Fatalf("pending=%d inFlight=%d dead=%d, want all zero (no duplicate queue entry)", len(pending), len(inFlight), len(dead))
+	}
+}
+
+// TestSendMailNotifyWithProviderClaudeHooksDisabledWaitIdleKeepsFullReminder is
+// the "Claude session whose hooks are missing" arm: an explicit
+// hooks_installed = false keeps the full reminder even though the provider is
+// claude-family, so the mail is still surfaced by the nudge itself.
+func TestSendMailNotifyWithProviderClaudeHooksDisabledWaitIdleKeepsFullReminder(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	dir := t.TempDir()
+	fake := runtime.NewFake()
+	if err := fake.Start(context.Background(), "sess-mayor", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	fake.WaitForIdleErrors["sess-mayor"] = nil
+
+	target := nudgeTarget{
+		cityPath:    dir,
+		cfg:         &config.City{},
+		agent:       config.Agent{Name: "mayor", MaxActiveSessions: intPtrNudge(1), HooksInstalled: boolPtr(false)},
+		resolved:    &config.ResolvedProvider{Name: "claude"},
+		sessionName: "sess-mayor",
+	}
+
+	if err := sendMailNotifyWithProvider(target, fake); err != nil {
+		t.Fatalf("sendMailNotifyWithProvider: %v", err)
+	}
+
+	var delivered string
+	for _, call := range fake.Calls {
+		if call.Method == "NudgeNow" {
+			delivered = call.Message
+		}
+	}
+	if !strings.Contains(delivered, "[mail] You have mail from human") {
+		t.Fatalf("hook-less claude --notify = %q, want the full mail reminder", delivered)
+	}
+}
+
+// TestSendMailNotifyWithProviderCodexWaitIdleQueuesFullReminder covers Codex,
+// which does not run the mail-check hook and cannot take a live wait-idle
+// delivery: --notify must still queue the full reminder so the queued
+// dispatcher can surface the mail.
+func TestSendMailNotifyWithProviderCodexWaitIdleQueuesFullReminder(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	dir := t.TempDir()
+	fake := runtime.NewFake()
+	if err := fake.Start(context.Background(), "sess-mayor", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	called := false
+	prev := startNudgePoller
+	startNudgePoller = func(_, _, _ string) error {
+		called = true
+		return nil
+	}
+	t.Cleanup(func() { startNudgePoller = prev })
+
+	target := nudgeTarget{
+		cityPath:    dir,
+		cfg:         &config.City{},
+		agent:       config.Agent{Name: "mayor", MaxActiveSessions: intPtrNudge(1)},
+		resolved:    &config.ResolvedProvider{Name: "codex"},
+		sessionName: "sess-mayor",
+	}
+
+	if err := sendMailNotifyWithProvider(target, fake); err != nil {
+		t.Fatalf("sendMailNotifyWithProvider: %v", err)
+	}
+	if !called {
+		t.Fatal("startNudgePoller was not called for the queued codex reminder")
+	}
+
+	pending, inFlight, dead, err := listQueuedNudges(dir, target.agentKey(), time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudges: %v", err)
+	}
+	if len(pending) != 1 || len(inFlight) != 0 || len(dead) != 0 {
+		t.Fatalf("pending/inFlight/dead = %d/%d/%d, want 1/0/0", len(pending), len(inFlight), len(dead))
+	}
+	if !strings.Contains(pending[0].Message, "You have mail from human") {
+		t.Fatalf("queued codex reminder = %q, want the full mail message", pending[0].Message)
+	}
+}
+
+// TestSendMailNotifyWithProviderInstallAgentHooksArm3QueuesFullReminder covers
+// the AgentHasHooks arm-3 configuration wizard-generated cities create: a
+// provider (opencode) named in the resolved install_agent_hooks list, whose
+// overlay installs the UserPromptSubmit mail hook. targetInjectsMailOnPrompt
+// reports true for it, but the direct --notify live wait-idle leg is restricted
+// to the literal claude provider (RuntimeHandle.nudgeWaitIdle and the session
+// manager's tryWaitIdleNudge*), so the wake cannot be delivered live. The full
+// reminder is queued instead, which is what keeps the mail from being lost; the
+// minimal body only applies when that live leg actually runs. Pinning both
+// halves here means an arm-3 detection regression and a stray non-claude live
+// delivery are each caught.
+func TestSendMailNotifyWithProviderInstallAgentHooksArm3QueuesFullReminder(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	dir := t.TempDir()
+	fake := runtime.NewFake()
+	if err := fake.Start(context.Background(), "sess-mayor", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	fake.WaitForIdleErrors["sess-mayor"] = nil
+
+	called := false
+	prev := startNudgePoller
+	startNudgePoller = func(_, _, _ string) error {
+		called = true
+		return nil
+	}
+	t.Cleanup(func() { startNudgePoller = prev })
+
+	target := nudgeTarget{
+		cityPath:    dir,
+		cfg:         &config.City{Workspace: config.Workspace{InstallAgentHooks: []string{"opencode"}}},
+		agent:       config.Agent{Name: "mayor", MaxActiveSessions: intPtrNudge(1)},
+		resolved:    &config.ResolvedProvider{Name: "opencode"},
+		sessionName: "sess-mayor",
+	}
+	if !targetInjectsMailOnPrompt(target) {
+		t.Fatal("install_agent_hooks arm 3 did not report the provider as mail-injecting")
+	}
+
+	if err := sendMailNotifyWithProvider(target, fake); err != nil {
+		t.Fatalf("sendMailNotifyWithProvider: %v", err)
+	}
+	if !called {
+		t.Fatal("startNudgePoller was not called for the queued opencode reminder")
+	}
+	for _, call := range fake.Calls {
+		if call.Method == "NudgeNow" {
+			t.Fatalf("opencode took a live wait-idle delivery it cannot support: %q", call.Message)
+		}
+	}
+
+	pending, inFlight, dead, err := listQueuedNudges(dir, target.agentKey(), time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudges: %v", err)
+	}
+	if len(pending) != 1 || len(inFlight) != 0 || len(dead) != 0 {
+		t.Fatalf("pending/inFlight/dead = %d/%d/%d, want 1/0/0", len(pending), len(inFlight), len(dead))
+	}
+	if !strings.Contains(pending[0].Message, "You have mail from human") {
+		t.Fatalf("queued opencode reminder = %q, want the full mail message", pending[0].Message)
+	}
+}
+
 func TestSendMailNotifyWithWorkerWaitIdlePreservesMailSource(t *testing.T) {
 	clearGCEnv(t)
 	disableManagedDoltRecoveryForTest(t)

@@ -177,6 +177,13 @@ type NudgeRequest struct {
 	Delivery NudgeDelivery   `json:"delivery,omitempty"`
 	Source   string          `json:"source,omitempty"`
 	Wake     NudgeWakePolicy `json:"wake,omitempty"`
+	// MinimalBody delivers the nudge as a turn trigger only: the wait-idle
+	// formatters emit a short trigger instead of the full deferred-reminder
+	// body. A caller sets it when the target provider's own prompt hook (for
+	// example the UserPromptSubmit `gc mail check --inject` hook) injects the
+	// notification content on the same turn, so repeating that content in the
+	// nudge would announce it twice. Non-wait-idle deliveries ignore it.
+	MinimalBody bool `json:"minimal_body,omitempty"`
 }
 
 // NudgeResult reports whether the requested live delivery actually happened.

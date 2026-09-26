@@ -433,13 +433,13 @@ func (h *RuntimeHandle) nudgeWaitIdle(ctx context.Context, req NudgeRequest) (Nu
 		}
 		return NudgeResult{Delivered: false, Undelivered: NudgeUndeliveredNoIdleBoundary}, nil
 	}
-	if err := h.nudgeNow(formatRuntimeWaitIdleReminder(req.Source, req.Text)); err != nil {
+	if err := h.nudgeNow(formatRuntimeWaitIdleReminder(req.Source, req.Text, req.MinimalBody)); err != nil {
 		return NudgeResult{}, err
 	}
 	return NudgeResult{Delivered: true}, nil
 }
 
-func formatRuntimeWaitIdleReminder(source, message string) string {
+func formatRuntimeWaitIdleReminder(source, message string, minimalBody bool) string {
 	source = strings.TrimSpace(source)
 	if source == "" {
 		source = "session"
@@ -451,6 +451,14 @@ func formatRuntimeWaitIdleReminder(source, message string) string {
 	// See gastownhall/gascity#2195 and the ga-vs7 notification-injection incident.
 	source = promptsafe.SanitizeForSystemReminder(source)
 	message = promptsafe.SanitizeForSystemReminder(message)
+	if minimalBody {
+		// The target provider's own prompt hook injects the notification
+		// content on this same turn, so the nudge only has to start the turn;
+		// repeating the reminder body would announce the same thing twice.
+		// Route through the session manager's canonical block so the two
+		// wait-idle formatters cannot drift.
+		return sessionpkg.MinimalWaitIdleSystemReminder()
+	}
 	var sb strings.Builder
 	sb.WriteString("<system-reminder>\n")
 	sb.WriteString("You have a deferred reminder that was queued until a safe boundary:\n\n")
