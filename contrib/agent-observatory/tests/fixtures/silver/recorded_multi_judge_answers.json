@@ -1,0 +1,43 @@
+{
+  "_comment": "Recorded four-judge answers keyed by judge_id then episode_id. Used by tests so the multi-judge path (pairwise/Fleiss kappa, majority and unanimous references) is exercised without network or subprocess. The two gateway judges reuse the same wire shape as recorded_judge_answers.json; gpt6-luna and gemini-3p8-flash are the subscription backends.",
+  "glm-5p3-flash": {
+    "e1": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}",
+    "e2": "{\"primary_intent\":\"bugfix\",\"confidence\":0.8}",
+    "e3": "{\"primary_intent\":\"implementation\",\"confidence\":0.7}",
+    "e4": "{\"primary_intent\":\"bugfix\",\"confidence\":0.6}",
+    "e5": "{\"primary_intent\":\"pr_review\",\"confidence\":0.8}",
+    "e6": "{\"primary_intent\":\"pr_review\",\"confidence\":0.6}",
+    "e7": "{\"primary_intent\":\"bugfix\",\"confidence\":0.7}",
+    "e8": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}"
+  },
+  "deepseek-v4-flash": {
+    "e1": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}",
+    "e2": "{\"primary_intent\":\"bugfix\",\"confidence\":0.8}",
+    "e3": "{\"primary_intent\":\"implementation\",\"confidence\":0.7}",
+    "e4": "{\"primary_intent\":\"implementation\",\"confidence\":0.5}",
+    "e5": "{\"primary_intent\":\"pr_review\",\"confidence\":0.8}",
+    "e6": "{\"primary_intent\":\"planning_spec\",\"confidence\":0.5}",
+    "e7": "{\"primary_intent\":\"bugfix\",\"confidence\":0.7}",
+    "e8": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}"
+  },
+  "gpt6-luna": {
+    "e1": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}",
+    "e2": "{\"primary_intent\":\"bugfix\",\"confidence\":0.8}",
+    "e3": "{\"primary_intent\":\"implementation\",\"confidence\":0.7}",
+    "e4": "{\"primary_intent\":\"bugfix\",\"confidence\":0.6}",
+    "e5": "{\"primary_intent\":\"pr_review\",\"confidence\":0.8}",
+    "e6": "{\"primary_intent\":\"pr_review\",\"confidence\":0.6}",
+    "e7": "{\"primary_intent\":\"implementation\",\"confidence\":0.6}",
+    "e8": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}"
+  },
+  "gemini-3p8-flash": {
+    "e1": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}",
+    "e2": "{\"primary_intent\":\"implementation\",\"confidence\":0.6}",
+    "e3": "{\"primary_intent\":\"implementation\",\"confidence\":0.7}",
+    "e4": "{\"primary_intent\":\"implementation\",\"confidence\":0.5}",
+    "e5": "{\"primary_intent\":\"pr_review\",\"confidence\":0.8}",
+    "e6": "{\"primary_intent\":\"planning_spec\",\"confidence\":0.5}",
+    "e7": "{\"primary_intent\":\"implementation\",\"confidence\":0.6}",
+    "e8": "{\"primary_intent\":\"bugfix\",\"confidence\":0.9}"
+  }
+}
