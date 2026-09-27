@@ -14,7 +14,13 @@ except ImportError:  # pragma: no cover
 
 from agent_observatory import load_taxonomy
 from agent_observatory.errors import ContractError, LabelConflictError, ResponseError
-from agent_observatory.jev import build_request, import_response, parse_json_document, persist_request
+from agent_observatory.jev import (
+    build_request,
+    import_response,
+    parse_json_document,
+    persist_request,
+    validate_response,
+)
 from agent_observatory.store import ObservatoryStore
 
 
@@ -150,13 +156,44 @@ class JevResponseTest(unittest.TestCase):
             import_response(self.store, second, request_hash=self.request.request_hash)
         self.assertEqual(self.store.classification_count(), 0)
 
-    def test_probabilities_must_sum_to_one(self):
+    def _response_with_probability_total(self, total):
+        response = copy.deepcopy(self.valid)
+        probabilities = response["answers"]["primary_intent"]["probabilities"]
+        for option in probabilities:
+            probabilities[option] = 0.0
+        options = self._primary_options()
+        probabilities[options[0]] = total / 2
+        probabilities[options[1]] = total / 2
+        return response
+
+    def test_probabilities_allow_rounding_tolerance(self):
+        for total in (1.0, 0.99, 1.01):
+            with self.subTest(total=total):
+                answers = validate_response(
+                    self._response_with_probability_total(total), self.request.body
+                )
+                primary = next(answer for answer in answers if answer["question_id"] == "primary_intent")
+                self.assertAlmostEqual(
+                    sum(primary["answer"]["probabilities"].values()), total
+                )
+
+    def test_probabilities_outside_rounding_tolerance_are_rejected(self):
+        for total in (0.9, 0.5):
+            with self.subTest(total=total):
+                with self.assertRaisesRegex(ResponseError, "probabilities sum"):
+                    validate_response(
+                        self._response_with_probability_total(total), self.request.body
+                    )
+
+    def test_negative_probability_is_rejected(self):
         broken = copy.deepcopy(self.valid)
         probabilities = broken["answers"]["primary_intent"]["probabilities"]
-        for option in probabilities:
-            probabilities[option] = 0.1
-        with self.assertRaises(ResponseError):
-            import_response(self.store, broken, request_hash=self.request.request_hash)
+        options = self._primary_options()
+        probabilities[options[0]] = -0.01
+        probabilities[options[1]] = 0.51
+        probabilities[options[2]] = 0.5
+        with self.assertRaisesRegex(ResponseError, "probability for"):
+            validate_response(broken, self.request.body)
 
     def test_probabilities_must_cover_every_option(self):
         broken = copy.deepcopy(self.valid)

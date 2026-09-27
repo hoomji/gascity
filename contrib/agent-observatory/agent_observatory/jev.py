@@ -26,7 +26,10 @@ from .taxonomy import CHOICE, NOUL, Taxonomy
 # Conservative serialized-body cap. See module docstring: byte cap, not tokens.
 REQUEST_BYTE_CAP = 24 * 1024
 
-_PROBABILITY_SUM_TOLERANCE = 1e-6
+# Jev may round probability components to two decimal places. Keep a documented
+# absolute tolerance for that drift; each component is still independently
+# constrained to [0, 1] and accepted values are preserved (not renormalized).
+_PROBABILITY_SUM_TOLERANCE = 0.011
 
 
 def _reject_json_constant(value: str) -> Any:
@@ -175,10 +178,11 @@ def validate_response(response: Any, request_body: dict[str, Any]) -> list[dict[
     Follows the real ``/v1/systemone`` response shape: answers use lowercase
     ``type`` values and carry ``choice``/``noul`` fields (never ``value``).
     Checks the model string, usage counters, question ids and types, choice
-    probability distributions (all criteria options present, finite, in [0,1],
-    summing to ~1) with confidence in [0,1], and noul probabilities in [0,1]
-    with no confidence field. Unknown top-level keys are rejected so a
-    server-injected extra field cannot poison replay deduplication.
+    probability distributions (all criteria options present, finite values in
+    [0,1], and absolute sum error at most 0.011) with confidence in [0,1], and
+    noul probabilities in [0,1] with no confidence field. Unknown top-level keys
+    are rejected so server-injected extra fields cannot poison replay
+    deduplication.
     """
     if not isinstance(response, dict):
         raise ResponseError("response must be a JSON object")

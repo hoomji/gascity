@@ -300,8 +300,10 @@ API reference:
 - Question ids and lowercase types must match exactly (no missing/extra answers).
 - `choice` answers: the `choice` field must be one of the question's criteria
   keys; `probabilities` must cover every criterion with finite values in `[0,1]`
-  summing to ~1; `confidence` finite in `[0,1]`. The previously invented
-  `value` field is not accepted.
+  and satisfy `abs(sum(probabilities) - 1.0) <= 0.011`. This absolute tolerance
+  accepts minor decimal-rounding drift such as totals of `0.99` or `1.01`; the
+  supplied probabilities are preserved, not renormalized. `confidence` must be
+  finite in `[0,1]`. The previously invented `value` field is not accepted.
 - `noul` answers: exactly one finite `noul` probability in `[0,1]` and **no
   confidence field**.
 - Each answer object accepts only its wire keys (`type` plus `choice`/
