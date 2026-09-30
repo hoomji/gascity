@@ -85,6 +85,30 @@ class GCEnrichmentTests(unittest.TestCase):
             store.conn.execute("UPDATE events SET source_path = ?", (path,))
             store.conn.commit()
 
+    def test_configured_provider_families_without_name_inference(self):
+        config = os.path.join(self.tmp.name, "city.toml")
+        with open(config, "w", encoding="utf-8") as handle:
+            handle.write('''[providers.dsh-luna]
+command = "/opt/bin/dsh-minimal"
+[providers.dsh-mimo-pro]
+base = "provider:dsh-luna"
+[providers.claude-mayor]
+base = "builtin:claude"
+[providers.codex-worker]
+base = "builtin:codex"
+''')
+        rows = [{"provider": provider, "session_key": "synthetic-provider-session",
+                 "template": "worker"} for provider in
+                ("dsh-luna", "dsh-mimo-pro", "claude-mayor", "codex-worker", None,
+                 "dsh-name-is-not-evidence")]
+        with ObservatoryStore(self.db) as store:
+            result = enrich_gc_sessions(store, self._write_gc_export(rows),
+                                        city_id="city-t", host_id="host-t",
+                                        city_config=config)
+        self.assertEqual(result.rows_usable, 4)
+        self.assertEqual(result.metadata_skipped, 2)
+        self.assertEqual(result.sessions_matched, 1)
+
     def test_metadata_enrichment_never_opens_transcripts_by_default(self):
         self._historical_transcript(["/home/example/src/gascity-worktrees/deleted"])
         export = self._write_gc_export([])
