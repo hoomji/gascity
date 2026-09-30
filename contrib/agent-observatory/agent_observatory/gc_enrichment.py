@@ -77,6 +77,7 @@ def enrich_gc_sessions(
     *,
     city_id: str,
     host_id: str,
+    include_transcript_repositories: bool = False,
 ) -> GCEnrichmentRun:
     """Import exact GC session-key/template bindings from an explicit JSON export.
 
@@ -280,7 +281,8 @@ def enrich_gc_sessions(
                 )
                 result.role_bindings_written += 1
 
-        _enrich_historical_sessions(store, city_id, host_id, remote_cache, result)
+        if include_transcript_repositories:
+            _enrich_historical_sessions(store, city_id, host_id, remote_cache, result)
         store.conn.execute("COMMIT")
     except BaseException:
         if store.conn.in_transaction:
