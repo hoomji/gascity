@@ -722,6 +722,7 @@ func waitForSession(sp runtime.Provider, sessionName string, timeout time.Durati
 
 // newSessionListCmd creates the "gc session list" command.
 func newSessionListCmd(stdout, stderr io.Writer) *cobra.Command {
+	var exportMetadata bool
 	var stateFilter string
 	var templateFilter string
 	var jsonOutput bool
@@ -731,12 +732,16 @@ func newSessionListCmd(stdout, stderr io.Writer) *cobra.Command {
 		Long:  `List all chat sessions. By default shows active and suspended sessions.`,
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if exportMetadata {
+				return runSessionMetadataExport(stdout, stderr)
+			}
 			if cmdSessionList(stateFilter, templateFilter, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&exportMetadata, "export", false, "export metadata for all session beads including closed history as JSON (ignores list filters)")
 	cmd.Flags().StringVar(&stateFilter, "state", "", `filter by state: "active", "suspended", "closed", "all"`)
 	cmd.Flags().StringVar(&templateFilter, "template", "", "filter by template name")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "JSON output")

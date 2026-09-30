@@ -4092,6 +4092,7 @@ gc session list [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--export` | bool |  | export metadata for all session beads including closed history as JSON (ignores list filters) |
 | `--json` | bool |  | JSON output |
 | `--state` | string |  | filter by state: "active", "suspended", "closed", "all" |
 | `--template` | string |  | filter by template name |
