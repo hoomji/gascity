@@ -301,12 +301,18 @@ def _removed_worktree_repository(cwd: str) -> str | None:
         (("src", "gascity-worktrees"), "hoomji/gascity"),
         (("src", "city-worktrees"), "city"),
     )
-    for prefix, repo in mappings:
-        if any(tuple(parts[i:i + len(prefix)]) == prefix for i in range(len(parts))):
-            return repo
-    if len(parts) >= 4 and parts[1] == "home" and parts[3] == "city":
-        return "city"
-    return None
+    # Only the repository immediately below /home/<user> is evidence.
+    # Nested src/projects components inside a deleted worktree are not roots.
+    # This also covers the /home/coolhenry alias without resolving symlinks.
+    if len(parts) < 4 or parts[1] != "home":
+        return None
+    mappings += ((("city",), "city"),)
+    candidates = {
+        repo for prefix, repo in mappings
+        if tuple(parts[3:3 + len(prefix)]) == prefix
+    }
+    # Fail closed if overlapping anchored mappings ever disagree.
+    return next(iter(candidates)) if len(candidates) == 1 else None
 
 
 def _transcript_repositories(path: str, provider: str, session_id: str,

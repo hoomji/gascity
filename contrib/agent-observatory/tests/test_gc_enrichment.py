@@ -85,6 +85,24 @@ class GCEnrichmentTests(unittest.TestCase):
             store.conn.execute("UPDATE events SET source_path = ?", (path,))
             store.conn.commit()
 
+    def test_removed_worktree_prefix_is_anchored_and_outermost(self):
+        cases = [
+            ("/home/nonexistent-review-user/src/city-worktrees/deleted/src/gascity", "city"),
+            ("/home/nonexistent-review-user/src/gascity-worktrees/deleted/projects/Gateway-LLM",
+             "hoomji/gascity"),
+            ("/tmp/unrelated-review-root/src/gascity/deleted", None),
+        ]
+        for cwd, expected in cases:
+            with self.subTest(cwd=cwd):
+                self._historical_transcript([cwd])
+                with ObservatoryStore(self.db) as store:
+                    store.conn.execute("DELETE FROM session_enrichment")
+                    store.conn.commit()
+                    enrich_gc_sessions(store, self._write_gc_export([]),
+                                       city_id="city-t", host_id="host-t")
+                    row = store.conn.execute("SELECT repo FROM session_enrichment").fetchone()
+                    self.assertEqual(row[0] if row else None, expected)
+
     def test_removed_worktree_cwd_binds_without_inferred_role_and_is_idempotent(self):
         self._historical_transcript(["/home/example/src/gascity-worktrees/fleet-removed"])
         export = self._write_gc_export([])
