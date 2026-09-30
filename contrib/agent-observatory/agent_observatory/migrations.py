@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1033,7 +1034,7 @@ def _migrate_through_v7(db_path: str | os.PathLike[str]) -> MigrationResult:
 def migrate_database(db_path: str | os.PathLike[str]) -> MigrationResult:
     """Explicitly upgrade through schema 8, with a verified backup per step."""
     path = Path(db_path).expanduser().resolve(strict=True)
-    with sqlite3.connect(str(path)) as probe:
+    with closing(sqlite3.connect(str(path))) as probe:
         version = int(probe.execute("PRAGMA user_version").fetchone()[0])
         if version == SCHEMA_VERSION_AFTER:
             _validate_v7(probe, str(path), SCHEMA_VERSION_AFTER)

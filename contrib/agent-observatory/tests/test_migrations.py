@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
@@ -932,7 +933,7 @@ class MigrationTest(unittest.TestCase):
     def test_schema7_binding_preserved_and_repo_only_consumers(self):
         self._make_schema6_fixture()
         migrations._migrate_v6_to_v7(Path(self.db_path))
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute("INSERT INTO session_enrichment(city_id, host_id, provider, session_id, "
                          "template, repo, repo_source, source_sha256) VALUES "
                          "('city-a', 'host-a', 'codex', 'session-1', 'rig/worker', "
@@ -940,7 +941,7 @@ class MigrationTest(unittest.TestCase):
             before = conn.execute("SELECT * FROM session_enrichment").fetchall()
         result = migrate_database(self.db_path)
         self.assertEqual((result.from_version, result.to_version), (7, 8))
-        with sqlite3.connect(result.backup_path) as backup:
+        with closing(sqlite3.connect(result.backup_path)) as backup:
             self.assertEqual(backup.execute("SELECT * FROM session_enrichment").fetchall(), before)
         with ObservatoryStore(self.db_path) as store:
             self.assertEqual([tuple(row) for row in store.conn.execute("SELECT * FROM session_enrichment")], before)
