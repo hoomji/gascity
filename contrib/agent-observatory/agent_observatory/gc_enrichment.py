@@ -368,11 +368,18 @@ def _enrich_historical_sessions(store: Any, city_id: str, host_id: str,
         "WHERE city_id = ? AND host_id = ? AND source_path IS NOT NULL",
         (city_id, host_id),
     ).fetchall()
+    checkpoints: dict[tuple[str, str], str] = {}
+    if store.conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collector_sources'").fetchone():
+        checkpoints = {(row["source_id"], row["provider"]): row["path"] for row in
+                       store.conn.execute("SELECT source_id, provider, path FROM collector_sources")}
     candidates: dict[tuple[str, str], set[tuple[str, str]]] = {}
     for row in rows:
         key = (row["provider"], row["session_id"])
+        # Collector events reference deleted normalized spools. Resolve their
+        # stable source-id stems through the collector's native-source checkpoint.
+        path = checkpoints.get((Path(row["source_path"]).stem, row["provider"]), row["source_path"])
         candidates.setdefault(key, set()).update(_transcript_repositories(
-            row["source_path"], *key, remote_cache))
+            path, *key, remote_cache))
     for key, evidence in sorted(candidates.items()):
         repos = {repo for repo, _source in evidence}
         if len(repos) > 1:

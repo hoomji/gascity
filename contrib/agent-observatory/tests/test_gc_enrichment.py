@@ -122,6 +122,19 @@ class GCEnrichmentTests(unittest.TestCase):
             self.assertEqual(result.repo_ambiguous, 1)
             self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM session_enrichment").fetchone()[0], 0)
 
+    def test_deleted_collector_spool_resolves_native_checkpoint(self):
+        self._historical_transcript(["/home/example/src/gascity-worktrees/fleet-removed"])
+        with ObservatoryStore(self.db) as store:
+            store.conn.execute("CREATE TABLE collector_sources(source_id TEXT, provider TEXT, path TEXT)")
+            store.conn.execute("INSERT INTO collector_sources VALUES ('stable-source', 'codex', ?)",
+                               (os.path.join(self.tmp.name, "historical.jsonl"),))
+            store.conn.execute("UPDATE events SET source_path = '/removed/spool/stable-source.jsonl'")
+            store.conn.commit()
+            result = enrich_gc_sessions(store, self._write_gc_export([]), city_id="city-t", host_id="host-t")
+            self.assertEqual(result.repo_bindings_written, 1)
+            second = enrich_gc_sessions(store, self._write_gc_export([]), city_id="city-t", host_id="host-t")
+            self.assertEqual(second.bindings_written, 0)
+
     def test_unknown_prefix_and_foreign_codex_context_do_not_bind(self):
         self._historical_transcript(["/home/example/src/unrelated-worktrees/fleet-removed"])
         with ObservatoryStore(self.db) as store:

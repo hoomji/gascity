@@ -233,7 +233,8 @@ the tool executed, and does not prove success. Only a result event with an
 For schema 8, an operator can import a local GC session metadata export. The
 same command also reads historical Claude/Codex source transcripts referenced by
 the selected city/host's stored events; a live export need not contain those
-sessions. Back up the database beside existing backups before running enrichment.
+sessions. Deleted normalized collector spools are resolved via `collector_sources`
+source-id checkpoints to their native transcript paths. Back up the database beside existing backups before running enrichment.
 `migrate` also creates a verified backup for each forward schema step (including
 schema 7 → 8, which preserves existing bindings and permits a nullable template).
 
