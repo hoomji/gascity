@@ -25,7 +25,9 @@ cd "$repo_root"
 
 # Direct shard invocations need the same canonical fixture root as the outer
 # runner; keep ambient runtime variables excluded by run_in_test_env below.
-TMPDIR="$(realpath -e "${TMPDIR:-/var/tmp}")"
+# BSD realpath (macOS) does not support GNU -e. TMPDIR must be an existing
+# directory, so cd plus physical pwd provides the same validation/resolution.
+TMPDIR="$(cd "${TMPDIR:-/var/tmp}" && pwd -P)"
 export TMPDIR
 
 # One shared seeded gitconfig for every nested test env; resolved once so the

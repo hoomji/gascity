@@ -10,6 +10,11 @@ import (
 // into failures. The gate must also retain its ambient-runtime env isolation.
 func TestGoTestShardCanonicalizesTMPDIRAndScrubsRuntimeEnv(t *testing.T) {
 	f := newGoTestShardFixtureWithExit(t, 0)
+	// Simulate BSD realpath rejecting GNU options even on Linux. The runner
+	// must canonicalize with portable shell builtins, not invoke this command.
+	if err := os.WriteFile(filepath.Join(f.tmpDir, "bin", "realpath"), []byte("#!/bin/sh\necho 'realpath: illegal option -- e' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	alias := filepath.Join(t.TempDir(), "alias")
 	if err := os.Symlink(f.tmpDir, alias); err != nil {
 		t.Fatal(err)

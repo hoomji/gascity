@@ -26,7 +26,8 @@ cd "$repo_root"
 
 # Tests compare canonical store paths with t.TempDir paths. Resolve aliases
 # before creating any fixtures or passing TMPDIR through the env -i allowlist.
-TMPDIR="$(realpath -e "${TMPDIR:-/var/tmp}")"
+# Use shell builtins: macOS realpath does not support GNU -e.
+TMPDIR="$(cd "${TMPDIR:-/var/tmp}" && pwd -P)"
 export TMPDIR
 
 # One shared seeded gitconfig for every nested test env; resolved once so the
