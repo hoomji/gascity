@@ -1531,6 +1531,7 @@ def _cmd_enrich_gc_sessions(args: argparse.Namespace) -> int:
             city_id=args.city,
             host_id=args.host,
             include_transcript_repositories=args.include_transcript_repositories,
+            city_config=args.city_config,
         )
     _print_json(result.to_dict())
     return 0 if not result.conflicts else 1
@@ -1656,6 +1657,9 @@ def build_parser() -> argparse.ArgumentParser:
     gc_enrichment_parser.add_argument(
         "--include-transcript-repositories", action="store_true",
         help="opt in to reading transcript files for historical repository evidence",
+    )
+    gc_enrichment_parser.add_argument(
+        "--city-config", help="city.toml providing explicit provider inheritance and launchers",
     )
     gc_enrichment_parser.set_defaults(func=_cmd_enrich_gc_sessions)
 
