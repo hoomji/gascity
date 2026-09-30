@@ -230,7 +230,24 @@ the tool executed, and does not prove success. Only a result event with an
 
 ### GC session enrichment
 
-For schema 7, an operator can import a complete local GC session metadata export:
+For schema 8, an operator can import a local GC session metadata export. The
+same command also reads historical Claude/Codex source transcripts referenced by
+the selected city/host's stored events; a live export need not contain those
+sessions. Back up the database beside existing backups before running enrichment.
+`migrate` also creates a verified backup for each forward schema step (including
+schema 7 → 8, which preserves existing bindings and permits a nullable template).
+
+Historical bindings use recorded cwd, not tool commands or inferred roles. A
+local origin remote is preferred. For removed directories only, component-boundary
+prefixes map `projects/Gateway-LLM` to `uniblock-dev/gateway-llm`, `src/gascity`
+and `src/gascity-worktrees` to `hoomji/gascity`, and `src/city-worktrees` or
+`/home/<user>/city` to `city`. Generic fleet paths and conflicting repositories
+remain unbound. Provenance is `transcript_cwd` or `transcript_cwd_prefix`, included
+in the binding hash. Existing repository bindings always win, reruns write no new
+bindings, and repository-only rows never infer or clear a role. Missing or
+unreadable transcripts remain unknown.
+
+Example:
 
 ```bash
 gc session list --state all --json > /tmp/gc-sessions.json

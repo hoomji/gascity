@@ -122,6 +122,38 @@ class GCEnrichmentTests(unittest.TestCase):
             self.assertEqual(result.repo_ambiguous, 1)
             self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM session_enrichment").fetchone()[0], 0)
 
+    def test_unknown_prefix_and_foreign_codex_context_do_not_bind(self):
+        self._historical_transcript(["/home/example/src/unrelated-worktrees/fleet-removed"])
+        with ObservatoryStore(self.db) as store:
+            result = enrich_gc_sessions(store, self._write_gc_export([]), city_id="city-t", host_id="host-t")
+            self.assertEqual(result.bindings_written, 0)
+        path = os.path.join(self.tmp.name, "historical.jsonl")
+        support.write_jsonl(path, [
+            {"type": "session_meta", "payload": {"id": "foreign", "cwd": "/home/example/src/gascity"}},
+            {"type": "turn_context", "payload": {"cwd": "/home/example/src/gascity"}},
+        ])
+        with ObservatoryStore(self.db) as store:
+            result = enrich_gc_sessions(store, self._write_gc_export([]), city_id="city-t", host_id="host-t")
+            self.assertEqual(result.bindings_written, 0)
+
+    def test_claude_cwd_and_repo_only_exposure_consumer(self):
+        path = os.path.join(self.tmp.name, "claude.jsonl")
+        support.write_jsonl(path, [{"type": "user", "sessionId": "claude-session", "cwd":
+                                   "/home/example/projects/Gateway-LLM/deleted"}])
+        event = support.write_jsonl(os.path.join(self.tmp.name, "claude-event.jsonl"), [
+            support.make_record(city_id="city-t", host_id="host-t", provider="claude",
+                                session_id="claude-session", event_id="claude-event")])
+        with ObservatoryStore(self.db) as store:
+            store.import_jsonl(event)
+            store.conn.execute("UPDATE events SET source_path = ? WHERE provider = 'claude'", (path,))
+            store.conn.commit()
+            result = enrich_gc_sessions(store, self._write_gc_export([]), city_id="city-t", host_id="host-t")
+            self.assertEqual(result.repo_bindings_written, 1)
+            row = store.conn.execute("SELECT repo, template FROM session_enrichment WHERE provider = 'claude'").fetchone()
+            self.assertEqual(tuple(row), ("uniblock-dev/gateway-llm", None))
+            evidence = session_evidence_from_store(store)
+            self.assertTrue(evidence)
+
     def test_exact_gc_template_and_worktree_remote_enrich_without_event_rewrite(self):
         work_dir = os.path.join(self.tmp.name, "synthetic-worktree")
         os.mkdir(work_dir)
