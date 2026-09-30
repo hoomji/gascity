@@ -74,6 +74,54 @@ class GCEnrichmentTests(unittest.TestCase):
             json.dump({"schema_version": "1", "sessions": sessions}, handle)
         return path
 
+    def _historical_transcript(self, cwds):
+        path = os.path.join(self.tmp.name, "historical.jsonl")
+        support.write_jsonl(path, [
+            {"type": "session_meta", "payload": {
+                "id": "synthetic-provider-session", "cwd": cwd}}
+            for cwd in cwds
+        ])
+        with ObservatoryStore(self.db) as store:
+            store.conn.execute("UPDATE events SET source_path = ?", (path,))
+            store.conn.commit()
+
+    def test_removed_worktree_cwd_binds_without_inferred_role_and_is_idempotent(self):
+        self._historical_transcript(["/home/example/src/gascity-worktrees/fleet-removed"])
+        export = self._write_gc_export([])
+        with ObservatoryStore(self.db) as store:
+            first = enrich_gc_sessions(store, export, city_id="city-t", host_id="host-t")
+            row = store.conn.execute("SELECT * FROM session_enrichment").fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row["repo"], "hoomji/gascity")
+            self.assertEqual(row["repo_source"], "transcript_cwd_prefix")
+            self.assertIsNone(row["template"])
+            self.assertEqual(first.repo_bindings_written, 1)
+            self.assertEqual(first.role_bindings_written, 0)
+            second = enrich_gc_sessions(store, export, city_id="city-t", host_id="host-t")
+            self.assertEqual(second.bindings_written, 0)
+            self.assertEqual(second.repo_bindings_written, 0)
+            self.assertIsNone(store.conn.execute("SELECT role FROM sessions").fetchone()[0])
+
+    def test_historical_cwd_never_overwrites_explicit_binding(self):
+        self._historical_transcript(["/home/example/src/gascity-worktrees/fleet-removed"])
+        export = self._write_gc_export([{
+            "provider": "codex", "session_key": "synthetic-provider-session",
+            "template": "example/worker", "repo": "Example/Explicit"}])
+        with ObservatoryStore(self.db) as store:
+            enrich_gc_sessions(store, export, city_id="city-t", host_id="host-t")
+            enrich_gc_sessions(store, self._write_gc_export([]), city_id="city-t", host_id="host-t")
+            row = store.conn.execute("SELECT repo, repo_source, template FROM session_enrichment").fetchone()
+            self.assertEqual(tuple(row), ("example/explicit", "explicit", "example/worker"))
+
+    def test_ambiguous_historical_cwds_do_not_bind(self):
+        self._historical_transcript([
+            "/home/example/src/gascity-worktrees/fleet-removed",
+            "/home/example/projects/Gateway-LLM/deleted"])
+        with ObservatoryStore(self.db) as store:
+            result = enrich_gc_sessions(store, self._write_gc_export([]), city_id="city-t", host_id="host-t")
+            self.assertEqual(result.repo_ambiguous, 1)
+            self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM session_enrichment").fetchone()[0], 0)
+
     def test_exact_gc_template_and_worktree_remote_enrich_without_event_rewrite(self):
         work_dir = os.path.join(self.tmp.name, "synthetic-worktree")
         os.mkdir(work_dir)
