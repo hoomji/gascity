@@ -2,9 +2,39 @@ package scripts_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
+
+// Inject physical pwd output so Darwin aliases are covered on Linux without
+// creating directories under /private. cd still validates a real directory.
+func TestCanonicalizeTestTMPDIRPlatformAliases(t *testing.T) {
+	for _, platform := range []string{"Darwin", "Linux"} {
+		for _, path := range []string{"/private/var", "/private/var/folders/test dir", "/private/tmp", "/private/tmp/test", "/private/variable", "/private/tmp-other", "/private/other", "/var/tmp"} {
+			t.Run(platform+path, func(t *testing.T) {
+				cmd := exec.Command("bash", "-c", `source lib/common.sh
+uname() { printf '%s\n' "$TEST_PLATFORM"; }
+pwd() { printf '%s\n' "$PHYSICAL_PATH"; }
+canonicalize_test_tmpdir "$EXISTING_DIR"`)
+				cmd.Env = append(os.Environ(), "TEST_PLATFORM="+platform, "PHYSICAL_PATH="+path, "EXISTING_DIR="+t.TempDir())
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("helper: %v: %s", err, out)
+				}
+				want := path
+				if platform == "Darwin" && (path == "/private/var" || strings.HasPrefix(path, "/private/var/") || path == "/private/tmp" || strings.HasPrefix(path, "/private/tmp/")) {
+					want = strings.TrimPrefix(path, "/private")
+				}
+				if got := strings.TrimSpace(string(out)); got != want {
+					t.Errorf("got %q, want %q", got, want)
+				}
+			})
+		}
+	}
+}
 
 // Symlinked homes (and macOS /var) must not turn canonical store comparisons
 // into failures. The gate must also retain its ambient-runtime env isolation.
@@ -27,6 +57,9 @@ func TestGoTestShardCanonicalizesTMPDIRAndScrubsRuntimeEnv(t *testing.T) {
 	want, err := filepath.EvalSymlinks(f.tmpDir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS == "darwin" && (want == "/private/var" || strings.HasPrefix(want, "/private/var/") || want == "/private/tmp" || strings.HasPrefix(want, "/private/tmp/")) {
+		want = strings.TrimPrefix(want, "/private")
 	}
 	if env["TMPDIR"] != want {
 		t.Errorf("TMPDIR = %q, want canonical %q", env["TMPDIR"], want)

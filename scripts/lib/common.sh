@@ -11,6 +11,20 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Match internal/pathutil's Darwin aliases after resolving an existing directory.
+canonicalize_test_tmpdir() {
+    local resolved
+    resolved="$(cd "$1" && pwd -P)" || return
+    if [[ "$(uname)" == Darwin ]]; then
+        case "$resolved" in
+            /private/var|/private/var/*|/private/tmp|/private/tmp/*)
+                resolved="${resolved#/private}"
+                ;;
+        esac
+    fi
+    printf '%s\n' "$resolved"
+}
+
 is_darwin_sed() {
     [[ "$OSTYPE" == "darwin"* && "$(command -v sed)" == "/usr/bin/sed" ]]
 }
