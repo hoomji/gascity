@@ -166,16 +166,17 @@ the tool executed, and does not prove success. Only a result event with an
 
 - Schema version is stored in `PRAGMA user_version` and `schema_meta`. Opening a
   store with an unknown/future version raises `SchemaVersionError`. The current
-  version is **7**; version 3 excluded identity fields from the payload hash (so a
+  version is **8**; version 3 excluded identity fields from the payload hash (so a
   version-2 projection must be rebuilt rather than reused), version 4 added the
   M5 change/exposure registry, version 5 added the M7 shadow `recommendations`
   projection, version 6 adds classification/session bindings, the nullable
   `sessions.role` column, model prices, and `event_usage_cost`. Version 7 adds
-  trusted GC session enrichment and the `events_with_enrichment` view.
-- Upgrade a valid schema-4, schema-5, or schema-6 projection explicitly with
+  trusted GC session enrichment and the `events_with_enrichment` view. Version 8
+  adds nullable templates for repository-only historical enrichment.
+- Upgrade a valid schema-4, schema-5, schema-6, or schema-7 projection explicitly with
   `python3 -m agent_observatory migrate --db /path/to/obs.db`. Each migration step
   first creates a timestamped online backup (`v4-pre-schema5`, `v5-pre-schema6`,
-  and, when applicable, `v6-pre-schema7`), updates both version markers, and rolls
+  and, when applicable, `v6-pre-schema7` and `v7-pre-schema8`), updates both version markers, and rolls
   back atomically on failure. Evidence row counts are preserved. The v6-to-v7
   step clears roles previously guessed from provider session names; role coverage
   remains unknown until authoritative GC metadata is imported. Normal store opens
