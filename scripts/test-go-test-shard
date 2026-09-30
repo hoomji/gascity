@@ -25,13 +25,16 @@ cd "$repo_root"
 
 # Direct shard invocations need the same canonical fixture root as the outer
 # runner; keep ambient runtime variables excluded by run_in_test_env below.
-TMPDIR="$(realpath -e "${TMPDIR:-/var/tmp}")"
+# BSD realpath (macOS) does not support GNU -e. TMPDIR must be an existing
+# directory, so cd plus physical pwd provides the same validation/resolution.
+source "$repo_root/scripts/lib/common.sh"
+TMPDIR="$(canonicalize_test_tmpdir "${TMPDIR:-/var/tmp}")"
 export TMPDIR
 
 # One shared seeded gitconfig for every nested test env; resolved once so the
 # env -i block below cannot drift from the Makefile (scripts/test-gitconfig-path).
 gc_test_gitconfig="$("$repo_root/scripts/test-gitconfig-path")"
-source "$repo_root/scripts/lib/common.sh"
+gc_test_gitconfig="$(canonicalize_test_path "$gc_test_gitconfig")"
 # shellcheck source=lib/test-slice.sh
 source "$repo_root/scripts/lib/test-slice.sh"
 gc_test_slice_reexec "$repo_root/scripts/test-go-test-shard" "$@"
