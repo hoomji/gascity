@@ -36,6 +36,7 @@ export TMPDIR
 # Exported because the xargs fan-out worker (run_fan_out) expands it in a child
 # process, which inherits only the environment (ga-cesmzs).
 gc_test_gitconfig="$("$repo_root/scripts/test-gitconfig-path")"
+gc_test_gitconfig="$(canonicalize_test_path "$gc_test_gitconfig")"
 export gc_test_gitconfig
 # shellcheck source=lib/test-slice.sh
 source "$repo_root/scripts/lib/test-slice.sh"
@@ -138,7 +139,7 @@ add_job() {
 
 add_fsys_compile_job() {
   add_job "fsys-darwin-compile" \
-    'tmp=$(mktemp -d); trap '"'"'rm -rf "$tmp"'"'"' EXIT; GOOS=darwin GOARCH=arm64 go test -c -o "$tmp/fsys.test" ./internal/fsys'
+    'source scripts/lib/common.sh; tmp=$(canonicalize_test_tmpdir "$(mktemp -d)"); trap '"'"'rm -rf "$tmp"'"'"' EXIT; GOOS=darwin GOARCH=arm64 go test -c -o "$tmp/fsys.test" ./internal/fsys'
 }
 
 # The unit sweep runs with -count=1, mirroring the cmd/gc shards' GO_TEST_COUNT=1
@@ -262,7 +263,7 @@ if [[ -n "${LOCAL_TEST_LOG_DIR:-}" ]]; then
   log_dir="$LOCAL_TEST_LOG_DIR"
   cleanup_log_dir=0
 else
-  log_dir="$(mktemp -d "${TMPDIR:-/var/tmp}/gc-local-tests.XXXXXX")"
+  log_dir="$(canonicalize_test_tmpdir "$(mktemp -d "${TMPDIR:-/var/tmp}/gc-local-tests.XXXXXX")")"
 fi
 export LOCAL_TEST_LOG_DIR="$log_dir"
 export TEST_LOCAL_GOPATH="$gopath_val"

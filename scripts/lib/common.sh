@@ -25,6 +25,13 @@ canonicalize_test_tmpdir() {
     printf '%s\n' "$resolved"
 }
 
+# Resolve a generated file's parent with the same platform aliases as TMPDIR.
+canonicalize_test_path() {
+    local parent
+    parent="$(canonicalize_test_tmpdir "$(dirname "$1")")" || return
+    printf '%s/%s\n' "$parent" "$(basename "$1")"
+}
+
 is_darwin_sed() {
     [[ "$OSTYPE" == "darwin"* && "$(command -v sed)" == "/usr/bin/sed" ]]
 }
