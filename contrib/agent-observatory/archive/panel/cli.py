@@ -18,19 +18,29 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Sequence
 
-from . import __version__
-from .adapters import AdapterContext, read_source
-from .annotations import load_gold_set, save_gold_annotations
-from .canonical import sha256_bytes
-from .canary import (
+from agent_observatory import __version__
+from agent_observatory.adapters import AdapterContext, read_source
+from agent_observatory.annotations import load_gold_set, save_gold_annotations
+from agent_observatory.canonical import sha256_bytes
+from agent_observatory.canary import (
     MAX_ALLOWED_REQUESTS,
     build_canary_report,
     load_canary_bundle,
     load_registration,
     normalize_registration,
 )
-from .changes import normalize_change_bundle
-from .collector import (
+from agent_observatory.changes import normalize_change_bundle
+from .collapse import (
+    DEFAULT_MAJORITY,
+    PRIMARY_INTENT_COLLAPSE_V1,
+    load_judge_checkpoint,
+    rescore_collapsed,
+    resolve_collapse,
+    votes_from_checkpoint,
+    votes_from_report,
+    write_collapse_report,
+)
+from agent_observatory.collector import (
     DEFAULT_MAX_SOURCE_BYTES,
     STATE_MODE_METADATA,
     STATE_MODE_TEXT,
@@ -43,23 +53,23 @@ from .collector import (
     drain_queue,
     set_kill_switch,
 )
-from .episodes import segment_store
-from .errors import ObservatoryError
-from .gc_enrichment import enrich_gc_sessions
-from .evaluation import (
+from agent_observatory.episodes import segment_store
+from agent_observatory.errors import ObservatoryError, SilverError
+from agent_observatory.gc_enrichment import enrich_gc_sessions
+from agent_observatory.evaluation import (
     DEFAULT_MULTI_LABEL_FACETS,
     EvaluationConfig,
     evaluate_gold_set,
     load_predictions,
     report_json,
 )
-from .exposure import (
+from agent_observatory.exposure import (
     CommitGraph,
     attach_session_fingerprints,
     build_ledger,
     session_evidence_from_store,
 )
-from .inventory import (
+from agent_observatory.inventory import (
     SourceRoot,
     build_manifest,
     discover_sources,
@@ -67,7 +77,7 @@ from .inventory import (
     manifest_json,
     records_to_jsonl,
 )
-from .impact import (
+from agent_observatory.impact import (
     DEFAULT_MATCH_ON,
     ImpactConfig,
     ImpactDataset,
@@ -76,9 +86,9 @@ from .impact import (
     load_impact_bundle,
     observed_evidence_from_store,
 )
-from .jev import REQUEST_BYTE_CAP, build_request, import_response, persist_request
-from .migrations import migrate_database
-from .policy import (
+from agent_observatory.jev import REQUEST_BYTE_CAP, build_request, import_response, persist_request
+from agent_observatory.migrations import migrate_database
+from agent_observatory.policy import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     PolicyConfig,
     bind_classifications_from_store,
@@ -87,12 +97,45 @@ from .policy import (
     load_recommendation_bundle,
     recommendation_rows,
 )
-from .pricing import DEFAULT_PRICING_SEED, seed_model_pricing
+from agent_observatory.pricing import DEFAULT_PRICING_SEED, seed_model_pricing
 
-from .report import build_report
-from .store import ObservatoryStore
-from .taxonomy import DEFAULT_TAXONOMY_PATH, load_taxonomy
-from .transport import TransportConfig, classify
+from agent_observatory.report import build_report
+from .silver import (
+    DEFAULT_API_KEY_ENV,
+    DEFAULT_BASE_URL,
+    DEFAULT_JUDGE_TEXT_BYTES,
+    DEFAULT_SAMPLE_SIZE,
+    JUDGE_PROMPT_VERSION,
+    PRIMARY_FACET,
+    CheckpointJudgeClient,
+    build_judge_client,
+    build_silver_episodes,
+    build_silver_result,
+    evaluate_silver_vs_jev,
+    load_candidates_csv,
+    load_judge_config,
+    predictions_from_store,
+    resolve_judges,
+    sample_stratified,
+    session_key_from_group_key,
+)
+from agent_observatory.store import ObservatoryStore
+from agent_observatory.taxonomy import DEFAULT_TAXONOMY_PATH, load_taxonomy
+from agent_observatory.transport import TransportConfig, classify
+from .two_stage import (
+    EVIDENCE_GATE_PROMPT_VERSION,
+    EVIDENCE_LABELS,
+    INTENT_PROMPT_VERSION,
+    TWO_STAGE_PROMPT_VERSION,
+    approximate_votes_from_silver_checkpoint,
+    build_two_stage_result,
+    load_episodes_json,
+    load_two_stage_checkpoints,
+    score_two_stage,
+    substantive_labels,
+    votes_from_checkpoints,
+    write_two_stage_report,
+)
 
 
 def _reject_json_constant(value: str) -> Any:
@@ -773,6 +816,537 @@ def _cmd_shadow(args: argparse.Namespace) -> int:
     return 0
 
 
+def _silver_judges(args: argparse.Namespace) -> list[Any]:
+    """Resolve the judge set from ``--judges-file`` or repeatable ``--judge``.
+
+    The default (neither flag) is exactly the two gateway judges, so the
+    historical two-judge behaviour is unchanged.
+    """
+
+    judges_file = getattr(args, "judges_file", None)
+    raw = list(getattr(args, "judge", None) or [])
+    if judges_file and raw:
+        raise ObservatoryError("use either --judge or --judges-file, not both")
+    try:
+        if judges_file:
+            return load_judge_config(judges_file)
+        return resolve_judges(raw)
+    except SilverError as exc:
+        raise ObservatoryError(str(exc)) from exc
+
+
+def _cmd_silver_build(args: argparse.Namespace) -> int:
+    """Build a two-judge silver primary_intent reference (no human labels)."""
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    candidates = load_candidates_csv(args.candidates)
+    with _open_store(args.db) as store:
+        episodes, skipped = build_silver_episodes(
+            store, candidates, excerpt_bytes=args.excerpt_bytes, max_text_bytes=args.text_bytes
+        )
+        if len(episodes) < args.sample_size:
+            raise ObservatoryError(
+                f"only {len(episodes)} of {len(candidates)} candidates have task text; "
+                f"cannot sample {args.sample_size}"
+            )
+        sample = sample_stratified(
+            [episode.as_candidate() for episode in episodes], args.sample_size, seed=args.seed
+        )
+        text_by_id = {episode.episode_id: episode for episode in episodes}
+        sampled = tuple(text_by_id[episode.episode_id] for episode in sample)
+        allowed_labels = taxonomy.label_keys(PRIMARY_FACET)
+        judges = []
+        transports = {}
+        for spec in _silver_judges(args):
+            inner = build_judge_client(
+                spec,
+                allowed_labels,
+                base_url=args.base_url,
+                api_key_env=args.api_key_env,
+                timeout_seconds=args.judge_timeout,
+                cli_timeout_seconds=args.cli_judge_timeout,
+                max_attempts=args.judge_max_attempts,
+                max_requests=args.max_judge_requests,
+            )
+            client = (
+                CheckpointJudgeClient(spec.judge_id, inner, args.checkpoint)
+                if args.checkpoint
+                else inner
+            )
+            judges.append((spec, client))
+            transports[spec.judge_id] = {"spec": spec, "inner": inner, "client": client}
+        result = build_silver_result(
+            sampled,
+            taxonomy,
+            judges,
+            gold_set_version=args.gold_set_version,
+            seed=args.seed,
+            text_bytes=args.judge_text_bytes,
+            prompt_version=args.prompt_version,
+            strict=not args.tolerate_judge_failures,
+        )
+        if args.jev_predictions_out:
+            predictions = predictions_from_store(store, sampled)
+            from .silver import build_silver_predictions_document
+
+            _write_output(
+                json.dumps(build_silver_predictions_document(predictions), indent=2, sort_keys=True),
+                args.jev_predictions_out,
+            )
+    report = dict(result.report)
+    report["sampling"] = {"skipped": skipped, "eligible": len(episodes)}
+    http_requests: dict[str, int] = {}
+    cli_calls: dict[str, int] = {}
+    cli_versions: dict[str, Any] = {}
+    backends: dict[str, dict[str, Any]] = {}
+    for judge_id, entry in transports.items():
+        spec = entry["spec"]
+        inner = entry["inner"]
+        http_requests[judge_id] = int(getattr(inner, "requests_made", 0) or 0)
+        cli_calls[judge_id] = int(getattr(inner, "calls_made", 0) or 0)
+        cli_versions[judge_id] = getattr(inner, "cli_version", None)
+        slot = backends.setdefault(
+            spec.backend, {"judges": [], "http_requests": 0, "cli_calls": 0}
+        )
+        slot["judges"].append(judge_id)
+        slot["http_requests"] += http_requests[judge_id]
+        slot["cli_calls"] += cli_calls[judge_id]
+    report["judge_transport"] = {
+        "checkpoint": args.checkpoint,
+        "http_requests": http_requests,
+        "cli_calls": cli_calls,
+        "cache_hits": {
+            judge_id: getattr(entry["client"], "cache_hits", 0) for judge_id, entry in transports.items()
+        },
+        "cli_versions": cli_versions,
+        "backends": backends,
+    }
+    agreement = report["agreement"]
+    # Write the report first: it is the durable evidence of *why* the gold set
+    # was refused, and it always records the reported kappa and trust verdict.
+    _write_output(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False), args.out_report)
+    print(
+        json.dumps(
+            {
+                "silver_report_version": report["silver_report_version"],
+                "episodes": report["sample"]["episodes"],
+                "judge_calls": report["judge_calls"]["total"],
+                "judge_http_requests": sum(report["judge_transport"]["http_requests"].values()),
+                "agreed": agreement["agreed"],
+                "disagreement": agreement["disagreement"],
+                "cohen_kappa": agreement["cohen_kappa"],
+                "trustworthy": agreement["trustworthy"],
+                "gold_set_hash": report["gold_set_hash"],
+                "out_gold": args.out_gold,
+                "out_report": args.out_report,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if not agreement["trustworthy"] and not args.allow_untrusted:
+        if agreement.get("trust_reason") == "missing_labels_over_floor":
+            detail = (
+                "one or more judge pairs fall below the usable-overlap floor "
+                "(missing_labels_over_floor)"
+            )
+        elif agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+            detail = (
+                f"the sample has {agreement['sample_size']} episodes, below the "
+                f"minimum {agreement['min_sample_size']}"
+            )
+        else:
+            detail = (
+                f"judge kappa {agreement['cohen_kappa']!r} is below the trust floor "
+                f"{agreement['kappa_trust_floor']}"
+            )
+        raise SilverError(
+            f"refusing to write --out-gold: {detail}; the silver set is not trustworthy "
+            "(pass --allow-untrusted to write it anyway)"
+        )
+    _write_output(result.gold_set.to_json(), args.out_gold)
+    return 0
+
+
+def _cmd_silver_evaluate(args: argparse.Namespace) -> int:
+    """Score Jev against the agreed silver labels and state the kappa gate."""
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    gold_set = load_gold_set(args.gold, taxonomy, allow_untrusted=args.allow_untrusted)
+    predictions = load_predictions(args.predictions, taxonomy)
+    report = evaluate_silver_vs_jev(
+        gold_set, predictions, taxonomy, run_full_evaluator=args.full_evaluator
+    )
+    _write_output(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False), args.out)
+    agreement = report["agreement"]
+    print(
+        json.dumps(
+            {
+                "kind": report["kind"],
+                "cohen_kappa": agreement["cohen_kappa"],
+                "trustworthy": agreement["trustworthy"],
+                "agreed": report["silver"]["agreed"],
+                "disagreement": report["silver"]["disagreement"],
+                "jev_predicted": report["jev"]["predicted"],
+                "jev_accuracy": report["jev"]["accuracy"],
+                "jev_macro_f1": report["jev"]["macro_f1"],
+                "jev_non_unknown": report["jev"]["non_unknown"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if not agreement["trustworthy"] and not args.allow_untrusted:
+        if agreement.get("trust_reason") == "missing_labels_over_floor":
+            detail = (
+                "one or more judge pairs fall below the usable-overlap floor "
+                "(missing_labels_over_floor)"
+            )
+        elif agreement.get("sample_size", 0) < agreement.get("min_sample_size", 0):
+            detail = (
+                f"the sample has {agreement['sample_size']} episodes, below the "
+                f"minimum {agreement['min_sample_size']}"
+            )
+        else:
+            detail = (
+                f"judge kappa {agreement['cohen_kappa']!r} is below the trust floor "
+                f"{agreement['kappa_trust_floor']}"
+            )
+        raise SilverError(
+            f"silver set is not trustworthy: {detail}; refusing to report a gate it "
+            "did not pass (pass --allow-untrusted to evaluate anyway)"
+        )
+    return 0
+
+
+def _cmd_silver_collapse(args: argparse.Namespace) -> int:
+    """Re-score an existing multi-judge checkpoint under a coarser taxonomy.
+
+    Reads recorded judge votes (a raw judge checkpoint or a silver report) plus
+    Jev predictions, collapses the labels, and re-reports pairwise/Fleiss kappa
+    and Jev-vs-reference accuracy. No judge call or network request is made.
+    """
+
+    collapse = resolve_collapse(args.collapse)
+    judge_filter = [value.strip() for value in args.judge if value.strip() and value != "all"]
+    if args.checkpoint:
+        checkpoint = load_judge_checkpoint(args.checkpoint)
+        judge_ids = judge_filter or sorted(checkpoint)
+        votes, judge_ids = votes_from_checkpoint(checkpoint, judge_ids=judge_ids)
+        source = {"kind": "judge_checkpoint", "path": args.checkpoint}
+    elif args.report:
+        report_document = _read_json_object(args.report, "silver report")
+        votes, judge_ids = votes_from_report(report_document)
+        if judge_filter:
+            missing = sorted(set(judge_filter) - set(judge_ids))
+            if missing:
+                raise SilverError(
+                    "silver report is missing requested judge(s): " + ", ".join(missing)
+                )
+            judge_ids = tuple(judge_filter)
+        source = {"kind": "silver_report", "path": args.report}
+    else:
+        raise SilverError("silver-collapse needs --checkpoint or --report")
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    predictions = load_predictions(args.jev_predictions, taxonomy)
+    jev_labels = {prediction.episode_id: prediction.primary("primary_intent") for prediction in predictions}
+
+    report = rescore_collapsed(
+        votes,
+        judge_ids,
+        jev_labels,
+        collapse=collapse,
+        majority=args.majority,
+    )
+    report["source"] = source
+    vote_ids = {vote.episode_id for vote in votes}
+    report["jev_predictions"] = {
+        "path": args.jev_predictions,
+        "episodes": len(jev_labels),
+        "without_judge_votes": sorted(set(jev_labels) - vote_ids),
+        "without_jev": sorted(vote_ids - set(jev_labels)),
+    }
+    write_collapse_report(report, args.out)
+    for mode, data in report["modes"].items():
+        print(
+            json.dumps(
+                {
+                    "mode": mode,
+                    "min_pairwise_cohen_kappa": data["trust"]["min_pairwise_cohen_kappa"],
+                    "fleiss_kappa": data["trust"]["fleiss_kappa"],
+                    "clears_floor": data["trust"]["clears_floor"],
+                    "unanimous": data["references"]["unanimous"],
+                    "majority_or_better": data["references"]["majority_or_better"],
+                    "jev_unanimous_accuracy": data["jev"]["unanimous"]["accuracy"],
+                    "jev_majority_accuracy": data["jev"]["majority"]["accuracy"],
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+    print(
+        json.dumps(
+            {
+                "kind": report["kind"],
+                "collapse_id": collapse.collapse_id,
+                "episodes": report["sample"]["episodes"],
+                "clears_floor": report["clears_floor"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if args.require_clear and not report["clears_floor"]:
+        raise SilverError(
+            "no collapse mode cleared the "
+            f"{collapse.collapse_id} trust floor; report written to {args.out} as evidence"
+        )
+    return 0
+
+
+def _cmd_silver_two_stage(args: argparse.Namespace) -> int:
+    """Score recorded two-stage votes, or approximate them with no judge call.
+
+    Two sources are accepted: ``--checkpoint`` for the zero-call approximation
+    derived from a recorded single-pass judge checkpoint, or
+    ``--stage1-checkpoint`` (plus optional ``--stage2-checkpoint``) for real
+    two-stage answers. Neither path touches the network.
+    """
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    predictions = load_predictions(args.jev_predictions, taxonomy)
+    jev_labels = {
+        prediction.episode_id: prediction.primary(PRIMARY_FACET) for prediction in predictions
+    }
+    judge_filter = [value.strip() for value in args.judge if value.strip() and value != "all"]
+    if args.checkpoint:
+        checkpoint = _read_json_object(args.checkpoint, "judge checkpoint")
+        votes, judge_ids = approximate_votes_from_silver_checkpoint(
+            checkpoint, majority=args.majority, judge_ids=judge_filter or None
+        )
+        approximation = True
+        source = {
+            "kind": "single_pass_checkpoint",
+            "path": args.checkpoint,
+            "derivation": "stage 1 = unknown vs not-unknown; stage 2 = non-unknown votes",
+        }
+    elif args.stage1_checkpoint:
+        evidence, intent = load_two_stage_checkpoints(args.stage1_checkpoint, args.stage2_checkpoint)
+        votes, judge_ids = votes_from_checkpoints(
+            evidence,
+            intent,
+            judge_ids=judge_filter or None,
+            intent_labels=substantive_labels(taxonomy),
+        )
+        approximation = False
+        source = {
+            "kind": "two_stage_checkpoints",
+            "evidence": args.stage1_checkpoint,
+            "intent": args.stage2_checkpoint,
+        }
+    else:
+        raise SilverError("silver-two-stage needs --checkpoint or --stage1-checkpoint")
+
+    report = score_two_stage(
+        votes,
+        judge_ids,
+        jev_labels,
+        majority=args.majority,
+        approximation=approximation,
+        kind="silver_two_stage_rescore",
+    )
+    report["source"] = source
+    vote_ids = {vote.episode_id for vote in votes}
+    report["jev_predictions"] = {
+        "path": args.jev_predictions,
+        "episodes": len(jev_labels),
+        "without_judge_votes": sorted(set(jev_labels) - vote_ids),
+        "without_jev": sorted(vote_ids - set(jev_labels)),
+    }
+    write_two_stage_report(report, args.out)
+    stage1 = report["stage1"]
+    print(
+        json.dumps(
+            {
+                "kind": report["kind"],
+                "approximation": report["approximation"],
+                "episodes": report["sample"]["episodes"],
+                "eligible_episodes": report["stage2"]["eligible_episodes"],
+                "stage1_min_pairwise_cohen_kappa": stage1["trust"]["min_pairwise_cohen_kappa"],
+                "stage1_fleiss_kappa": stage1["trust"]["fleiss_kappa"],
+                "stage2_original_min_pairwise_cohen_kappa": report["stage2"]["scorings"][
+                    "original"
+                ]["trust"]["min_pairwise_cohen_kappa"],
+                "stage2_collapse_min_pairwise_cohen_kappa": report["stage2"]["scorings"][
+                    report["collapse"]["collapse_id"]
+                ]["trust"]["min_pairwise_cohen_kappa"],
+                "clears_floor": report["gate"]["clears_floor"],
+                "out": args.out,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if args.require_clear and not report["gate"]["clears_floor"]:
+        raise SilverError(
+            "the two-stage gate did not clear the trust floor; "
+            f"report written to {args.out} as evidence"
+        )
+    return 0
+
+
+def _cmd_silver_two_stage_run(args: argparse.Namespace) -> int:
+    """Run the live two-stage judge pass (stage 1 on all episodes, stage 2 on
+    episodes a majority called known) and score it. Resumable via the two
+    checkpoint paths."""
+
+    taxonomy = load_taxonomy(args.taxonomy)
+    episodes = load_episodes_json(args.episodes_file)
+    jev_labels: dict[str, str | None] = {}
+    if args.jev_predictions:
+        predictions = load_predictions(args.jev_predictions, taxonomy)
+        jev_labels = {
+            prediction.episode_id: prediction.primary(PRIMARY_FACET)
+            for prediction in predictions
+        }
+    substantive = substantive_labels(taxonomy)
+    stage1_judges = []
+    stage2_judges = []
+    transports: dict[str, dict[str, Any]] = {}
+    for spec in _silver_judges(args):
+        # The CLI judges are schema-constrained, so each stage needs its own
+        # client: stage 1 must answer ``evidence`` (known/unknown), not the
+        # intent key, or the schema silently forces the stage-2 question.
+        stage1_inner = build_judge_client(
+            spec,
+            EVIDENCE_LABELS,
+            base_url=args.base_url,
+            api_key_env=args.api_key_env,
+            timeout_seconds=args.judge_timeout,
+            cli_timeout_seconds=args.cli_judge_timeout,
+            max_attempts=args.judge_max_attempts,
+            max_requests=args.max_judge_requests,
+            schema_key="evidence",
+        )
+        stage2_inner = build_judge_client(
+            spec,
+            substantive,
+            base_url=args.base_url,
+            api_key_env=args.api_key_env,
+            timeout_seconds=args.judge_timeout,
+            cli_timeout_seconds=args.cli_judge_timeout,
+            max_attempts=args.judge_max_attempts,
+            max_requests=args.max_judge_requests,
+            schema_key="primary_intent",
+        )
+        stage1_client = (
+            CheckpointJudgeClient(spec.judge_id, stage1_inner, args.stage1_checkpoint)
+            if args.stage1_checkpoint
+            else stage1_inner
+        )
+        stage2_client = (
+            CheckpointJudgeClient(spec.judge_id, stage2_inner, args.stage2_checkpoint)
+            if args.stage2_checkpoint
+            else stage2_inner
+        )
+        stage1_judges.append((spec, stage1_client))
+        stage2_judges.append((spec, stage2_client))
+        transports[spec.judge_id] = {
+            "spec": spec,
+            "stage1_inner": stage1_inner,
+            "stage2_inner": stage2_inner,
+            "stage1": stage1_client,
+            "stage2": stage2_client,
+        }
+    result = build_two_stage_result(
+        episodes,
+        taxonomy,
+        stage1_judges,
+        stage2_judges,
+        jev_labels=jev_labels,
+        majority=args.majority,
+        strict=not args.tolerate_judge_failures,
+        text_bytes=args.judge_text_bytes,
+        pair_prompt_version=args.pair_prompt_version,
+        evidence_prompt_version=args.evidence_prompt_version,
+        intent_prompt_version=args.intent_prompt_version,
+    )
+    report = dict(result.report)
+    http_requests: dict[str, int] = {}
+    cli_calls: dict[str, int] = {}
+    cli_versions: dict[str, Any] = {}
+    backends: dict[str, dict[str, Any]] = {}
+    for judge_id, entry in transports.items():
+        spec = entry["spec"]
+        stage1_inner = entry["stage1_inner"]
+        stage2_inner = entry["stage2_inner"]
+        http_requests[judge_id] = int(getattr(stage1_inner, "requests_made", 0) or 0) + int(
+            getattr(stage2_inner, "requests_made", 0) or 0
+        )
+        cli_calls[judge_id] = int(getattr(stage1_inner, "calls_made", 0) or 0) + int(
+            getattr(stage2_inner, "calls_made", 0) or 0
+        )
+        cli_versions[judge_id] = getattr(stage1_inner, "cli_version", None) or getattr(
+            stage2_inner, "cli_version", None
+        )
+        slot = backends.setdefault(
+            spec.backend, {"judges": [], "http_requests": 0, "cli_calls": 0}
+        )
+        slot["judges"].append(judge_id)
+        slot["http_requests"] += http_requests[judge_id]
+        slot["cli_calls"] += cli_calls[judge_id]
+    report["judge_transport"] = {
+        "stage1_checkpoint": args.stage1_checkpoint,
+        "stage2_checkpoint": args.stage2_checkpoint,
+        "http_requests": http_requests,
+        "cli_calls": cli_calls,
+        "cache_hits": {
+            judge_id: {
+                "stage1": int(getattr(entry["stage1"], "cache_hits", 0) or 0),
+                "stage2": int(getattr(entry["stage2"], "cache_hits", 0) or 0),
+            }
+            for judge_id, entry in transports.items()
+        },
+        "cli_versions": cli_versions,
+        "backends": backends,
+    }
+    _write_output(
+        json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False), args.out_report
+    )
+    print(
+        json.dumps(
+            {
+                "kind": report["kind"],
+                "episodes": report["sample"]["episodes"],
+                "eligible_episodes": report["stage2"]["eligible_episodes"],
+                "judge_calls": report["judge_calls"]["total"],
+                "stage1_min_pairwise_cohen_kappa": report["stage1"]["trust"][
+                    "min_pairwise_cohen_kappa"
+                ],
+                "stage2_original_min_pairwise_cohen_kappa": report["stage2"]["scorings"][
+                    "original"
+                ]["trust"]["min_pairwise_cohen_kappa"],
+                "stage2_collapse_min_pairwise_cohen_kappa": report["stage2"]["scorings"][
+                    report["collapse"]["collapse_id"]
+                ]["trust"]["min_pairwise_cohen_kappa"],
+                "clears_floor": report["gate"]["clears_floor"],
+                "out_report": args.out_report,
+            },
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    if args.require_clear and not report["gate"]["clears_floor"]:
+        raise SilverError(
+            "the two-stage gate did not clear the trust floor; "
+            f"report written to {args.out_report} as evidence"
+        )
+    return 0
+
+
 def _cmd_canary_register(args: argparse.Namespace) -> int:
     """Validate a canary spec and write the pre-registered artifact (M8).
 
@@ -1243,6 +1817,257 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument("--calibration-bins", type=int, default=5, help="reliability bin count")
     evaluate_parser.add_argument("--out", default=None, help="write the evaluation report to this path")
     evaluate_parser.set_defaults(func=_cmd_evaluate)
+
+    silver_build_parser = subparsers.add_parser(
+        "silver-build",
+        help="build a multi-judge silver primary_intent reference; no human labels",
+    )
+    silver_build_parser.add_argument("--candidates", required=True, help="candidate CSV (episode_id/group_key/provider/observed_at)")
+    silver_build_parser.add_argument("--db", required=True, help="SQLite projection with the candidate transcripts")
+    silver_build_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    silver_build_parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE, help="episodes to sample (default 150)")
+    silver_build_parser.add_argument("--seed", default="silver-v1", help="deterministic sampling/adjudication seed")
+    silver_build_parser.add_argument("--out-gold", required=True, help="write the silver gold set JSON here")
+    silver_build_parser.add_argument("--out-report", required=True, help="write the silver agreement report JSON here")
+    silver_build_parser.add_argument(
+        "--allow-untrusted",
+        action="store_true",
+        help="write a silver gold set even when judge kappa is below the trust floor (default: refuse)",
+    )
+    silver_build_parser.add_argument("--jev-predictions-out", default=None, help="also write Jev predictions for the sampled episodes")
+    silver_build_parser.add_argument(
+        "--judge",
+        action="append",
+        default=[],
+        help=(
+            "judge id, model slug, or backend:model (repeatable; default the two "
+            "gateway judges glm-5p3-flash + deepseek-v4-flash)"
+        ),
+    )
+    silver_build_parser.add_argument(
+        "--judges-file",
+        default=None,
+        help="JSON list of {judge_id, model, api_model, backend} judge specs (overrides --judge)",
+    )
+    silver_build_parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="OpenAI-compatible gateway base URL")
+    silver_build_parser.add_argument("--api-key-env", default=DEFAULT_API_KEY_ENV, help="env var holding the gateway key")
+    silver_build_parser.add_argument("--judge-timeout", type=float, default=300.0, help="per-judge-request HTTP timeout")
+    silver_build_parser.add_argument(
+        "--cli-judge-timeout", type=float, default=600.0, help="per-call timeout for codex-cli/agy-cli judges"
+    )
+    silver_build_parser.add_argument("--judge-max-attempts", type=int, default=3, help="attempts per judge call")
+    silver_build_parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="JSON checkpoint of raw judge answers, so a partial run resumes instead of re-spending",
+    )
+    silver_build_parser.add_argument("--max-judge-requests", type=int, default=300, help="per-run gateway request ceiling (owner cap: 2x150)")
+    silver_build_parser.add_argument(
+        "--tolerate-judge-failures",
+        action="store_true",
+        help=(
+            "record a failed/timed-out judge call as a missing label and continue "
+            "instead of aborting the whole run (default: fail fast)"
+        ),
+    )
+    silver_build_parser.add_argument("--excerpt-bytes", type=int, default=2048, help="per-event transcript excerpt bytes")
+    silver_build_parser.add_argument("--text-bytes", type=int, default=DEFAULT_JUDGE_TEXT_BYTES, help="per-episode judge text cap")
+    silver_build_parser.add_argument("--judge-text-bytes", type=int, default=DEFAULT_JUDGE_TEXT_BYTES, help="prompt document byte cap")
+    silver_build_parser.add_argument("--gold-set-version", default="silver-v1", help="gold_set_version recorded on the silver set")
+    silver_build_parser.add_argument("--prompt-version", default=JUDGE_PROMPT_VERSION, help="judge prompt version (default: module version)")
+    silver_build_parser.set_defaults(func=_cmd_silver_build)
+
+    silver_eval_parser = subparsers.add_parser(
+        "silver-evaluate",
+        help="score Jev against agreed silver labels and report the judge-kappa gate",
+    )
+    silver_eval_parser.add_argument("--gold", required=True, help="silver gold set JSON")
+    silver_eval_parser.add_argument("--predictions", required=True, help="Jev predictions JSON")
+    silver_eval_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    silver_eval_parser.add_argument("--full-evaluator", action="store_true", help="also run the grouped evaluator on agreed items")
+    silver_eval_parser.add_argument(
+        "--allow-untrusted",
+        action="store_true",
+        help="evaluate against a silver set whose judge kappa is below the trust floor (default: refuse)",
+    )
+    silver_eval_parser.add_argument("--out", default=None, help="write the silver evaluation report to this path")
+    silver_eval_parser.set_defaults(func=_cmd_silver_evaluate)
+
+    silver_collapse_parser = subparsers.add_parser(
+        "silver-collapse",
+        help="re-score a recorded multi-judge checkpoint under a coarser primary_intent taxonomy (no judge calls)",
+    )
+    silver_collapse_parser.add_argument(
+        "--checkpoint", default=None, help="raw judge checkpoint JSON ({judge: {episode: raw answer}})"
+    )
+    silver_collapse_parser.add_argument(
+        "--report", default=None, help="silver report JSON whose episodes carry judge_labels"
+    )
+    silver_collapse_parser.add_argument(
+        "--jev-predictions", required=True, help="Jev predictions JSON to score against collapsed references"
+    )
+    silver_collapse_parser.add_argument(
+        "--collapse",
+        default=PRIMARY_INTENT_COLLAPSE_V1.collapse_id,
+        help=f"collapse id to apply (default: {PRIMARY_INTENT_COLLAPSE_V1.collapse_id})",
+    )
+    silver_collapse_parser.add_argument(
+        "--judge",
+        action="append",
+        default=[],
+        help="judge id to include (repeatable; default every judge in the source)",
+    )
+    silver_collapse_parser.add_argument(
+        "--majority", type=int, default=DEFAULT_MAJORITY, help="judges that must agree for a majority reference (default: 3)"
+    )
+    silver_collapse_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    silver_collapse_parser.add_argument("--out", required=True, help="write the collapse re-score report JSON here")
+    silver_collapse_parser.add_argument(
+        "--require-clear",
+        action="store_true",
+        help="exit nonzero (after writing the report) when no unknown policy clears the trust floor",
+    )
+    silver_collapse_parser.set_defaults(func=_cmd_silver_collapse)
+
+    two_stage_parser = subparsers.add_parser(
+        "silver-two-stage",
+        help="score the two-stage abstention split, or approximate it from a single-pass checkpoint (no judge calls)",
+    )
+    two_stage_parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="recorded single-pass judge checkpoint to approximate both stages from (no judge calls)",
+    )
+    two_stage_parser.add_argument(
+        "--stage1-checkpoint",
+        default=None,
+        help="recorded stage-1 (known/unknown) raw-answer checkpoint",
+    )
+    two_stage_parser.add_argument(
+        "--stage2-checkpoint",
+        default=None,
+        help="recorded stage-2 (intent) raw-answer checkpoint; optional",
+    )
+    two_stage_parser.add_argument(
+        "--jev-predictions", required=True, help="Jev predictions JSON to score against the two-stage reference"
+    )
+    two_stage_parser.add_argument(
+        "--judge",
+        action="append",
+        default=[],
+        help="judge id to include (repeatable; default every judge in the source)",
+    )
+    two_stage_parser.add_argument(
+        "--majority", type=int, default=3, help="judges that must call known for stage-2 eligibility (default: 3)"
+    )
+    two_stage_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    two_stage_parser.add_argument("--out", required=True, help="write the two-stage re-score report JSON here")
+    two_stage_parser.add_argument(
+        "--require-clear",
+        action="store_true",
+        help="exit nonzero (after writing the report) when the two-stage gate does not clear the floor",
+    )
+    two_stage_parser.set_defaults(func=_cmd_silver_two_stage)
+
+    two_stage_run_parser = subparsers.add_parser(
+        "silver-two-stage-run",
+        help="run the live two-stage judge pass (stage 1 all episodes; stage 2 eligible only) and score it",
+    )
+    two_stage_run_parser.add_argument(
+        "--episodes-file",
+        required=True,
+        help="JSON list of episode documents ({episode_id, group_key, provider, observed_at, text, ...})",
+    )
+    two_stage_run_parser.add_argument(
+        "--out-report", required=True, help="write the two-stage agreement/run report JSON here"
+    )
+    two_stage_run_parser.add_argument(
+        "--jev-predictions", default=None, help="optional Jev predictions JSON to score against the reference"
+    )
+    two_stage_run_parser.add_argument(
+        "--stage1-checkpoint",
+        default=None,
+        help="stage-1 raw-answer checkpoint (enables resumable stage 1)",
+    )
+    two_stage_run_parser.add_argument(
+        "--stage2-checkpoint",
+        default=None,
+        help="stage-2 raw-answer checkpoint (enables resumable stage 2)",
+    )
+    two_stage_run_parser.add_argument(
+        "--judge",
+        action="append",
+        default=[],
+        help=(
+            "judge id, model slug, or backend:model (repeatable; default the two "
+            "gateway judges glm-5p3-flash + deepseek-v4-flash)"
+        ),
+    )
+    two_stage_run_parser.add_argument(
+        "--judges-file",
+        default=None,
+        help="JSON list of {judge_id, model, api_model, backend} judge specs (overrides --judge)",
+    )
+    two_stage_run_parser.add_argument(
+        "--majority", type=int, default=3, help="judges that must call known for stage-2 eligibility (default: 3)"
+    )
+    two_stage_run_parser.add_argument(
+        "--evidence-prompt-version", default=EVIDENCE_GATE_PROMPT_VERSION, help="stage-1 prompt version recorded on the run"
+    )
+    two_stage_run_parser.add_argument(
+        "--intent-prompt-version", default=INTENT_PROMPT_VERSION, help="stage-2 prompt version recorded on the run"
+    )
+    two_stage_run_parser.add_argument(
+        "--pair-prompt-version", default=TWO_STAGE_PROMPT_VERSION, help="two-stage pair prompt version recorded on the run"
+    )
+    two_stage_run_parser.add_argument(
+        "--taxonomy",
+        default=str(DEFAULT_TAXONOMY_PATH.with_name("jev_taxonomy_v2.json")),
+        help="taxonomy JSON path (default: v2)",
+    )
+    two_stage_run_parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="OpenAI-compatible gateway base URL")
+    two_stage_run_parser.add_argument("--api-key-env", default=DEFAULT_API_KEY_ENV, help="env var holding the gateway key")
+    two_stage_run_parser.add_argument("--judge-timeout", type=float, default=300.0, help="per-judge-request HTTP timeout")
+    two_stage_run_parser.add_argument(
+        "--cli-judge-timeout", type=float, default=600.0, help="per-call timeout for codex-cli/agy-cli judges"
+    )
+    two_stage_run_parser.add_argument("--judge-max-attempts", type=int, default=3, help="attempts per judge call")
+    two_stage_run_parser.add_argument(
+        "--max-judge-requests",
+        type=int,
+        default=1200,
+        help="per-run gateway request ceiling (default covers stage 1 + stage 2 on 150 episodes)",
+    )
+    two_stage_run_parser.add_argument(
+        "--judge-text-bytes", type=int, default=DEFAULT_JUDGE_TEXT_BYTES, help="prompt document byte cap"
+    )
+    two_stage_run_parser.add_argument(
+        "--tolerate-judge-failures",
+        action="store_true",
+        help="record a failed/timed-out judge call as a missing label and continue (default: fail fast)",
+    )
+    two_stage_run_parser.add_argument(
+        "--require-clear",
+        action="store_true",
+        help="exit nonzero (after writing the report) when the two-stage gate does not clear the floor",
+    )
+    two_stage_run_parser.set_defaults(func=_cmd_silver_two_stage_run)
 
     impact_parser = subparsers.add_parser(
         "impact",

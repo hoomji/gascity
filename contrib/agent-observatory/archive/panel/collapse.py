@@ -40,8 +40,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .errors import SilverError
-from .evaluation import single_label_metrics
+from agent_observatory.errors import SilverError
+from agent_observatory.evaluation import single_label_metrics
 from .silver import (
     DEFAULT_JUDGE_TEXT_BYTES,
     KAPPA_TRUST_FLOOR,
