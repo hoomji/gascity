@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover
 from agent_observatory.canonical import session_text_snapshot_hash
 from agent_observatory.errors import ObservatoryError
 from agent_observatory.jev import build_request, import_response, persist_request
+from panel.silver import SilverEpisode, predictions_from_store
 from agent_observatory.store import ObservatoryStore
 from agent_observatory import load_taxonomy
 
@@ -118,6 +119,47 @@ class ClassificationBindingTest(unittest.TestCase):
         )
         self.assertEqual(self.store.classifications_for_session(other_key), [])
 
+    def test_predictions_read_by_binding_after_current_snapshot_changes(self):
+        self._import_event("e1")
+        snapshot = self.store.session_snapshot(self.key)
+        classification_id, deduplicated = self.store.save_classification(
+            subject_kind="session",
+            snapshot_hash=snapshot,
+            taxonomy_version="1.1.0",
+            question_hash="q" * 64,
+            model_version="jev-1.13.0",
+            request_hash="r" * 64,
+            response_hash="h" * 64,
+            answers=[
+                {
+                    "question_id": "primary_intent",
+                    "question_type": "choice",
+                    "answer": {
+                        "choice": "bugfix",
+                        "confidence": 0.9,
+                        "probabilities": {"bugfix": 1.0},
+                    },
+                }
+            ],
+        )
+        self.assertFalse(deduplicated)
+        self._import_event("e2")
+        self.assertNotEqual(self.store.session_snapshot(self.key), snapshot)
+
+        episode = SilverEpisode(
+            episode_id="episode-1",
+            group_key="session:" + json.dumps(self.key, separators=(",", ":")),
+            provider="codex",
+            observed_at="2026-09-21T10:00:00Z",
+            text="Please fix the scheduler bug",
+        )
+        predictions = predictions_from_store(self.store, [episode])
+        self.assertEqual(len(predictions), 1)
+        self.assertEqual(predictions[0].primary("primary_intent"), "bugfix")
+        self.assertEqual(
+            self.store.latest_classification_for_session(self.key)["classification_id"],
+            classification_id,
+        )
 
 
 if __name__ == "__main__":

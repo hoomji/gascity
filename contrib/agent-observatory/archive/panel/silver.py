@@ -51,12 +51,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 
-from .annotations import GoldEpisode, GoldSet
-from .canonical import canonical_hash, sha256_text
-from .contract import normalize_timestamp
-from .errors import SilverError
-from .evaluation import EvaluationConfig, Prediction, evaluate_gold_set, single_label_metrics
-from .taxonomy import Taxonomy
+from agent_observatory.annotations import GoldEpisode, GoldSet
+from agent_observatory.canonical import canonical_hash, sha256_text
+from agent_observatory.contract import normalize_timestamp
+from agent_observatory.errors import SilverError
+from agent_observatory.evaluation import EvaluationConfig, Prediction, evaluate_gold_set, single_label_metrics
+from agent_observatory.taxonomy import Taxonomy
 
 SILVER_REPORT_VERSION = "1"
 SILVER_SCHEMA_VERSION = "1.0"
@@ -1263,7 +1263,7 @@ def build_silver_episodes(
     judges and Jev see the same stripped document type.
     """
 
-    from .collector import text_state
+    from agent_observatory.collector import text_state
 
     episodes: list[SilverEpisode] = []
     skipped: list[dict[str, str]] = []
@@ -1310,8 +1310,8 @@ def predictions_from_store(
     fallback; the current snapshot is no longer required to retrieve it.
     """
 
-    from .canonical import session_text_snapshot_hash
-    from .errors import ContractError
+    from agent_observatory.canonical import session_text_snapshot_hash
+    from agent_observatory.errors import ContractError
 
     predictions: list[Prediction] = []
     for episode in episodes:

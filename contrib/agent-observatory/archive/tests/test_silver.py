@@ -15,7 +15,7 @@ except ImportError:  # pragma: no cover
 from agent_observatory.annotations import load_gold_set
 from agent_observatory.errors import AnnotationError, SilverError
 from agent_observatory.evaluation import Prediction, load_predictions
-from agent_observatory.silver import (
+from panel.silver import (
     JUDGE_DEEPSEEK,
     JUDGE_GEMINI38_FLASH,
     JUDGE_GLM,
@@ -55,7 +55,7 @@ from agent_observatory.store import ObservatoryStore
 from agent_observatory.taxonomy import load_taxonomy
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PACKAGE_ROOT = os.path.dirname(HERE)
+PACKAGE_ROOT = support.PACKAGE_ROOT
 V2_PATH = os.path.join(PACKAGE_ROOT, "agent_observatory", "taxonomy", "jev_taxonomy_v2.json")
 CANDIDATES = os.path.join(HERE, "fixtures", "silver", "candidates.csv")
 ANSWERS = os.path.join(HERE, "fixtures", "silver", "recorded_judge_answers.json")
@@ -93,7 +93,7 @@ def _recorded():
 
 
 def _episodes(candidates, text_by_id):
-    from agent_observatory.silver import SilverEpisode
+    from panel.silver import SilverEpisode
 
     return tuple(
         SilverEpisode(
@@ -518,7 +518,7 @@ class HTTPJudgeClientTests(unittest.TestCase):
         self.assertEqual(client.requests_made, 1)
 
     def test_checkpoint_replays_without_respending(self):
-        from agent_observatory.silver import CheckpointJudgeClient
+        from panel.silver import CheckpointJudgeClient
 
         class Counting:
             def __init__(self):
@@ -541,7 +541,7 @@ class HTTPJudgeClientTests(unittest.TestCase):
             self.assertEqual(second.cache_hits, 1)
 
     def test_checkpoint_merges_two_judge_sections(self):
-        from agent_observatory.silver import CheckpointJudgeClient
+        from panel.silver import CheckpointJudgeClient
 
         class Constant:
             def __init__(self, value):
@@ -601,7 +601,7 @@ class SilverProjectionTests(unittest.TestCase):
     def test_build_silver_episodes_drops_framework_and_keeps_task_text(self):
         candidates = load_candidates_csv(CANDIDATES)[:1]
         group = candidates[0].group_key.replace('"s-1"', '"session-1"')
-        from agent_observatory.silver import CandidateEpisode
+        from panel.silver import CandidateEpisode
 
         candidate = CandidateEpisode(
             episode_id="ep-1",
@@ -642,7 +642,7 @@ class SilverProjectionTests(unittest.TestCase):
                 }
             ],
         )
-        from agent_observatory.silver import SilverEpisode
+        from panel.silver import SilverEpisode
 
         episode = SilverEpisode(
             episode_id="ep-1",
@@ -660,7 +660,7 @@ class SilverProjectionTests(unittest.TestCase):
         # newest-classification lookup let a newer metadata row shadow an older
         # (text-scope) bugfix row.
         from agent_observatory.collector import _text_snapshot_hash
-        from agent_observatory.silver import SilverEpisode
+        from panel.silver import SilverEpisode
 
         key = ("city-a", "host-a", "codex", "session-1")
         raw = self.store.session_snapshot(key)
@@ -722,7 +722,7 @@ def _multi_recorded():
 
 
 def _multi_episodes():
-    from agent_observatory.silver import SilverEpisode
+    from panel.silver import SilverEpisode
 
     return tuple(
         SilverEpisode(
@@ -893,7 +893,7 @@ class _ScriptedJudge:
 
 
 def _scripted_episodes(count=6):
-    from agent_observatory.silver import SilverEpisode
+    from panel.silver import SilverEpisode
 
     return tuple(
         SilverEpisode(
