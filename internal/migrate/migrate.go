@@ -65,6 +65,7 @@ type agentFile struct {
 	PreStart               []string                `toml:"pre_start,omitempty"`
 	Nudge                  string                  `toml:"nudge,omitempty"`
 	Session                string                  `toml:"session,omitempty"`
+	Runtime                string                  `toml:"runtime,omitempty"`
 	Provider               string                  `toml:"provider,omitempty"`
 	ContextAdvisory        *config.ContextAdvisory `toml:"context_advisory,omitempty"`
 	Upstream               string                  `toml:"upstream,omitempty"`
@@ -923,6 +924,7 @@ func agentConfigFromAgent(agent config.Agent) agentFile {
 		PreStart:               agent.PreStart,
 		Nudge:                  agent.Nudge,
 		Session:                agent.Session,
+		Runtime:                agent.Runtime,
 		Provider:               agent.Provider,
 		ContextAdvisory:        agent.ContextAdvisory,
 		Upstream:               agent.Upstream,
@@ -978,6 +980,7 @@ func isZeroAgentConfig(cfg agentFile) bool {
 		len(cfg.PreStart) == 0 &&
 		cfg.Nudge == "" &&
 		cfg.Session == "" &&
+		cfg.Runtime == "" &&
 		cfg.Provider == "" &&
 		cfg.ContextAdvisory == nil &&
 		cfg.Upstream == "" &&
