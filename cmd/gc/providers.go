@@ -309,15 +309,17 @@ func resolveSessionTransportProvider(ctx sessionProviderContext, sessionBeads *s
 				}
 			}
 		}
-		autoSP := sessionauto.New(base, acpSP)
-		if sessionBeadSnapshotLoaded(sessionBeads) {
-			autoSP.SeedRoutes(acpRouteNames)
-		} else {
-			for _, sessName := range acpRouteNames {
-				autoSP.RouteACP(sessName)
-			}
+
+		// Resolve custom providers before constructing the router. Once autoSP is
+		// bound, the provider-ledger source contract requires a direct, unconditional
+		// return in this lexical block; provider resolution can still fail here.
+		type customRoute struct {
+			sessionName string
+			runtimeName string
+			provider    runtime.Provider
 		}
 		remoteProviders := make(map[string]runtime.Provider)
+		customRoutes := make([]customRoute, 0, len(runtimeRoutes))
 		for sessName, rtName := range runtimeRoutes {
 			remoteSP, ok := remoteProviders[rtName]
 			if !ok {
@@ -328,7 +330,19 @@ func resolveSessionTransportProvider(ctx sessionProviderContext, sessionBeads *s
 				}
 				remoteProviders[rtName] = remoteSP
 			}
-			autoSP.RouteProvider(sessName, rtName, remoteSP)
+			customRoutes = append(customRoutes, customRoute{sessionName: sessName, runtimeName: rtName, provider: remoteSP})
+		}
+
+		autoSP := sessionauto.New(base, acpSP)
+		if sessionBeadSnapshotLoaded(sessionBeads) {
+			autoSP.SeedRoutes(acpRouteNames)
+		} else {
+			for _, sessName := range acpRouteNames {
+				autoSP.RouteACP(sessName)
+			}
+		}
+		for _, route := range customRoutes {
+			autoSP.RouteProvider(route.sessionName, route.runtimeName, route.provider)
 		}
 		return autoSP, nil
 	}
