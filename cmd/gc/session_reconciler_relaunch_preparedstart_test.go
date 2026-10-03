@@ -302,3 +302,20 @@ func TestRelaunchAgentForLaunchDrift_AbortClearsSpeculativeResumeKey(t *testing.
 		}
 	})
 }
+
+// TestRestartNudge_UnchangedPromptHashSkipsReprime pins the resume-side rule:
+// a conversation primed with this exact template gets the short resume note,
+// a changed template gets the full prompt again.
+func TestRestartNudge_UnchangedPromptHashSkipsReprime(t *testing.T) {
+	short := resumeUnchangedPromptNudge("hint")
+	if strings.Contains(short, "full prompt body") || !strings.Contains(short, "hint") || !strings.Contains(short, "Session resumed") {
+		t.Fatalf("resumeUnchangedPromptNudge = %q", short)
+	}
+	if got := resumeUnchangedPromptNudge(""); strings.Contains(got, startupPromptNudgeSeparator) {
+		t.Fatalf("empty hint must not add a separator: %q", got)
+	}
+	full := restartPromptNudge("full prompt body", "hint")
+	if !strings.Contains(full, "full prompt body") {
+		t.Fatalf("restartPromptNudge dropped the prompt: %q", full)
+	}
+}

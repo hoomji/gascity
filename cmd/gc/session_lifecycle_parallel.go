@@ -1297,7 +1297,22 @@ func buildPreparedStartWithWorkDirResolver(
 	if !firstStart && !forceFresh && hasResumeKey {
 		agentCfg.PromptSuffix = ""
 		agentCfg.PromptFlag = ""
-		agentCfg.Nudge = restartPromptNudge(tp.Prompt, tp.Hints.Nudge)
+		// A resume continues the provider conversation, which already holds
+		// the startup prompt it was primed with. Re-sending the full prompt on
+		// every wake (each gc stop/start, each drain-ack recycle) stacked a
+		// ~13k-token copy per wake into the same context. Deliver the prompt
+		// again only when the rendered template changed since the recorded
+		// priming (S19 Stage 4); otherwise send a short resume note plus the
+		// provider hint so the session still gets a turn. A re-prime stamps
+		// the new hash so the next unchanged resume stays short.
+		if promptHash != "" && candidate.info.PromptHashMetadata == promptHash {
+			agentCfg.Nudge = resumeUnchangedPromptNudge(tp.Hints.Nudge)
+		} else {
+			agentCfg.Nudge = restartPromptNudge(tp.Prompt, tp.Hints.Nudge)
+			if strings.TrimSpace(tp.Prompt) != "" {
+				promptDelivered = true
+			}
+		}
 		if agentCfg.Env != nil {
 			delete(agentCfg.Env, startupPromptDeliveredEnv)
 		}
@@ -1923,6 +1938,17 @@ func appendInitialMessageToStartupNudge(nudge, msg string) string {
 		return nudge + startupPromptNudgeSeparator + userMessage
 	}
 	return userMessage
+}
+
+// resumeUnchangedPromptNudge is the wake text for a resumed conversation whose
+// startup prompt is unchanged: the prompt is already in the transcript, so only
+// a one-line note (plus the provider's own hint) is typed in.
+func resumeUnchangedPromptNudge(nudge string) string {
+	const note = "Session resumed. Your startup prompt is unchanged and already in this conversation; do not expect it again. Run your wake checklist now."
+	if strings.TrimSpace(nudge) == "" {
+		return note
+	}
+	return note + startupPromptNudgeSeparator + nudge
 }
 
 func restartPromptNudge(prompt, nudge string) string {
