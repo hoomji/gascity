@@ -182,7 +182,7 @@ func buildRecipeApplyPlan(recipe *formula.Recipe, opts Options) (*beads.GraphApp
 		if recipe.RootOnly && i > 0 {
 			break
 		}
-		node, err := recipeStepToGraphNode(step, vars, priorityOverride)
+		node, err := recipeStepToGraphNode(step, vars, priorityOverride, true)
 		if err != nil {
 			return nil, false, "", err
 		}
@@ -457,7 +457,7 @@ func buildFragmentApplyPlan(store beads.Store, recipe *formula.FragmentRecipe, o
 	}
 
 	for _, step := range recipe.Steps {
-		node, err := recipeStepToGraphNode(step, vars, priorityOverride)
+		node, err := recipeStepToGraphNode(step, vars, priorityOverride, false)
 		if err != nil {
 			return nil, err
 		}
@@ -546,8 +546,8 @@ func buildFragmentApplyPlan(store beads.Store, recipe *formula.FragmentRecipe, o
 	return plan, nil
 }
 
-func recipeStepToGraphNode(step formula.RecipeStep, vars map[string]string, priorityOverride *int) (beads.GraphApplyNode, error) { //nolint:unparam // error return reserved for future validation
-	b := stepToBead(step, vars, priorityOverride)
+func recipeStepToGraphNode(step formula.RecipeStep, vars map[string]string, priorityOverride *int, explicitStepPriorityWins bool) (beads.GraphApplyNode, error) { //nolint:unparam // error return reserved for future validation
+	b := stepToBeadWithPriorityPolicy(step, vars, priorityOverride, explicitStepPriorityWins)
 	return beads.GraphApplyNode{
 		Key:         step.ID,
 		Title:       b.Title,

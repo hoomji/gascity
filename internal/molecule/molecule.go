@@ -46,7 +46,9 @@ type Options struct {
 	// on crash-retry.
 	IdempotencyKey string
 
-	// PriorityOverride forces every created bead to use the given priority.
+	// PriorityOverride sets the root priority and fallback priority for recipe
+	// steps. An explicit non-root step priority may make that step less urgent
+	// (a higher numeric value), but never more urgent than the override.
 	// When nil, each step's compiled priority is used.
 	PriorityOverride *int
 
@@ -1179,7 +1181,7 @@ func InstantiateFragment(ctx context.Context, store beads.Store, recipe *formula
 	recipeParentByStep := recipeParentDeps(recipe.Deps)
 
 	for _, step := range recipe.Steps {
-		b := stepToBead(step, vars, priorityOverride)
+		b := stepToBeadWithPriorityPolicy(step, vars, priorityOverride, false)
 		// Fragment entries stay "task" — unlike formula scaffolding steps,
 		// fanout-expanded fragment beads are actionable work that pool
 		// workers claim from `bd ready`. Do not apply nonRootStepBeadType
@@ -1393,6 +1395,10 @@ func preservesGraphActionTypes(recipe *formula.Recipe) bool {
 
 // stepToBead converts a RecipeStep to a Bead with variable substitution.
 func stepToBead(step formula.RecipeStep, vars map[string]string, priorityOverride *int) beads.Bead {
+	return stepToBeadWithPriorityPolicy(step, vars, priorityOverride, true)
+}
+
+func stepToBeadWithPriorityPolicy(step formula.RecipeStep, vars map[string]string, priorityOverride *int, explicitStepPriorityWins bool) beads.Bead {
 	stepType := step.Type
 	if stepType == "" {
 		stepType = "task"
@@ -1402,7 +1408,7 @@ func stepToBead(step formula.RecipeStep, vars map[string]string, priorityOverrid
 		Title:       formula.Substitute(step.Title, vars),
 		Description: substituteStepDescription(step, vars),
 		Type:        stepType,
-		Priority:    resolveStepPriority(step, priorityOverride),
+		Priority:    resolveStepPriority(step, priorityOverride, explicitStepPriorityWins),
 		Labels:      substituteLabels(step.Labels, vars),
 		Assignee:    formula.Substitute(step.Assignee, vars),
 	}
@@ -1584,11 +1590,19 @@ func substituteLabels(labels []string, vars map[string]string) []string {
 	return out
 }
 
-func resolveStepPriority(step formula.RecipeStep, priorityOverride *int) *int {
-	if priorityOverride != nil {
-		return clonePriority(priorityOverride)
+func resolveStepPriority(step formula.RecipeStep, priorityOverride *int, explicitStepPriorityWins bool) *int {
+	if priorityOverride == nil {
+		return clonePriority(step.Priority)
 	}
-	return clonePriority(step.Priority)
+	// The root/source priority is an urgency ceiling for its children: an
+	// explicit step priority can lower urgency (higher numeric value) without
+	// allowing the step to outrank its source. The root itself always keeps the
+	// caller's override. Fragments retain their historical root-priority
+	// inheritance, so callers can disable authored-step priority handling.
+	if explicitStepPriorityWins && !step.IsRoot && step.Priority != nil && *step.Priority > *priorityOverride {
+		return clonePriority(step.Priority)
+	}
+	return clonePriority(priorityOverride)
 }
 
 func clonePriority(v *int) *int {

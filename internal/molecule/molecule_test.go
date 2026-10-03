@@ -1302,7 +1302,47 @@ func TestInstantiatePriorityOverrideCopiesToAllBeads(t *testing.T) {
 	}
 }
 
-func TestInstantiateUsesGraphApplyPriorityOverride(t *testing.T) {
+func TestInstantiatePriorityOverridePreservesLessUrgentStepPriority(t *testing.T) {
+	store := beads.NewMemStore()
+	recipe := &formula.Recipe{
+		Name: "priority-floor",
+		Steps: []formula.RecipeStep{
+			{ID: "priority-floor", Title: "Root", Type: "molecule", IsRoot: true},
+			{ID: "priority-floor.step", Title: "Background step", Type: "task", Priority: priorityPtr(3)},
+		},
+		Deps: []formula.RecipeDep{
+			{StepID: "priority-floor.step", DependsOnID: "priority-floor", Type: "parent-child"},
+		},
+	}
+
+	result, err := Instantiate(context.Background(), store, recipe, Options{PriorityOverride: priorityPtr(1)})
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	root, err := store.Get(result.IDMapping["priority-floor"])
+	if err != nil {
+		t.Fatalf("get root: %v", err)
+	}
+	step, err := store.Get(result.IDMapping["priority-floor.step"])
+	if err != nil {
+		t.Fatalf("get background step: %v", err)
+	}
+	rootPriority, stepPriority := -1, -1
+	if root.Priority != nil {
+		rootPriority = *root.Priority
+	}
+	if step.Priority != nil {
+		stepPriority = *step.Priority
+	}
+	if rootPriority != 1 {
+		t.Fatalf("root priority = %d, want override 1", rootPriority)
+	}
+	if stepPriority != 3 {
+		t.Fatalf("explicit background step priority = %d, want 3 despite root override 1", stepPriority)
+	}
+}
+
+func TestInstantiateUsesGraphApplyPriorityFloor(t *testing.T) {
 	store := &graphApplySpyStore{MemStore: beads.NewMemStore()}
 	prev := IsGraphApplyEnabled()
 	SetGraphApplyEnabled(true)
@@ -1312,22 +1352,31 @@ func TestInstantiateUsesGraphApplyPriorityOverride(t *testing.T) {
 		Name: "wf",
 		Steps: []formula.RecipeStep{
 			{ID: "wf", Title: "Workflow", Type: "task", IsRoot: true, Metadata: map[string]string{"gc.kind": "workflow"}},
-			{ID: "wf.step", Title: "Work", Type: "task", Priority: priorityPtr(0)},
+			{ID: "wf.step", Title: "Work", Type: "task", Priority: priorityPtr(3)},
 		},
 		Deps: []formula.RecipeDep{
 			{StepID: "wf.step", DependsOnID: "wf", Type: "parent-child"},
 		},
 	}
 
-	if _, err := Instantiate(context.Background(), store, recipe, Options{PriorityOverride: priorityPtr(2)}); err != nil {
+	if _, err := Instantiate(context.Background(), store, recipe, Options{PriorityOverride: priorityPtr(1)}); err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	if store.plan == nil {
 		t.Fatal("ApplyGraphPlan was not called")
 	}
+	want := map[string]int{"wf": 1, "wf.step": 3}
 	for _, node := range store.plan.Nodes {
-		if node.Priority == nil || *node.Priority != 2 {
-			t.Fatalf("node %s priority = %v, want 2", node.Key, node.Priority)
+		got := -1
+		if node.Priority != nil {
+			got = *node.Priority
+		}
+		wantPriority, ok := want[node.Key]
+		if !ok {
+			t.Fatalf("unexpected graph-apply node %s", node.Key)
+		}
+		if got != wantPriority {
+			t.Fatalf("node %s priority = %d, want %d", node.Key, got, wantPriority)
 		}
 	}
 }

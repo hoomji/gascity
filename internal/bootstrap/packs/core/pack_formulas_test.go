@@ -1,8 +1,10 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/gastownhall/gascity/internal/formula"
 )
 
 // formulaRetry is the inline retry table a step may carry. It matters for
@@ -30,16 +33,15 @@ type formulaFile struct {
 		ID          string        `toml:"id"`
 		Title       string        `toml:"title"`
 		Description string        `toml:"description"`
+		Priority    *int          `toml:"priority"`
 		Retry       *formulaRetry `toml:"retry"`
 	} `toml:"steps"`
 }
 
 // readFormula decodes a formula TOML from the embedded core pack.
 //
-// file stays parameterized even though every current caller passes
-// mol-polecat-base.toml: the pack ships sibling formulas (mol-polecat-commit,
-// mol-polecat-report) that inherit these steps, and the next test to pin one of
-// them reads it through this same helper.
+// file stays parameterized because the pack ships several formulas and these
+// tests inspect different formula assets through the same helper.
 //
 //nolint:unparam // see above
 func readFormula(t *testing.T, file string) formulaFile {
@@ -66,6 +68,40 @@ func formulaStep(t *testing.T, f formulaFile, id string) string {
 	}
 	t.Fatalf("formula %s has no step %q", f.Formula, id)
 	return ""
+}
+
+// TestMolScopedWorkStepsCompileAtBackgroundPriority keeps generated workflow steps
+// below normal P0-P2 work without removing them from generic cold-pool discovery.
+func TestMolScopedWorkStepsCompileAtBackgroundPriority(t *testing.T) {
+	data, err := fs.ReadFile(PackFS, "formulas/mol-scoped-work.toml")
+	if err != nil {
+		t.Fatalf("reading mol-scoped-work.toml: %v", err)
+	}
+	formulaDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(formulaDir, "mol-scoped-work.toml"), data, 0o644); err != nil {
+		t.Fatalf("writing formula fixture: %v", err)
+	}
+	recipe, err := formula.Compile(context.Background(), "mol-scoped-work", []string{formulaDir}, nil)
+	if err != nil {
+		t.Fatalf("compiling mol-scoped-work: %v", err)
+	}
+	parsed := readFormula(t, "mol-scoped-work.toml")
+	if len(parsed.Steps) == 0 {
+		t.Fatal("mol-scoped-work has no materialized steps")
+	}
+	for _, authored := range parsed.Steps {
+		compiled := recipe.StepByID(parsed.Formula + "." + authored.ID)
+		if compiled == nil {
+			t.Fatalf("compiled recipe is missing step %q", authored.ID)
+		}
+		if compiled.Priority == nil || *compiled.Priority < 3 {
+			got := "default (2)"
+			if compiled.Priority != nil {
+				got = fmt.Sprint(*compiled.Priority)
+			}
+			t.Errorf("compiled step %s priority = %s, want P3 or P4 so higher-priority work stays ahead", compiled.ID, got)
+		}
+	}
 }
 
 // TestMolDoWorkDrainClaimsCurrentContinuation pins the distinction between a
