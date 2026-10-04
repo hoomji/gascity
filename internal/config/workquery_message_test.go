@@ -24,6 +24,8 @@ func TestEffectiveWorkQueryDoesNotServeMailMessages(t *testing.T) {
 		},
 		{name: "ephemeral ready", messageTier: "ephemeral-ready"},
 		{name: "ephemeral ready type alias", messageTier: "ephemeral-ready-type-alias"},
+		{name: "ephemeral ready empty issue_type with type alias", messageTier: "ephemeral-ready-empty-issue-type"},
+		{name: "ephemeral ready with dependencies", messageTier: "ephemeral-ready-deps"},
 		{name: "assigned in progress", messageTier: "assigned-in-progress"},
 		{name: "ephemeral in progress", messageTier: "ephemeral-in-progress"},
 	} {
@@ -91,6 +93,10 @@ case "$1" in
           printf '[{"id":"assigned-message","issue_type":"message","status":"open","assignee":"worker-session","ephemeral":true,"dependency_count":0}]'
         elif [ "$MESSAGE_TIER" = "ephemeral-ready-type-alias" ]; then
           printf '[{"id":"assigned-message","type":"message","status":"open","assignee":"worker-session","ephemeral":true,"dependency_count":0}]'
+        elif [ "$MESSAGE_TIER" = "ephemeral-ready-empty-issue-type" ]; then
+          printf '[{"id":"assigned-message","issue_type":"","type":"message","status":"open","assignee":"worker-session","ephemeral":true,"dependency_count":0}]'
+        elif [ "$MESSAGE_TIER" = "ephemeral-ready-deps" ]; then
+          printf '[{"id":"assigned-message","issue_type":"message","status":"open","assignee":"worker-session","ephemeral":true,"dependency_count":1}]'
         else
           printf '[]'
         fi

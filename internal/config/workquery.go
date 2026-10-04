@@ -304,9 +304,12 @@ func ephemeralReadyBaseSelectorJQ(selector string, excludeHoldLabels, excludeMes
 }
 
 // excludeMessageIssueTypeJQClause drops mail records from generated work-query
-// candidates. It accepts both JSON field spellings returned by bd readers.
+// candidates. It accepts both JSON field spellings returned by bd readers and,
+// like decodeRawBead, treats an empty issue_type as absent so that
+// {"issue_type":"","type":"message"} is still a message (jq's // only falls
+// through on null and false).
 func excludeMessageIssueTypeJQClause() string {
-	return ` | select(((.issue_type // .type // "") != "message"))`
+	return ` | select((if (.issue_type // "") != "" then .issue_type else (.type // "") end) != "message")`
 }
 
 // legacyEphemeralReadyFilterJQ is the fast path: it withholds any candidate
