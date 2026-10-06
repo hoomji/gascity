@@ -681,6 +681,10 @@ func (idx *CompletedFactIndex) ReconcileRoots(recorder events.Provider, graphSto
 			continue
 		}
 		sort.Slice(roots, func(i, j int) bool { return roots[i].ID < roots[j].ID })
+		// Match the cadence sweep's convergence rule before reconcileRoots pays
+		// for a per-root step listing. A reopened stamped root is not converged,
+		// so it stays here and reconcileRoots can clear its stale stamp.
+		roots, _ = partitionUnstampedRoots(roots, false)
 		emitted += reconcileRoots(recorder, graphStore, roots, idx, actor)
 	}
 	return emitted

@@ -129,6 +129,117 @@ func TestCompletionBackstopStampsOnlyVerifiedConvergenceThenSkips(t *testing.T) 
 	}
 }
 
+// TestCompletedFactIndexSkipsClosedStampedRootBeforeStepListing ensures the
+// delta lane uses the same converged-root boundary as the cadence sweep. The
+// journal already contains the fact, so emissions alone cannot reveal an
+// unnecessary step scan; the spy must observe zero step listings as well.
+func TestCompletedFactIndexSkipsClosedStampedRootBeforeStepListing(t *testing.T) {
+	backing, rootIDs, stepIDs := closedCompletionCorpus(t, 1)
+	root, err := backing.Get(rootIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	step, err := backing.Get(stepIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact, ok := LifecycleEvent(events.ExecutionStepCompleted, root, step, "execution-reconcile")
+	if !ok {
+		t.Fatal("fixture step did not produce its completion fact")
+	}
+	journal := events.NewFake()
+	journal.Record(fact)
+	if err := backing.SetMetadata(root.ID, beadmeta.CompletionFactsConvergedMetadataKey, "verified"); err != nil {
+		t.Fatal(err)
+	}
+
+	store := &sweepCountingGraphStore{Store: backing}
+	emitted := (&CompletedFactIndex{}).ReconcileRoots(
+		journal, []beads.GraphStore{{Store: store}}, rootIDs, "execution-reconcile",
+	)
+	if emitted != 0 {
+		t.Fatalf("delta emitted %d facts for a journal-confirmed converged root, want 0", emitted)
+	}
+	if store.stepLists != 0 {
+		t.Fatalf("delta issued %d step listing(s) for a closed stamped root, want 0", store.stepLists)
+	}
+	if len(journal.Events) != 1 {
+		t.Fatalf("journal now contains %d facts, want the original 1", len(journal.Events))
+	}
+}
+
+// TestCompletedFactIndexRevisitsReopenedStampedRootAndClearsStamp verifies the
+// carve-out: an open root is no longer converged even if it retains a stale
+// stamp, so delta must list its steps and clear that stamp.
+func TestCompletedFactIndexRevisitsReopenedStampedRootAndClearsStamp(t *testing.T) {
+	backing, rootIDs, stepIDs := closedCompletionCorpus(t, 1)
+	root, err := backing.Get(rootIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	step, err := backing.Get(stepIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact, ok := LifecycleEvent(events.ExecutionStepCompleted, root, step, "execution-reconcile")
+	if !ok {
+		t.Fatal("fixture step did not produce its completion fact")
+	}
+	journal := events.NewFake()
+	journal.Record(fact)
+	if err := backing.SetMetadata(root.ID, beadmeta.CompletionFactsConvergedMetadataKey, "verified"); err != nil {
+		t.Fatal(err)
+	}
+	open := "open"
+	if err := backing.Update(root.ID, beads.UpdateOpts{Status: &open}); err != nil {
+		t.Fatal(err)
+	}
+
+	store := &sweepCountingGraphStore{Store: backing}
+	emitted := (&CompletedFactIndex{}).ReconcileRoots(
+		journal, []beads.GraphStore{{Store: store}}, rootIDs, "execution-reconcile",
+	)
+	if emitted != 0 {
+		t.Fatalf("delta emitted %d facts already present in the journal, want 0", emitted)
+	}
+	if store.stepLists != 1 {
+		t.Fatalf("delta issued %d step listing(s) for a reopened stamped root, want 1", store.stepLists)
+	}
+	after, err := backing.Get(root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Metadata[beadmeta.CompletionFactsConvergedMetadataKey] != "" {
+		t.Fatalf("reopened root retained stale convergence stamp %q", after.Metadata[beadmeta.CompletionFactsConvergedMetadataKey])
+	}
+}
+
+// TestCompletedFactIndexStillWalksOpenAndUnstampedClosedRoots covers the two
+// eligible neighbors of the skip boundary: open roots and closed roots without
+// a convergence stamp must both reach the step listing and repair their facts.
+func TestCompletedFactIndexStillWalksOpenAndUnstampedClosedRoots(t *testing.T) {
+	backing, rootIDs, _ := completionCorpus(t, 2)
+	closed := "closed"
+	if err := backing.Update(rootIDs[1], beads.UpdateOpts{Status: &closed}); err != nil {
+		t.Fatal(err)
+	}
+	store := &sweepCountingGraphStore{Store: backing}
+	journal := events.NewFake()
+
+	emitted := (&CompletedFactIndex{}).ReconcileRoots(
+		journal, []beads.GraphStore{{Store: store}}, rootIDs, "execution-reconcile",
+	)
+	if emitted != 2 {
+		t.Fatalf("delta emitted %d facts for 2 eligible roots, want 2", emitted)
+	}
+	if store.stepLists != 2 {
+		t.Fatalf("delta issued %d step listing(s) for open and closed unstamped roots, want 2", store.stepLists)
+	}
+	if len(journal.Events) != 2 {
+		t.Fatalf("journal contains %d completion facts, want 2", len(journal.Events))
+	}
+}
+
 // TestCompletionBackstopDoesNotStampAnEmptyStepListing: a store wedge that
 // answers empty-with-nil must not vacuously prove convergence.
 func TestCompletionBackstopDoesNotStampAnEmptyStepListing(t *testing.T) {
