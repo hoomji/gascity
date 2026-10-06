@@ -6863,6 +6863,12 @@
       "RigPatch": {
         "additionalProperties": false,
         "properties": {
+          "BeadsProxiedIdleTimeout": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "DefaultBranch": {
             "type": [
               "string",
@@ -6910,7 +6916,8 @@
           "DefaultBranch",
           "Suspended",
           "SuspendedOnStart",
-          "FormulaVars"
+          "FormulaVars",
+          "BeadsProxiedIdleTimeout"
         ],
         "type": "object"
       },

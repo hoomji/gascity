@@ -2776,6 +2776,7 @@ export type RigCreateSucceededPayload = {
 };
 
 export type RigPatch = {
+    BeadsProxiedIdleTimeout: string | null;
     DefaultBranch: string | null;
     FormulaVars: {
         [key: string]: string;
