@@ -259,10 +259,11 @@ type preparedStart struct {
 	// — a pure routing decision, not I/O: it means delivery was
 	// selected/attempted, not that the runtime received or the agent
 	// consumed the prompt (gastownhall/gascity#5236). It is the pure
-	// promptDelivery decision AND-ed with the fresh-launch condition, i.e. the
-	// exact complement of the resume override below — so a resume that swaps in
-	// restartPromptNudge and re-sets GC_STARTUP_PROMPT_DELIVERED for hooks stamps
-	// no priming marker. promptHash is the sha256 of the rendered startup template
+	// promptDelivery decision AND-ed with the fresh-launch condition, or a
+	// resume whose recorded prompt_hash no longer matches the rendered template
+	// (the resume override re-delivers the prompt through restartPromptNudge).
+	// A resume of an unchanged template re-sets GC_STARTUP_PROMPT_DELIVERED for
+	// hooks but stamps no priming marker. promptHash is the sha256 of the rendered startup template
 	// prompt (tp.Prompt) only — it excludes the one-shot initial_message override
 	// appended to the delivered payload, so the stored hash still matches a later
 	// re-derivation from the template (S19 re-eligibility).
@@ -1356,11 +1357,11 @@ func buildPreparedStartWithTranscript(
 		resumed = sessionCommandResumes(parentSID, tp.ResolvedProvider, firstStart, forceFresh)
 	}
 	hasResumeKey := strings.TrimSpace(candidate.info.SessionKey) != ""
-	// S19 priming confirmation (write-only in Stage 2): a marker is stamped only
-	// when the pure delivery decision holds AND this incarnation is a fresh
-	// launch — the exact complement of the resume override below, which swaps in
-	// restartPromptNudge and delivers nothing. Reading the env marker instead
-	// would mis-stamp every resume (it is re-set to "1" for hook consumption).
+	// S19 priming confirmation: a marker is stamped when the pure delivery
+	// decision holds AND this incarnation is a fresh launch; the resume override
+	// below sets it too when it re-delivers a changed template. Reading the env
+	// marker instead would mis-stamp every resume (it is re-set to "1" for hook
+	// consumption).
 	promptDelivered := delivery.Delivered && (firstStart || forceFresh || !hasResumeKey)
 	// prompt_hash is the sha256 of the rendered startup TEMPLATE prompt (tp.Prompt)
 	// only, computed here BEFORE the one-shot initial_message is appended to the
@@ -1372,7 +1373,22 @@ func buildPreparedStartWithTranscript(
 	if !firstStart && !forceFresh && hasResumeKey {
 		agentCfg.PromptSuffix = ""
 		agentCfg.PromptFlag = ""
-		agentCfg.Nudge = restartPromptNudge(tp.Prompt, tp.Hints.Nudge)
+		// A resume continues the provider conversation, which already holds
+		// the startup prompt it was primed with. Re-sending the full prompt on
+		// every wake (each gc stop/start, each drain-ack recycle) stacked a
+		// ~13k-token copy per wake into the same context. Deliver the prompt
+		// again only when the rendered template changed since the recorded
+		// priming (S19 Stage 4); otherwise send a short resume note plus the
+		// provider hint so the session still gets a turn. A re-prime stamps
+		// the new hash so the next unchanged resume stays short.
+		if promptHash != "" && candidate.info.PromptHashMetadata == promptHash {
+			agentCfg.Nudge = resumeUnchangedPromptNudge(tp.Hints.Nudge)
+		} else {
+			agentCfg.Nudge = restartPromptNudge(tp.Prompt, tp.Hints.Nudge)
+			if strings.TrimSpace(tp.Prompt) != "" {
+				promptDelivered = true
+			}
+		}
 		if agentCfg.Env != nil {
 			delete(agentCfg.Env, startupPromptDeliveredEnv)
 		}
@@ -2036,6 +2052,17 @@ func appendInitialMessageToStartupNudge(nudge, msg string) string {
 		return nudge + startupPromptNudgeSeparator + userMessage
 	}
 	return userMessage
+}
+
+// resumeUnchangedPromptNudge is the wake text for a resumed conversation whose
+// startup prompt is unchanged: the prompt is already in the transcript, so only
+// a one-line note (plus the provider's own hint) is typed in.
+func resumeUnchangedPromptNudge(nudge string) string {
+	const note = "Session resumed. Your startup prompt is unchanged and already in this conversation; do not expect it again. Run your wake checklist now."
+	if strings.TrimSpace(nudge) == "" {
+		return note
+	}
+	return note + startupPromptNudgeSeparator + nudge
 }
 
 func restartPromptNudge(prompt, nudge string) string {

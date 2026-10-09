@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -11,8 +12,12 @@ import (
 
 // TestPreparedStartPromptDelivered pins the S19 B0 trap: prepared.promptDelivered
 // is the pure delivery decision AND-ed with the fresh-launch condition, so a
-// resume incarnation reports false even though the launch path re-sets
-// GC_STARTUP_PROMPT_DELIVERED="1" for hook consumption. It also pins promptHash.
+// resume incarnation whose recorded prompt_hash matches the rendered template
+// reports false (the conversation already holds that prompt) even though the
+// launch path re-sets GC_STARTUP_PROMPT_DELIVERED="1" for hook consumption. A
+// resume whose template changed (or was never stamped) re-delivers the prompt
+// through the restart nudge and reports true so the new hash is stamped. It
+// also pins promptHash.
 func TestPreparedStartPromptDelivered(t *testing.T) {
 	const prompt = "do the work"
 
@@ -22,12 +27,15 @@ func TestPreparedStartPromptDelivered(t *testing.T) {
 		startedHash   string // non-empty ⇒ not firstStart
 		sessionKey    string // non-empty ⇒ hasResumeKey
 		wakeMode      string // "fresh" ⇒ forceFresh
+		promptHash    string // stored prompt_hash; "match" ⇒ hash of prompt
 		wantDelivered bool
 	}{
 		{name: "fresh first start delivers", prompt: prompt, wantDelivered: true},
 		{name: "no resume key delivers even with started hash", prompt: prompt, startedHash: "cfg", wantDelivered: true},
 		{name: "force fresh delivers despite resume key", prompt: prompt, startedHash: "cfg", sessionKey: "warm", wakeMode: "fresh", wantDelivered: true},
-		{name: "resume incarnation does NOT deliver (the trap)", prompt: prompt, startedHash: "cfg", sessionKey: "warm", wantDelivered: false},
+		{name: "resume incarnation does NOT deliver (the trap)", prompt: prompt, startedHash: "cfg", sessionKey: "warm", promptHash: "match", wantDelivered: false},
+		{name: "resume with a changed template re-delivers", prompt: prompt, startedHash: "cfg", sessionKey: "warm", promptHash: "stale", wantDelivered: true},
+		{name: "resume never stamped re-delivers", prompt: prompt, startedHash: "cfg", sessionKey: "warm", wantDelivered: true},
 		{name: "empty prompt never delivers", prompt: "", startedHash: "", wantDelivered: false},
 	}
 
@@ -47,6 +55,13 @@ func TestPreparedStartPromptDelivered(t *testing.T) {
 			}
 			if tc.wakeMode != "" {
 				meta["wake_mode"] = tc.wakeMode
+			}
+			switch tc.promptHash {
+			case "match":
+				meta[sessionpkg.PromptHashMetadataKey] = sessionpkg.PromptHash(tc.prompt)
+			case "":
+			default:
+				meta[sessionpkg.PromptHashMetadataKey] = tc.promptHash
 			}
 			session, err := store.Create(beads.Bead{
 				Title:    "worker",
@@ -83,6 +98,12 @@ func TestPreparedStartPromptDelivered(t *testing.T) {
 				if prepared.cfg.Env[startupPromptDeliveredEnv] != "1" {
 					t.Errorf("resume path must still set %s=1 for hooks; got %q", startupPromptDeliveredEnv, prepared.cfg.Env[startupPromptDeliveredEnv])
 				}
+				if strings.Contains(prepared.cfg.Nudge, tc.prompt) || !strings.Contains(prepared.cfg.Nudge, "Session resumed") {
+					t.Errorf("unchanged-hash resume must send the short note, not the prompt; got %q", prepared.cfg.Nudge)
+				}
+			}
+			if tc.name == "resume with a changed template re-delivers" && !strings.Contains(prepared.cfg.Nudge, tc.prompt) {
+				t.Errorf("changed-hash resume must carry the prompt in the nudge; got %q", prepared.cfg.Nudge)
 			}
 		})
 	}
