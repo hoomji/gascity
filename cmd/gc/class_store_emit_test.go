@@ -1284,3 +1284,60 @@ func TestControllerRoutesFromOpenStorageRoutesCarryNoEmitTarget(t *testing.T) {
 		t.Fatalf("the controller's class routes appended %d bead event(s), want 0: %s", len(got), eventSummary(got))
 	}
 }
+
+// withMainStoreEmission puts the emitter directly on a pinned engine and keeps
+// the bead-policy layer outermost. Everything else passes through untouched: a
+// bd subprocess store may run hooks that already emit and carries capabilities
+// the wrapper does not forward, a CachingStore emits through its own
+// notifyChange, a relocated class store the funnel wrapped already emits, and a
+// city path that names no city has no journal. The native Dolt engine is the
+// only main-store engine production can open (the SQLite main-store provider is
+// gone), and it needs a server, so its row is a typed nil: the decision reads
+// only the type.
+func TestMainStoreEmissionWrapsOnlyPinnedEngines(t *testing.T) {
+	cityPath := t.TempDir()
+	cfg := &config.City{}
+	sqliteEngine, err := beads.OpenSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("opening the engine: %v", err)
+	}
+	for name, engine := range map[string]beads.Store{
+		"native dolt engine": (*beads.NativeDoltStore)(nil),
+		"sqlite engine":      sqliteEngine,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := withMainStoreEmission(wrapStoreWithBeadPolicies(engine, cfg), cityPath)
+			inner, policy, underPolicy := unwrapBeadPolicyStore(got)
+			if !underPolicy || policy.cfg != cfg {
+				t.Fatalf("withMainStoreEmission(policy over %s) = %T, want the policy layer outermost with the same config", name, got)
+			}
+			emitting, ok := inner.(*emittingClassStore)
+			if !ok || emitting.Store != engine || emitting.cityPath != cityPath {
+				t.Fatalf("under the policy layer: %T, want the emitting wrapper directly over the engine, for %s", inner, cityPath)
+			}
+			if bare, ok := withMainStoreEmission(engine, cityPath).(*emittingClassStore); !ok || bare.Store != engine {
+				t.Fatalf("withMainStoreEmission(bare %s) did not wrap it in the emitter", name)
+			}
+			if storeEngine(got) != engine {
+				t.Fatalf("storeEngine did not look through the policy and emitting layers to the %s", name)
+			}
+		})
+	}
+
+	policyOverSQLite := wrapStoreWithBeadPolicies(sqliteEngine, cfg)
+	for name, store := range map[string]beads.Store{
+		"no city path":        nil, // the policy store over a pinned engine, with a blank path
+		"bd subprocess store": wrapStoreWithBeadPolicies(beads.NewBdStore(t.TempDir(), nil), cfg),
+		"mem store":           wrapStoreWithBeadPolicies(beads.NewMemStore(), cfg),
+		"caching store":       beads.NewCachingStoreForTest(sqliteEngine, nil),
+		"already emitting":    &emittingClassStore{Store: sqliteEngine, cityPath: cityPath},
+	} {
+		path := cityPath
+		if store == nil {
+			store, path = policyOverSQLite, " "
+		}
+		if got := withMainStoreEmission(store, path); got != store {
+			t.Errorf("withMainStoreEmission(%s) = %T, want the store untouched", name, got)
+		}
+	}
+}
