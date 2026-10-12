@@ -75,15 +75,17 @@ func activeWispStepInProcess(effective string) *beads.Bead {
 // always yields the full block. Session start renders in full instead
 // (wispStepInjectionContent), because a fresh or compacted context holds none
 // of an earlier block. cityPath names the city whose runtime holds the memory
-// (GC_CITY when empty); a nil step clears it.
+// (GC_CITY when empty); a nil step clears it. epoch is the provider session id
+// from the hook payload (see openInjectSeen): a block delivered under another
+// epoch is not remembered.
 //
 // The returned commit records the full block as delivered. Call it only after
 // the text was written to the hook transport; a block that was never written
 // must not suppress its next attempt. commit is never nil and is a no-op for
 // the one-line form.
-func wispStepReminderOnce(cityPath string, step *beads.Bead) (text string, commit func()) {
+func wispStepReminderOnce(cityPath, epoch string, step *beads.Bead) (text string, commit func()) {
 	noop := func() {}
-	seen := openInjectSeen(wispStepCityPath(cityPath), injectSeenKindStep)
+	seen := openInjectSeen(wispStepCityPath(cityPath), injectSeenKindStep, epoch)
 	if step == nil {
 		seen.Forget()
 		return "", noop
