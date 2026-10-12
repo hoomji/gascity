@@ -1387,3 +1387,62 @@ func TestBuildPrimeContextConfigDir(t *testing.T) {
 		t.Fatalf("ConfigDir = %q, want SourceDir override %q", ctx.ConfigDir, packDir)
 	}
 }
+
+// A SessionStart (startup, resume, clear or compaction) gives the agent a
+// context that holds none of what the per-prompt hooks sent before, while the
+// session identity keying their memory is unchanged. The prime hook must drop
+// that memory so the next prompt carries the step and unread mail in full.
+func TestDoPrimeWithHook_SessionStartForgetsInjectSeenState(t *testing.T) {
+	clearGCEnv(t)
+	disableManagedDoltRecoveryForTest(t)
+
+	cityDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cityDir, "city.toml"), []byte(`
+[workspace]
+name = "gastown"
+
+[[agent]]
+name = "worker"
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile(city.toml): %v", err)
+	}
+	t.Setenv("GC_CITY", cityDir)
+	t.Setenv("GC_AGENT", "worker")
+	t.Setenv("GC_ALIAS", "worker")
+	t.Setenv("GC_TEMPLATE", "worker")
+	t.Setenv("GC_SESSION_NAME", "gastown--worker")
+	sessionID := createPrimeHookSession(t, cityDir, "gastown--worker", "worker")
+	t.Setenv("GC_SESSION_ID", sessionID)
+	t.Setenv(managedSessionHookEnv, "1")
+	t.Setenv("GC_HOOK_SOURCE", "compact")
+	t.Setenv("GC_HOOK_EVENT_NAME", "SessionStart")
+	t.Setenv("GC_INJECT_ALWAYS", "")
+	withPrimeHookStdin(t)
+
+	record := func() {
+		openInjectSeen(cityDir, injectSeenKindStep, "").Record("step-digest")
+		openInjectSeen(cityDir, injectSeenKindMail, "").Record("mail-digest")
+	}
+	remembered := func() (step, mail bool) {
+		return openInjectSeen(cityDir, injectSeenKindStep, "").Unchanged("step-digest"),
+			openInjectSeen(cityDir, injectSeenKindMail, "").Unchanged("mail-digest")
+	}
+
+	record()
+	var stdout, stderr bytes.Buffer
+	if code, _ := doPrimeWithHookFormatOpts(nil, &stdout, &stderr, true, hookOutputFormatCodex, false, false); code != 0 {
+		t.Fatalf("preview prime = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	if step, mail := remembered(); !step || !mail {
+		t.Fatalf("a --json preview is not a session start and must leave the memory alone; step=%v mail=%v", step, mail)
+	}
+
+	withPrimeHookStdin(t)
+	stdout.Reset()
+	if code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookOutputFormatCodex, false); code != 0 {
+		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	if step, mail := remembered(); step || mail {
+		t.Fatalf("SessionStart left inject memory behind; step=%v mail=%v", step, mail)
+	}
+}

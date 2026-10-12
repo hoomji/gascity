@@ -6493,3 +6493,25 @@ func TestNudgeDrainInjectStepFailedWriteIsNotRemembered(t *testing.T) {
 		t.Fatalf("a block that never reached the hook must not count as delivered, got %q", out)
 	}
 }
+
+// A /clear or resume keeps GC_SESSION_ID and GC_ALIAS but hands the agent an
+// empty context, and a provider that wires only UserPromptSubmit never fires a
+// SessionStart to say so. The provider session id in the hook payload is the
+// only signal, and the step block must come back in full under a new one.
+func TestNudgeDrainInjectStepContextResetShowsFullBlock(t *testing.T) {
+	sessionID, _, step := seedActiveStepCity(t)
+	prompt := func(providerSession string) string {
+		withHookStdin(t, []byte(`{"session_id":"`+providerSession+`"}`))
+		return injectDrain(t, sessionID)
+	}
+
+	if first := prompt("provider-one"); !strings.Contains(first, "Write the widget code") {
+		t.Fatalf("first prompt must carry the full step block, got %q", first)
+	}
+	if second := prompt("provider-one"); strings.Contains(second, "Write the widget code") || !strings.Contains(second, step.ID) {
+		t.Fatalf("same context must collapse to the unchanged line, got %q", second)
+	}
+	if reset := prompt("provider-two"); !strings.Contains(reset, "Write the widget code") {
+		t.Fatalf("a new provider session under the same gc identity holds no earlier block; want it in full, got %q", reset)
+	}
+}

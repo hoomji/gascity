@@ -302,7 +302,8 @@ func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 With --inject, the active formula step is injected once per change: the full
 step block when it is new or its title or description changed since this
 session last received it, otherwise the line "Active work unchanged: <title>
-(<id>)". A new session id starts over with the full block. Set
+(<id>)". A context reset (a session start, or a new provider session id in the
+hook payload) starts over with the full block. Set
 GC_INJECT_ALWAYS=1 to inject the full block on every run.`,
 		Args:   cobra.MaximumNArgs(1),
 		Hidden: true,
@@ -524,7 +525,7 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 	}
 	if inject {
 		injectPrefix += contextInjectLineForAdvisory(contextHookInput, target.cfg.AgentDefaults.ContextAdvisory, target.agent.ContextAdvisory)
-		wispExtra, wispDelivered = wispStepInjectionContentOnce(target.cityPath)
+		wispExtra, wispDelivered = wispStepInjectionContentOnce(target.cityPath, hookContextEpoch(contextHookInput))
 	}
 
 	now := time.Now()

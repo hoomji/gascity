@@ -516,9 +516,10 @@ hook injection (always exits 0). The recipient defaults to $GC_SESSION_ID,
 $GC_ALIAS, $GC_AGENT, or "human".
 
 With --inject the unread block is emitted once per change: when the set of
-unread message ids differs from the last block this session received, and
-nothing otherwise. New unread mail always appears in full. Set
-GC_INJECT_ALWAYS=1 to emit the block on every run.`,
+unread message ids differs from the last block this session received, or the
+agent's context was reset since (a session start, or a new provider session id
+in the hook payload), and nothing otherwise. New unread mail always appears in
+full. Set GC_INJECT_ALWAYS=1 to emit the block on every run.`,
 		Example: `  gc mail check
   gc mail check --inject
   gc mail check mayor`,
@@ -746,11 +747,13 @@ func doMailCheckTargetWithFormat(mp mail.Provider, target resolvedMailTarget, in
 	}
 
 	if inject {
+		// Called for an empty inbox too: that is how the memory of an earlier
+		// block is cleared.
+		if err := writeMailInjectOnce(stdout, hookFormat, target.display, messages); err != nil {
+			fmt.Fprintf(stderr, "gc mail check: writing hook output: %v\n", err) //nolint:errcheck // best-effort stderr
+			return 0
+		}
 		if len(messages) > 0 {
-			if err := writeMailInjectOnce(stdout, hookFormat, target.display, messages); err != nil {
-				fmt.Fprintf(stderr, "gc mail check: writing hook output: %v\n", err) //nolint:errcheck // best-effort stderr
-				return 0
-			}
 			// Archive the SAME messages that were injected: priority-sort
 			// before the clamp so the archived set matches formatInjectOutput's
 			// displayed set (a priority:1 handoff that floats into the window is
@@ -821,7 +824,7 @@ func sortMailByPriority(messages []mail.Message) []mail.Message {
 //
 // The set is recorded only after a successful write.
 func writeMailInjectOnce(stdout io.Writer, hookFormat, recipient string, messages []mail.Message) error {
-	seen := openInjectSeen(injectSeenCityPath(), injectSeenKindMail)
+	seen := openInjectSeen(injectSeenCityPath(), injectSeenKindMail, hookContextEpoch(readHookStdin()))
 	if len(messages) == 0 {
 		seen.Forget()
 		return nil

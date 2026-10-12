@@ -5244,3 +5244,51 @@ func TestMailCheckInjectFailedWriteIsNotRemembered(t *testing.T) {
 		t.Fatalf("a block that never reached the hook must not count as delivered, got %q", out)
 	}
 }
+
+func TestMailCheckInjectContextResetShowsFullBlock(t *testing.T) {
+	injectSessionEnv(t, "session-one")
+	mp := beadmail.New(beads.NewMemStore())
+	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
+	prompt := func(providerSession string) string {
+		withHookStdin(t, []byte(`{"session_id":"`+providerSession+`"}`))
+		return mailInjectOnce(t, mp)
+	}
+
+	if first := prompt("provider-one"); !strings.Contains(first, "Fix the auth bug") {
+		t.Fatalf("first prompt must carry the unread block, got %q", first)
+	}
+	if again := prompt("provider-one"); again != "" {
+		t.Fatalf("same context must stay silent, got %q", again)
+	}
+	if reset := prompt("provider-two"); !strings.Contains(reset, "Fix the auth bug") {
+		t.Fatalf("a new provider session holds no earlier block; the unread mail must be shown again, got %q", reset)
+	}
+}
+
+// An inbox that empties and then holds the same message again is a block the
+// agent has had time to lose track of; the empty check in between must clear
+// the memory on the local path as it does on the API path.
+func TestMailCheckInjectEmptyInboxClearsMemory(t *testing.T) {
+	injectSessionEnv(t, "session-one")
+	mp := beadmail.New(beads.NewMemStore())
+	msg, err := mp.Send("mayor", "worker", "", "Fix the auth bug")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if first := mailInjectOnce(t, mp); !strings.Contains(first, "Fix the auth bug") {
+		t.Fatalf("first prompt must carry the unread block, got %q", first)
+	}
+
+	if err := mp.MarkRead(msg.ID); err != nil {
+		t.Fatalf("MarkRead: %v", err)
+	}
+	if out := mailInjectOnce(t, mp); out != "" {
+		t.Fatalf("an empty inbox emits nothing, got %q", out)
+	}
+	if err := mp.MarkUnread(msg.ID); err != nil {
+		t.Fatalf("MarkUnread: %v", err)
+	}
+	if out := mailInjectOnce(t, mp); !strings.Contains(out, "Fix the auth bug") {
+		t.Fatalf("unread mail returning after an empty inbox must be shown in full, got %q", out)
+	}
+}

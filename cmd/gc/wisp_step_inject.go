@@ -36,19 +36,21 @@ func wispStepInjectionContent(cityPath string) string {
 // hook: the full block when the active step is new or its title or description
 // changed since this session last received it, otherwise the one-line
 // formatWispStepUnchanged. GC_INJECT_ALWAYS=1, or a session with no identity to
-// key the memory on, always yields the full block.
+// key the memory on, always yields the full block. epoch is the provider session
+// id from the hook payload (see openInjectSeen): a block delivered under another
+// epoch is not remembered.
 //
 // The returned commit records the full block as delivered. Call it only after
 // the text was written to the hook transport; a block that was never written
 // must not suppress its next attempt. commit is never nil and is a no-op for
 // the one-line form.
-func wispStepInjectionContentOnce(cityPath string) (text string, commit func()) {
+func wispStepInjectionContentOnce(cityPath, epoch string) (text string, commit func()) {
 	noop := func() {}
 	effective := cityPath
 	if effective == "" {
 		effective = strings.TrimSpace(os.Getenv("GC_CITY"))
 	}
-	seen := openInjectSeen(effective, injectSeenKindStep)
+	seen := openInjectSeen(effective, injectSeenKindStep, epoch)
 	b := activeWispStep(cityPath)
 	if b == nil {
 		seen.Forget()
