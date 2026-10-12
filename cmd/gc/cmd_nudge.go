@@ -351,9 +351,15 @@ func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 	var inject bool
 	var hookFormat string
 	cmd := &cobra.Command{
-		Use:    "drain [session]",
-		Short:  "Deliver queued nudges for a session",
-		Long:   "Deliver queued nudges for a session. Used by runtime hooks.",
+		Use:   "drain [session]",
+		Short: "Deliver queued nudges for a session",
+		Long: `Deliver queued nudges for a session. Used by runtime hooks.
+
+With --inject, the active formula step is injected once per change: the full
+step block when it is new or its title or description changed since this
+session last received it, otherwise the line "Active work unchanged: <title>
+(<id>)". A new session id starts over with the full block. Set
+GC_INJECT_ALWAYS=1 to inject the full block on every run.`,
 		Args:   cobra.MaximumNArgs(1),
 		Hidden: true,
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -706,6 +712,9 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 	// (codex/gemini) stay one valid document rather than two concatenated objects.
 	// See clock_inject.go and wisp_step_inject.go.
 	var wispExtra string // step reminder; captured by defer closure
+	// wispDelivered records the step reminder as delivered once the hook
+	// context carrying it was written (wispStepReminderOnce).
+	wispDelivered := func() {}
 	emittedHookContext := false
 	var injectPrefix string
 	var contextUsage contextUsageSample
@@ -736,7 +745,9 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 			if !emittedHookContext {
 				line := injectPrefix + wispExtra
 				if line != "" {
-					_ = writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", line)
+					if err := writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", line); err == nil {
+						wispDelivered()
+					}
 				}
 			}
 		}()
@@ -781,14 +792,18 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 	// (one keyed probe, asked only while the controller is down:
 	// hookLaneDueWithoutController) or a usage sample takes the full path.
 	wispPrefetched := false
+	var wispStep *beads.Bead
 	if inject && !contextUsage.ok {
 		if explicit && nudgeQueueIsEmpty(explicitCity) {
-			wispExtra = stepLookup.content()
+			wispStep = stepLookup.step()
 			wispPrefetched = true
 			// The full path writes the step reminder only once the target
-			// resolves, so a non-empty reminder still needs that proof. Recheck
-			// the queue too: a nudge enqueued during the lookup must be claimed.
-			if wispExtra == "" && nudgeQueueIsEmpty(explicitCity) {
+			// resolves, so a step still needs that proof. Recheck the queue
+			// too: a nudge enqueued during the lookup must be claimed.
+			if wispStep == nil && nudgeQueueIsEmpty(explicitCity) {
+				// No step: clear the memory of an earlier one, so a later step
+				// that matches it is not taken as already delivered.
+				_, _ = wispStepReminderOnce(explicitCity, nil)
 				laneDue = hookLaneDueWithoutController(laneConv, explicitCity, stepLookup, stderr)
 				if !laneDue {
 					return 0
@@ -818,8 +833,10 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 	if inject {
 		injectPrefix += contextInjectLineForSample(contextUsage, target.cfg.AgentDefaults.ContextAdvisory, target.agent.ContextAdvisory)
 		if !wispPrefetched {
-			wispExtra = stepLookup.contentFor(target.cityPath)
+			wispStep = stepLookup.stepFor(target.cityPath)
 		}
+		// Once per change: an unchanged step collapses to one line.
+		wispExtra, wispDelivered = wispStepReminderOnce(target.cityPath, wispStep)
 	}
 
 	// injectLane runs the in-band lane pass for the hook's conversation
@@ -835,7 +852,11 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 		laneRows = deferJournalRings(sessions)
 		return hookDrainLane(target.cityPath, sessions, laneConv, laneDue, hookInput, legacy, hookLaneTextRoom(injectPrefix, out, wispExtra), func(laneText string) error {
 			emittedHookContext = true
-			return writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", injectPrefix+out+laneText+wispExtra)
+			err := writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", injectPrefix+out+laneText+wispExtra)
+			if err == nil {
+				wispDelivered()
+			}
+			return err
 		}, stderr)
 	}
 	// injectLaneOnly is the injecting drain with no legacy nudge to deliver.
@@ -938,6 +959,9 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 		} else {
 			emittedHookContext = true
 			writeErr = writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", injectPrefix+out+wispExtra)
+			if writeErr == nil {
+				wispDelivered()
+			}
 		}
 	} else {
 		_, writeErr = io.WriteString(stdout, out)
