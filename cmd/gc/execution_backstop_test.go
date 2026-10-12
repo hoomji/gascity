@@ -303,63 +303,100 @@ func TestExecutionStepStalledStaysOffTheExportAllowlist(t *testing.T) {
 	}
 }
 
-// TestExecutionBackstopEscalatesWhenTheAgentHasNoNudgeConfigured is the
-// production row this backstop was missing. `agent.Nudge` is optional, and in a
-// real city every workflow pool template leaves it unset — maintainer-city had
-// it on 18 of 260 agents and on none of its four pool roles. The shared engine
-// skipped empty content with a bare `continue`, so the state machine parked on
-// its observe marker forever: it never reserved an attempt, never reached the
-// attempt cap, and so never ran the drain that is the ONLY thing that releases
-// the claim. A seat holding an in-progress bead still satisfies poolDesired, so
-// no replacement spawns and the whole pool starves behind it. Observed: 20 of 21
-// live markers frozen at count=0, the oldest claim held 3.5 days.
-//
-// With nothing to deliver there is nothing to wait for — the bounded attempts
-// exist to give the agent a chance to ANSWER a nudge. The grace window still
-// applies, and then it escalates.
-func TestExecutionBackstopEscalatesWhenTheAgentHasNoNudgeConfigured(t *testing.T) {
+// TestExecutionBackstopNudgesWithTheDefaultWhenTheAgentHasNoNudgeConfigured:
+// `agent.Nudge` is optional and pool templates routinely leave it unset. Draining
+// such a seat cold after the 90s grace kills agents that are merely in a long
+// silent model turn (a city drained 92 working sessions in two days this way),
+// so a known agent with no nudge gets defaultPoolClaimNudge, the full attempt
+// budget, and only then the drain.
+func TestExecutionBackstopNudgesWithTheDefaultWhenTheAgentHasNoNudgeConfigured(t *testing.T) {
 	f := newExecutionBackstopFixture(t)
-	f.cfg.Agents[0].Nudge = "" // the maintainer-city pool templates, verbatim
+	f.cfg.Agents[0].Nudge = ""
 	f.idleFor(t, 10*time.Minute)
-
-	f.tick(t) // first sighting: start the grace clock, escalate nothing yet
-	if got := f.sessionMeta(t, executionClaimNudgeWorkKey); got != f.work.ID {
-		t.Fatalf("observed work marker = %q, want %q", got, f.work.ID)
-	}
-	if len(f.drained) != 0 {
-		t.Fatalf("drain requests inside the grace window = %v, want none", f.drained)
-	}
+	f.tick(t) // first sighting: start the grace clock
 
 	f.now = f.now.Add(idleClaimNudgeGrace + time.Second)
 	f.idleFor(t, 10*time.Minute)
 	f.tick(t)
+	if got := f.nudgeCount(); got != 1 {
+		t.Fatalf("nudges after grace = %d, want 1 (default nudge); stdout=%s", got, f.stdout.String())
+	}
+	if len(f.drained) != 0 {
+		t.Fatalf("drained before any nudge budget was spent: %v", f.drained)
+	}
+	var delivered []string
+	for _, c := range f.sp.Calls {
+		if c.Method == "Nudge" && c.Name == f.sessName {
+			delivered = append(delivered, c.Message)
+		}
+	}
+	if len(delivered) != 1 || delivered[0] != defaultPoolClaimNudge {
+		t.Fatalf("delivered nudge text = %q, want the default pool claim nudge", delivered)
+	}
 
-	if got := f.nudgeCount(); got != 0 {
-		t.Fatalf("delivered nudges with no configured nudge = %d, want 0", got)
+	for i := 0; i < idleClaimNudgeMaxAttempts+2; i++ {
+		f.now = f.now.Add(idleClaimNudgeBackoff + time.Second)
+		f.idleFor(t, 10*time.Minute)
+		f.tick(t)
+	}
+	if got := f.nudgeCount(); got != idleClaimNudgeMaxAttempts {
+		t.Fatalf("nudges = %d, want %d", got, idleClaimNudgeMaxAttempts)
 	}
 	if len(f.drained) != 1 || f.drained[0] != f.sessName {
-		t.Fatalf("drain requests = %v, want exactly one for %s; stdout=%s", f.drained, f.sessName, f.stdout.String())
+		t.Fatalf("drain requests = %v, want exactly one for %s", f.drained, f.sessName)
 	}
-	if f.sessionMeta(t, executionClaimNudgeStalledKey) == "" {
-		t.Fatal("escalation was not latched; a later tick would drain the session all over again")
-	}
+}
 
-	// Latched: however many ticks follow, exactly one drain and one event.
+// TestExecutionBackstopEscalatesColdForAnUnknownTemplate: with no resolvable
+// agent there is genuinely nothing to send, so the grace window is followed by
+// the drain rather than parking on the observe marker forever.
+func TestExecutionBackstopEscalatesColdForAnUnknownTemplate(t *testing.T) {
+	f := newExecutionBackstopFixture(t)
+	f.cfg.Agents[0].Name = "someone-else"
+	f.idleFor(t, 10*time.Minute)
+	f.tick(t)
+	f.now = f.now.Add(idleClaimNudgeGrace + time.Second)
+	f.idleFor(t, 10*time.Minute)
+	f.tick(t)
+	if got := f.nudgeCount(); got != 0 {
+		t.Fatalf("nudges for an unknown template = %d, want 0", got)
+	}
+	if len(f.drained) != 1 {
+		t.Fatalf("drain requests = %v, want exactly one", f.drained)
+	}
 	for i := 0; i < 3; i++ {
 		f.now = f.now.Add(idleClaimNudgeBackoff)
 		f.idleFor(t, 10*time.Minute)
 		f.tick(t)
 	}
 	if len(f.drained) != 1 {
-		t.Fatalf("drain requests after further ticks = %v, want exactly one", f.drained)
+		t.Fatalf("drain requests after further ticks = %v, want exactly one (latched)", f.drained)
 	}
-	stalled := 0
-	for _, e := range f.rec.Events {
-		if e.Type == events.ExecutionStepStalled {
-			stalled++
-		}
+}
+
+// TestExecutionBackstopReArmsAWorkingSeatABoundedNumberOfTimes: a seat that
+// shows activity after each nudge (working in bursts with long silent turns)
+// has its window re-armed instead of marching to the drain, but only
+// maxExecutionClaimNudgeDecays times per claim.
+func TestExecutionBackstopReArmsAWorkingSeatABoundedNumberOfTimes(t *testing.T) {
+	f := newExecutionBackstopFixture(t)
+	f.idleFor(t, 10*time.Minute)
+	f.tick(t)
+	f.now = f.now.Add(idleClaimNudgeGrace + time.Second)
+	f.idleFor(t, 10*time.Minute)
+	f.tick(t) // nudge 1
+
+	for i := 0; i < 50 && len(f.drained) == 0; i++ {
+		// Activity after the last attempt, then quiet past the grace again.
+		f.now = f.now.Add(idleClaimNudgeBackoff + time.Second)
+		f.idleFor(t, idleClaimNudgeGrace+time.Second)
+		f.tick(t)
 	}
-	if stalled != 1 {
-		t.Fatalf("execution.step_stalled events = %d, want exactly 1", stalled)
+	rearms := strings.Count(f.stdout.String(), "re-arming its window")
+	if rearms != maxExecutionClaimNudgeDecays {
+		t.Fatalf("re-arms = %d, want %d; stdout=%s", rearms, maxExecutionClaimNudgeDecays, f.stdout.String())
+	}
+	if len(f.drained) != 1 {
+		t.Fatalf("drain requests = %v, want exactly one after the re-arm budget is spent", f.drained)
 	}
 }

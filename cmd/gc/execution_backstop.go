@@ -72,6 +72,10 @@ const (
 	// typed event and the drain request fire once per stalled claim rather than
 	// once per tick for as long as the claim is held.
 	executionClaimNudgeStalledKey = "execution_claim_nudge_stalled"
+	// executionClaimNudgeDecayKey counts the activity re-arms this claim has
+	// spent, so a seat that keeps answering nudges and pausing again is still
+	// drained after a bounded number of windows.
+	executionClaimNudgeDecayKey = "execution_claim_nudge_decays"
 )
 
 // nudgeStalledPoolExecution re-delivers the configured claim nudge to a pool slot
@@ -245,8 +249,53 @@ func (p poolExecutionBackstop) state(s beads.Bead, target backstopTarget) (same 
 	return same, atoiOr0(s.Metadata[executionClaimNudgeCountKey]), parseRFC3339OrZero(s.Metadata[executionClaimNudgeAtKey])
 }
 
+// maxExecutionClaimNudgeDecays bounds the activity re-arms per claim: with the
+// 3-minute backoff, a seat that answers every nudge and goes quiet again is
+// drained after at most ~7 windows rather than never.
+const maxExecutionClaimNudgeDecays = 6
+
+// content resolves the seat's claim nudge, falling back to defaultPoolClaimNudge
+// when the agent is known but configures no nudge (pool templates routinely
+// leave `nudge` unset). Without the fallback the engine's empty-content path
+// drains a quiet seat cold after the 90s grace, and a long silent model turn is
+// quiet: the seat is drained mid-work and its claim reopened. An unknown
+// template still yields "" and goes straight to the drain.
 func (p poolExecutionBackstop) content(s beads.Bead) string {
-	return claimNudgeFor(p.cfg, s)
+	return stalledPoolClaimNudgeFor(p.cfg, s)
+}
+
+// decay implements activityDecayingBackstop: runtime activity after the last
+// attempt means the seat answered the nudge or is working in bursts, so its
+// window re-arms (attempts forgiven) up to maxExecutionClaimNudgeDecays times.
+func (p poolExecutionBackstop) decay(store beads.Store, s *beads.Bead, target backstopTarget, sessName string, last, now time.Time, stdout io.Writer) bool {
+	if !p.renewedSince(sessName, last) {
+		return false
+	}
+	decays := atoiOr0(s.Metadata[executionClaimNudgeDecayKey])
+	if decays >= maxExecutionClaimNudgeDecays {
+		return false
+	}
+	attempts := atoiOr0(s.Metadata[executionClaimNudgeCountKey])
+	if !writeExecutionClaimMarker(store, s, target, 0, decays+1, now, stdout) {
+		return false
+	}
+	fmt.Fprintf(stdout, //nolint:errcheck // best-effort
+		"execution-claim-nudge: %s showed activity since its last nudge for %s; re-arming its window (re-arm %d/%d, forgiving %d/%d attempts)\n",
+		sessName, target.ID, decays+1, maxExecutionClaimNudgeDecays, attempts, idleClaimNudgeMaxAttempts)
+	return true
+}
+
+// renewedSince reports whether the runtime observed activity for sessName after
+// last. Fails closed: an unreadable or unset signal is not renewal.
+func (p poolExecutionBackstop) renewedSince(sessName string, last time.Time) bool {
+	if last.IsZero() {
+		return false
+	}
+	activity, err := p.sp.GetLastActivity(sessName)
+	if err != nil || activity.IsZero() {
+		return false
+	}
+	return activity.After(last)
 }
 
 // revalidate re-reads the claim through the owning store's authoritative live
@@ -273,11 +322,11 @@ func (p poolExecutionBackstop) revalidate(target backstopTarget) backstopResolut
 }
 
 func (p poolExecutionBackstop) observe(store beads.Store, s *beads.Bead, target backstopTarget, now time.Time, stdout io.Writer) {
-	writeExecutionClaimMarker(store, s, target, 0, now, stdout)
+	writeExecutionClaimMarker(store, s, target, 0, 0, now, stdout)
 }
 
 func (p poolExecutionBackstop) reserve(store beads.Store, s *beads.Bead, target backstopTarget, attempts int, now time.Time, stdout io.Writer) bool {
-	return writeExecutionClaimMarker(store, s, target, attempts, now, stdout)
+	return writeExecutionClaimMarker(store, s, target, attempts, atoiOr0(s.Metadata[executionClaimNudgeDecayKey]), now, stdout)
 }
 
 // exhausted turns a spent attempt budget into one observable fact and one drain
@@ -351,8 +400,9 @@ func (p poolExecutionBackstop) clear(store beads.Store, s *beads.Bead, stdout io
 	clearExecutionClaimMarker(store, s, stdout)
 }
 
-func writeExecutionClaimMarker(store beads.Store, s *beads.Bead, target backstopTarget, attempts int, now time.Time, stdout io.Writer) bool {
+func writeExecutionClaimMarker(store beads.Store, s *beads.Bead, target backstopTarget, attempts, decays int, now time.Time, stdout io.Writer) bool {
 	return writeSessionMetadata(store, s, map[string]string{
+		executionClaimNudgeDecayKey:    strconv.Itoa(decays),
 		executionClaimNudgeWorkKey:     target.ID,
 		executionClaimNudgeRootKey:     target.RootID,
 		executionClaimNudgeStoreRefKey: target.StoreRef,
@@ -372,6 +422,7 @@ func clearExecutionClaimMarker(store beads.Store, s *beads.Bead, stdout io.Write
 		executionClaimNudgeCountKey,
 		executionClaimNudgeAtKey,
 		executionClaimNudgeStalledKey,
+		executionClaimNudgeDecayKey,
 	}
 	dirty := false
 	for _, key := range keys {
