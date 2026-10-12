@@ -205,6 +205,27 @@ func newWispGCForConfig(cfg *config.City) wispGC {
 	return newWispGC(cfg.Daemon.WispGCIntervalDuration(), cfg.Daemon.WispTTLDuration(), mailRetentionTTL)
 }
 
+// carryWispGCState keeps the previous tracker's cadence state when a config
+// reload rebuilds it. Without this every applied reload zeroed lastRun, so the
+// next tick ran the whole GC regardless of wisp_gc_interval: a city whose
+// orders and prompts are edited every 10-20 minutes ran its hourly GC that
+// often, each run holding the session reconcile tick for 7-10 minutes on a
+// ~33k-wisp store (2026-10-12, 14 runs in 5h). A changed interval applies
+// from the carried lastRun.
+func carryWispGCState(prev, next wispGC) wispGC {
+	p, ok := prev.(*memoryWispGC)
+	if !ok || p == nil {
+		return next
+	}
+	n, ok := next.(*memoryWispGC)
+	if !ok || n == nil {
+		return next
+	}
+	n.lastRun = p.lastRun
+	n.sessionPurgeCursor = p.sessionPurgeCursor
+	return n
+}
+
 func (m *memoryWispGC) shouldRun(now time.Time) bool {
 	return now.Sub(m.lastRun) >= m.interval
 }
