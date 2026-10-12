@@ -45,20 +45,55 @@ func wispStepCityPath(cityPath string) string {
 // stores this process opens itself. effective is the city wispStepCityPath
 // resolved.
 func wispStepInjectionContentInProcess(effective string) string {
+	return formatWispStepReminderOrEmpty(activeWispStepInProcess(effective))
+}
+
+// activeWispStepInProcess resolves the calling agent's current step bead from
+// stores this process opens itself, or nil when there is none or any lookup
+// fails. effective is the city wispStepCityPath resolved.
+func activeWispStepInProcess(effective string) *beads.Bead {
 	assignees := wispStepAssignees()
 	if len(assignees) == 0 {
-		return ""
+		return nil
 	}
 	store := openWispStepStore(effective)
 	if store == nil {
-		return ""
+		return nil
 	}
 	routeCfg, _ := loadCityConfigWithoutBuiltinPackRefresh(effective, io.Discard)
 	b, err := resolveActiveWispStep(store, cliGraphStore(store, routeCfg, effective).Store, assignees)
-	if err != nil || b == nil {
-		return ""
+	if err != nil {
+		return nil
 	}
-	return formatWispStepReminder(b)
+	return b
+}
+
+// wispStepReminderOnce is the step reminder for the per-prompt hook: the full
+// block when step is new or its title or description changed since this
+// session last received it, otherwise the one-line formatWispStepUnchanged.
+// GC_INJECT_ALWAYS=1, or a session with no identity to key the memory on,
+// always yields the full block. Session start renders in full instead
+// (wispStepInjectionContent), because a fresh or compacted context holds none
+// of an earlier block. cityPath names the city whose runtime holds the memory
+// (GC_CITY when empty); a nil step clears it.
+//
+// The returned commit records the full block as delivered. Call it only after
+// the text was written to the hook transport; a block that was never written
+// must not suppress its next attempt. commit is never nil and is a no-op for
+// the one-line form.
+func wispStepReminderOnce(cityPath string, step *beads.Bead) (text string, commit func()) {
+	noop := func() {}
+	seen := openInjectSeen(wispStepCityPath(cityPath), injectSeenKindStep)
+	if step == nil {
+		seen.Forget()
+		return "", noop
+	}
+	full := formatWispStepReminder(step)
+	digest := injectDigest(full)
+	if seen.Unchanged(digest) {
+		return formatWispStepUnchanged(step), noop
+	}
+	return full, func() { seen.Record(digest) }
 }
 
 // openWispStepStore opens the bead store to query for active wisp steps.
@@ -621,6 +656,14 @@ func firstWithDescription(results []beads.Bead) *beads.Bead {
 
 // formatWispStepReminder formats a formula step bead as a <system-reminder>
 // block for injection into agent context.
+// formatWispStepReminderOrEmpty is formatWispStepReminder, or "" for no step.
+func formatWispStepReminderOrEmpty(b *beads.Bead) string {
+	if b == nil {
+		return ""
+	}
+	return formatWispStepReminder(b)
+}
+
 func formatWispStepReminder(b *beads.Bead) string {
 	title := extmsg.SanitizeForSystemReminder(strings.TrimSpace(b.Title))
 	desc := extmsg.SanitizeForSystemReminder(strings.TrimSpace(b.Description))
@@ -628,4 +671,11 @@ func formatWispStepReminder(b *beads.Bead) string {
 		"<system-reminder>\nYour current active work assignment:\n\n## %s (%s)\n\n%s\n</system-reminder>\n",
 		title, b.ID, desc,
 	)
+}
+
+// formatWispStepUnchanged is the one-line stand-in for formatWispStepReminder
+// when the session already holds the step's current title and description.
+func formatWispStepUnchanged(b *beads.Bead) string {
+	title := extmsg.SanitizeForSystemReminder(strings.TrimSpace(b.Title))
+	return fmt.Sprintf("<system-reminder>\nActive work unchanged: %s (%s)\n</system-reminder>\n", title, b.ID)
 }

@@ -280,6 +280,10 @@ func stepHookCity(t *testing.T) (hookBudgetFixture, *controllerState) {
 	t.Helper()
 	f := newHookBudgetFixture(t)
 	f.activeStep(t)
+	// These tests compare a controller-routed hook run with an in-process
+	// reference run of the same hook, so each run must render the full step
+	// block rather than collapse the second one (inject_seen.go).
+	t.Setenv(injectAlwaysEnv, "1")
 	return f, hookCityController(t, f)
 }
 

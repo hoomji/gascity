@@ -238,6 +238,14 @@ func askActiveWorkStep(ctx context.Context, resolve func(string) (*api.Client, s
 // content is the step reminder: the controller's answer when it gave one, else
 // the in-process read of the lookup's city.
 func (l *wispStepLookup) content() string {
+	return formatWispStepReminderOrEmpty(l.step())
+}
+
+// step is the active step bead content renders, or nil for none: the
+// controller's answer when it gave one, else the in-process read of the
+// lookup's city. Only ID, Title and Description are carried from a
+// controller answer.
+func (l *wispStepLookup) step() *beads.Bead {
 	answer := l.take()
 	extra := []string(nil)
 	if answer.err != nil {
@@ -246,11 +254,11 @@ func (l *wispStepLookup) content() string {
 	logRoute(l.stderr, "step-reminder", answer.route, answer.reason, extra...)
 	if answer.answered {
 		if answer.step == nil {
-			return ""
+			return nil
 		}
-		return formatWispStepReminder(&beads.Bead{ID: answer.step.ID, Title: answer.step.Title, Description: answer.step.Description})
+		return &beads.Bead{ID: answer.step.ID, Title: answer.step.Title, Description: answer.step.Description}
 	}
-	return wispStepInjectionContentInProcess(l.city)
+	return activeWispStepInProcess(l.city)
 }
 
 // answered reports whether the controller answered the lookup, step or none,
@@ -265,11 +273,17 @@ func (l *wispStepLookup) answered() bool {
 // otherwise (a nil lookup included), so a hook whose own resolution names a
 // different city than its environment did reads the city it resolved.
 func (l *wispStepLookup) contentFor(cityPath string) string {
+	return formatWispStepReminderOrEmpty(l.stepFor(cityPath))
+}
+
+// stepFor is contentFor's step bead: the lookup's step when cityPath is the
+// lookup's city, and a fresh lookup's otherwise (a nil lookup included).
+func (l *wispStepLookup) stepFor(cityPath string) *beads.Bead {
 	if l == nil || !samePath(wispStepCityPath(cityPath), l.city) {
 		l.stop()
-		return wispStepInjectionContent(cityPath)
+		return startWispStepLookup(cityPath, os.Stderr).step()
 	}
-	return l.content()
+	return l.step()
 }
 
 // take returns the lookup's answer, waiting for it no longer than the bound
