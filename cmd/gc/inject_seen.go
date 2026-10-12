@@ -35,20 +35,28 @@ const (
 // to read or write the state degrades to that same full emit; a missing or
 // unreadable file means "never shown".
 type injectSeen struct {
-	path string
+	path  string
+	epoch string
 }
 
 type injectSeenRecord struct {
 	SHA256 string `json:"sha256"`
+	Epoch  string `json:"epoch,omitempty"`
 }
 
 // openInjectSeen returns the seen-state for one hook kind of the calling
 // session, stored under <city>/.gc/runtime/inject-seen. It returns nil, so the
 // caller always emits in full, when GC_INJECT_ALWAYS is set, when the city is
 // unknown, or when the session has no identity (GC_SESSION_ID, else GC_ALIAS) to
-// key the state on. A compaction or restarted session carries a new session id
-// and so starts from "never shown".
-func openInjectSeen(cityPath, kind string) *injectSeen {
+// key the state on.
+//
+// epoch names the agent's context window: the provider session id the hook
+// payload carries, or "" when the provider supplies none. GC_SESSION_ID and
+// GC_ALIAS survive a /clear, a resume and a compaction, so the identity alone
+// cannot tell that the agent no longer holds an earlier block. A recorded digest
+// counts as delivered only to the epoch that received it. Providers that fire
+// SessionStart also drop the memory through forgetInjectSeen.
+func openInjectSeen(cityPath, kind, epoch string) *injectSeen {
 	if injectAlwaysEnabled() {
 		return nil
 	}
@@ -63,7 +71,39 @@ func openInjectSeen(cityPath, kind string) *injectSeen {
 	if key == "" {
 		return nil
 	}
-	return &injectSeen{path: filepath.Join(citylayout.RuntimeDataDir(cityPath), "inject-seen", injectSeenFileName(key, kind))}
+	return &injectSeen{
+		path:  filepath.Join(citylayout.RuntimeDataDir(cityPath), "inject-seen", injectSeenFileName(key, kind)),
+		epoch: strings.TrimSpace(epoch),
+	}
+}
+
+// forgetInjectSeen drops the memory of every hook kind for the calling session.
+// A session start, resume or compaction hands the agent a context that holds
+// none of what earlier hooks delivered, so the next prompt must carry full
+// blocks again. It does nothing under the same conditions openInjectSeen
+// returns nil.
+func forgetInjectSeen(cityPath string) {
+	for _, kind := range []string{injectSeenKindStep, injectSeenKindMail} {
+		openInjectSeen(cityPath, kind, "").Forget()
+	}
+}
+
+// hookContextEpoch extracts the provider session id from a hook payload, or ""
+// when the payload is absent, malformed or carries none. Providers name it
+// session_id or conversation_id; both are the key their own transcript uses, so
+// it changes whenever the agent starts a fresh context.
+func hookContextEpoch(hookInput []byte) string {
+	var in struct {
+		SessionID      string `json:"session_id"`
+		ConversationID string `json:"conversation_id"`
+	}
+	if err := json.Unmarshal(hookInput, &in); err != nil {
+		return ""
+	}
+	if id := strings.TrimSpace(in.SessionID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(in.ConversationID)
 }
 
 func injectAlwaysEnabled() bool {
@@ -95,7 +135,7 @@ func injectSeenFileName(key, kind string) string {
 	return name + "." + hex.EncodeToString(sum[:4]) + "." + kind + ".json"
 }
 
-// Unchanged reports whether digest equals the one last recorded.
+// Unchanged reports whether digest equals the one last recorded for this epoch.
 func (s *injectSeen) Unchanged(digest string) bool {
 	if s == nil || digest == "" {
 		return false
@@ -108,7 +148,7 @@ func (s *injectSeen) Unchanged(digest string) bool {
 	if err := json.Unmarshal(data, &rec); err != nil {
 		return false
 	}
-	return rec.SHA256 == digest
+	return rec.SHA256 == digest && rec.Epoch == s.epoch
 }
 
 // Record stores digest as the last delivered one. Call it only after the block
@@ -119,7 +159,7 @@ func (s *injectSeen) Record(digest string) {
 	if s == nil || digest == "" {
 		return
 	}
-	data, err := json.Marshal(injectSeenRecord{SHA256: digest})
+	data, err := json.Marshal(injectSeenRecord{SHA256: digest, Epoch: s.epoch})
 	if err != nil {
 		return
 	}

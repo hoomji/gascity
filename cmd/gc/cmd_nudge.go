@@ -358,7 +358,8 @@ func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 With --inject, the active formula step is injected once per change: the full
 step block when it is new or its title or description changed since this
 session last received it, otherwise the line "Active work unchanged: <title>
-(<id>)". A new session id starts over with the full block. Set
+(<id>)". A context reset (a session start, or a new provider session id in the
+hook payload) starts over with the full block. Set
 GC_INJECT_ALWAYS=1 to inject the full block on every run.`,
 		Args:   cobra.MaximumNArgs(1),
 		Hidden: true,
@@ -803,7 +804,7 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 			if wispStep == nil && nudgeQueueIsEmpty(explicitCity) {
 				// No step: clear the memory of an earlier one, so a later step
 				// that matches it is not taken as already delivered.
-				_, _ = wispStepReminderOnce(explicitCity, nil)
+				_, _ = wispStepReminderOnce(explicitCity, hookContextEpoch(hookInput), nil)
 				laneDue = hookLaneDueWithoutController(laneConv, explicitCity, stepLookup, stderr)
 				if !laneDue {
 					return 0
@@ -836,7 +837,7 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 			wispStep = stepLookup.stepFor(target.cityPath)
 		}
 		// Once per change: an unchanged step collapses to one line.
-		wispExtra, wispDelivered = wispStepReminderOnce(target.cityPath, wispStep)
+		wispExtra, wispDelivered = wispStepReminderOnce(target.cityPath, hookContextEpoch(hookInput), wispStep)
 	}
 
 	// injectLane runs the in-band lane pass for the hook's conversation
