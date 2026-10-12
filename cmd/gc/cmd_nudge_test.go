@@ -6324,3 +6324,172 @@ func TestResolveNudgePollInterval(t *testing.T) {
 		}
 	})
 }
+
+// seedActiveStepCity builds a city whose "worker" session has an in-progress
+// formula step, so a bare `gc nudge drain --inject` renders the step reminder.
+func seedActiveStepCity(t *testing.T) (sessionID string, store beads.Store, step beads.Bead) {
+	t.Helper()
+	clearGCEnv(t)
+	disableManagedDoltRecoveryForTest(t)
+	t.Setenv("GC_BEADS", "file")
+	t.Setenv("GC_INJECT_CLOCK", "off")
+	t.Setenv("GC_INJECT_ALWAYS", "")
+
+	cityDir := t.TempDir()
+	writeNamedSessionCityTOML(t, cityDir)
+	t.Setenv("GC_CITY", cityDir)
+	t.Setenv("GC_ALIAS", "worker")
+	t.Setenv("GC_SESSION_ID", "session-one")
+
+	store, err := openCityStoreAt(cityDir)
+	if err != nil {
+		t.Fatalf("openCityStoreAt: %v", err)
+	}
+	created, err := store.Create(beads.Bead{
+		Title:  "Session: worker",
+		Type:   session.BeadType,
+		Status: "open",
+		Labels: []string{session.LabelSession},
+		Metadata: map[string]string{
+			"session_name": "worker-session",
+			"agent_name":   "worker",
+			"template":     "worker",
+			"state":        string(session.StateActive),
+		},
+	})
+	if err != nil {
+		t.Fatalf("store.Create session: %v", err)
+	}
+	mol := mustCreateInProgressStore(t, store, beads.Bead{
+		Title:    "Formula: mol-worker",
+		Type:     "molecule",
+		Assignee: "worker",
+	})
+	step = mustCreateInProgressStore(t, store, beads.Bead{
+		Title:       "Step 1: implement the widget",
+		Description: "Write the widget code",
+		Type:        "step",
+		Assignee:    "worker",
+		ParentID:    mol.ID,
+	})
+	return created.ID, store, step
+}
+
+// injectDrain runs one prompt's `gc nudge drain --inject` and returns what the
+// hook printed.
+func injectDrain(t *testing.T, sessionID string) string {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	if code := cmdNudgeDrainWithFormat([]string{sessionID}, true, "", &stdout, &stderr); code != 0 {
+		t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	return stdout.String()
+}
+
+func TestNudgeDrainInjectStepOncePerChange(t *testing.T) {
+	sessionID, store, step := seedActiveStepCity(t)
+
+	first := injectDrain(t, sessionID)
+	if !strings.Contains(first, "Write the widget code") || !strings.Contains(first, step.ID) {
+		t.Fatalf("first prompt must carry the full step block, got %q", first)
+	}
+
+	second := injectDrain(t, sessionID)
+	wantLine := "Active work unchanged: " + step.Title + " (" + step.ID + ")"
+	if !strings.Contains(second, wantLine) {
+		t.Fatalf("second prompt must carry %q, got %q", wantLine, second)
+	}
+	if strings.Contains(second, "Write the widget code") {
+		t.Fatalf("second prompt repeated the step description: %q", second)
+	}
+	if !strings.HasPrefix(second, "<system-reminder>\n") || !strings.HasSuffix(second, "</system-reminder>\n") {
+		t.Fatalf("unchanged line must stay inside a system-reminder, got %q", second)
+	}
+
+	// An edited description is new information: the full block returns, once.
+	edited := "Write the widget code, then the tests"
+	if err := store.Update(step.ID, beads.UpdateOpts{Description: &edited}); err != nil {
+		t.Fatalf("Update description: %v", err)
+	}
+	third := injectDrain(t, sessionID)
+	if !strings.Contains(third, edited) {
+		t.Fatalf("an edited description must be re-injected in full, got %q", third)
+	}
+	if fourth := injectDrain(t, sessionID); strings.Contains(fourth, edited) || !strings.Contains(fourth, "Active work unchanged") {
+		t.Fatalf("after the edit was delivered the block must collapse again, got %q", fourth)
+	}
+
+	// A new session id (restart, compaction) holds none of what was sent before.
+	t.Setenv("GC_SESSION_ID", "session-two")
+	if fresh := injectDrain(t, sessionID); !strings.Contains(fresh, edited) {
+		t.Fatalf("a new session id must get the full block, got %q", fresh)
+	}
+}
+
+func TestNudgeDrainInjectStepNewStepShowsInFull(t *testing.T) {
+	sessionID, store, step := seedActiveStepCity(t)
+	injectDrain(t, sessionID)
+	if again := injectDrain(t, sessionID); strings.Contains(again, "Write the widget code") {
+		t.Fatalf("precondition: second prompt should be collapsed, got %q", again)
+	}
+
+	done := "closed"
+	if err := store.Update(step.ID, beads.UpdateOpts{Status: &done}); err != nil {
+		t.Fatalf("Update status: %v", err)
+	}
+	next := mustCreateInProgressStore(t, store, beads.Bead{
+		Title:       "Step 2: ship the widget",
+		Description: "Open the pull request",
+		Type:        "step",
+		Assignee:    "worker",
+		ParentID:    step.ParentID,
+	})
+	out := injectDrain(t, sessionID)
+	if !strings.Contains(out, "Open the pull request") || !strings.Contains(out, next.ID) {
+		t.Fatalf("a new active step must be injected in full, got %q", out)
+	}
+}
+
+func TestNudgeDrainInjectStepKeysOnAliasWithoutSessionID(t *testing.T) {
+	sessionID, _, step := seedActiveStepCity(t)
+	t.Setenv("GC_SESSION_ID", "")
+
+	injectDrain(t, sessionID)
+	second := injectDrain(t, sessionID)
+	if !strings.Contains(second, "Active work unchanged: "+step.Title) || strings.Contains(second, "Write the widget code") {
+		t.Fatalf("GC_ALIAS must key the memory when GC_SESSION_ID is unset, got %q", second)
+	}
+}
+
+func TestNudgeDrainInjectAlwaysRestoresFullBlockEveryPrompt(t *testing.T) {
+	sessionID, _, _ := seedActiveStepCity(t)
+
+	// The reference output: what the hook printed before the memory existed.
+	t.Setenv("GC_INJECT_ALWAYS", "1")
+	first := injectDrain(t, sessionID)
+	second := injectDrain(t, sessionID)
+	if !strings.Contains(first, "Write the widget code") {
+		t.Fatalf("GC_INJECT_ALWAYS=1 must emit the full block, got %q", first)
+	}
+	if first != second {
+		t.Fatalf("GC_INJECT_ALWAYS=1 must repeat byte for byte:\nfirst:  %q\nsecond: %q", first, second)
+	}
+
+	// It must not have written memory that suppresses the next ordinary prompt.
+	t.Setenv("GC_INJECT_ALWAYS", "")
+	if normal := injectDrain(t, sessionID); normal != first {
+		t.Fatalf("GC_INJECT_ALWAYS must leave no seen-state behind:\nwant %q\ngot  %q", first, normal)
+	}
+}
+
+func TestNudgeDrainInjectStepFailedWriteIsNotRemembered(t *testing.T) {
+	sessionID, _, _ := seedActiveStepCity(t)
+
+	var stderr bytes.Buffer
+	if code := cmdNudgeDrainWithFormat([]string{sessionID}, true, "", failingWriter{}, &stderr); code != 0 {
+		t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0 (--inject always exits 0)", code)
+	}
+	if out := injectDrain(t, sessionID); !strings.Contains(out, "Write the widget code") {
+		t.Fatalf("a block that never reached the hook must not count as delivered, got %q", out)
+	}
+}

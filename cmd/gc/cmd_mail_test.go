@@ -5105,3 +5105,142 @@ func TestCmdMailSendAllFlagBodyWinsOverPositional(t *testing.T) {
 		t.Errorf("Description = %q, want %q (--all -m flag body should win over positional)", msg.Description, "flag body")
 	}
 }
+
+// injectSessionEnv gives the calling hook a session identity and a city, the
+// two things once-per-change injection keys its memory on.
+func injectSessionEnv(t *testing.T, sessionID string) {
+	t.Helper()
+	clearGCEnv(t)
+	t.Setenv("GC_CITY", t.TempDir())
+	t.Setenv("GC_SESSION_ID", sessionID)
+	t.Setenv("GC_INJECT_ALWAYS", "")
+}
+
+func mailInjectOnce(t *testing.T, mp mail.Provider) string {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	if code := doMailCheck(mp, "worker", true, &stdout, &stderr); code != 0 {
+		t.Fatalf("doMailCheck = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	return stdout.String()
+}
+
+func TestMailCheckInjectOncePerChange(t *testing.T) {
+	injectSessionEnv(t, "session-one")
+	store := beads.NewMemStore()
+	mp := beadmail.New(store)
+	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
+
+	first := mailInjectOnce(t, mp)
+	if !strings.Contains(first, "Fix the auth bug") {
+		t.Fatalf("first prompt must carry the unread block, got %q", first)
+	}
+	if again := mailInjectOnce(t, mp); again != "" {
+		t.Fatalf("an unchanged unread set must emit nothing, got %q", again)
+	}
+	if again := mailInjectOnce(t, mp); again != "" {
+		t.Fatalf("an unchanged unread set must stay silent on every later prompt, got %q", again)
+	}
+
+	// New mail is shown in full, and the block lists what is unread now, old
+	// message included.
+	mp.Send("polecat", "worker", "", "PR #17 ready for review") //nolint:errcheck
+	changed := mailInjectOnce(t, mp)
+	for _, want := range []string{"2 unread message(s)", "Fix the auth bug", "PR #17 ready for review"} {
+		if !strings.Contains(changed, want) {
+			t.Fatalf("a new unread id must re-emit the full block; missing %q in %q", want, changed)
+		}
+	}
+	if again := mailInjectOnce(t, mp); again != "" {
+		t.Fatalf("after the change was delivered the block must go quiet, got %q", again)
+	}
+}
+
+func TestMailCheckInjectNewSessionGetsFullBlock(t *testing.T) {
+	injectSessionEnv(t, "session-one")
+	mp := beadmail.New(beads.NewMemStore())
+	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
+	mailInjectOnce(t, mp)
+
+	t.Setenv("GC_SESSION_ID", "session-two")
+	if out := mailInjectOnce(t, mp); !strings.Contains(out, "Fix the auth bug") {
+		t.Fatalf("a new session id must get the unread block, got %q", out)
+	}
+}
+
+func TestMailCheckInjectFallsBackToAliasKey(t *testing.T) {
+	injectSessionEnv(t, "")
+	t.Setenv("GC_ALIAS", "worker")
+	mp := beadmail.New(beads.NewMemStore())
+	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
+
+	mailInjectOnce(t, mp)
+	if again := mailInjectOnce(t, mp); again != "" {
+		t.Fatalf("GC_ALIAS must key the memory when GC_SESSION_ID is unset, got %q", again)
+	}
+}
+
+func TestMailCheckInjectReadMailThenNewMail(t *testing.T) {
+	injectSessionEnv(t, "session-one")
+	mp := beadmail.New(beads.NewMemStore())
+	first, err := mp.Send("mayor", "worker", "", "Fix the auth bug")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	mailInjectOnce(t, mp)
+
+	if err := mp.MarkRead(first.ID); err != nil {
+		t.Fatalf("MarkRead: %v", err)
+	}
+	if out := mailInjectOnce(t, mp); out != "" {
+		t.Fatalf("an empty inbox emits nothing, got %q", out)
+	}
+	mp.Send("polecat", "worker", "", "PR #17 ready for review") //nolint:errcheck
+	out := mailInjectOnce(t, mp)
+	if !strings.Contains(out, "PR #17 ready for review") || strings.Contains(out, "Fix the auth bug") {
+		t.Fatalf("new mail after the inbox emptied must show alone, in full, got %q", out)
+	}
+}
+
+func TestMailCheckInjectAlwaysRepeatsByteForByte(t *testing.T) {
+	injectSessionEnv(t, "session-one")
+	mp := beadmail.New(beads.NewMemStore())
+	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
+
+	t.Setenv("GC_INJECT_ALWAYS", "1")
+	first := mailInjectOnce(t, mp)
+	second := mailInjectOnce(t, mp)
+	if !strings.Contains(first, "Fix the auth bug") || first != second {
+		t.Fatalf("GC_INJECT_ALWAYS=1 must repeat the block byte for byte:\nfirst:  %q\nsecond: %q", first, second)
+	}
+
+	t.Setenv("GC_INJECT_ALWAYS", "")
+	if normal := mailInjectOnce(t, mp); normal != first {
+		t.Fatalf("GC_INJECT_ALWAYS must leave no seen-state behind:\nwant %q\ngot  %q", first, normal)
+	}
+}
+
+func TestMailCheckInjectWithoutSessionIdentityAlwaysEmits(t *testing.T) {
+	injectSessionEnv(t, "")
+	mp := beadmail.New(beads.NewMemStore())
+	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
+
+	first := mailInjectOnce(t, mp)
+	if second := mailInjectOnce(t, mp); first == "" || second != first {
+		t.Fatalf("with no session identity there is nothing to key memory on; want the block every time:\nfirst:  %q\nsecond: %q", first, second)
+	}
+}
+
+func TestMailCheckInjectFailedWriteIsNotRemembered(t *testing.T) {
+	injectSessionEnv(t, "session-one")
+	mp := beadmail.New(beads.NewMemStore())
+	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
+
+	var stderr bytes.Buffer
+	if code := doMailCheck(mp, "worker", true, failingWriter{}, &stderr); code != 0 {
+		t.Fatalf("doMailCheck = %d, want 0 (--inject always exits 0)", code)
+	}
+	if out := mailInjectOnce(t, mp); !strings.Contains(out, "Fix the auth bug") {
+		t.Fatalf("a block that never reached the hook must not count as delivered, got %q", out)
+	}
+}
