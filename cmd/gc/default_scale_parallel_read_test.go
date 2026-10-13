@@ -8,12 +8,15 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 )
 
-// readGate holds each Ready open for a moment and records how many readers were
-// inside at once, so a serial caller can never show a peak above one.
+// readGate parks each Ready until a second reader is inside, and records the
+// peak number of readers in flight, so a serial caller can never show a peak
+// above one: its lone reader waits out the timeout and the peak stays at one.
 type readGate struct {
 	mu   sync.Mutex
 	in   int
 	peak int
+	met  chan struct{}
+	once sync.Once
 }
 
 func (g *readGate) enter() {
@@ -22,8 +25,14 @@ func (g *readGate) enter() {
 	if g.in > g.peak {
 		g.peak = g.in
 	}
+	if g.in >= 2 {
+		g.once.Do(func() { close(g.met) })
+	}
 	g.mu.Unlock()
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-g.met:
+	case <-time.After(2 * time.Second):
+	}
 	g.mu.Lock()
 	g.in--
 	g.mu.Unlock()
@@ -40,7 +49,7 @@ func (s *gatedReadyStore) Ready(query ...beads.ReadyQuery) ([]beads.Bead, error)
 }
 
 func TestReadControllerDemandReadyOverlapsStoreReads(t *testing.T) {
-	gate := &readGate{}
+	gate := &readGate{met: make(chan struct{})}
 	var stores []beads.Store
 	for i := 0; i < 3; i++ {
 		mem := beads.NewMemStore()
