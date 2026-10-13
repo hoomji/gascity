@@ -349,6 +349,14 @@ type orderDispatchTrackingIndex struct {
 	entries map[string]map[string]orderTrackingSummary
 	errs    map[string]error
 
+	// liveRoots holds, per store, the ids of molecule roots that already have an
+	// open (non-closed, non-transient) member stamped with gc.root_bead_id. It
+	// is folded from the SAME non-closed corpus read as entries, so answering
+	// "does this root have open work" for every open root costs no extra store
+	// read; only a root absent from this set pays the authoritative per-root
+	// read in wispRootHasOpenWork.
+	liveRoots map[string]map[string]struct{}
+
 	// stderr carries the ONE line a failed index read emits, once per store per
 	// tick. Without it a store whose index read fails would fall back to the
 	// per-order live gate silently and forever: the gate's answer stays correct,
@@ -1160,9 +1168,10 @@ func (m *memoryOrderDispatcher) drain(ctx context.Context) bool {
 
 func newOrderDispatchTrackingIndex(stderr io.Writer) *orderDispatchTrackingIndex {
 	return &orderDispatchTrackingIndex{
-		entries: make(map[string]map[string]orderTrackingSummary),
-		errs:    make(map[string]error),
-		stderr:  stderr,
+		entries:   make(map[string]map[string]orderTrackingSummary),
+		errs:      make(map[string]error),
+		liveRoots: make(map[string]map[string]struct{}),
+		stderr:    stderr,
 	}
 }
 
@@ -1251,6 +1260,9 @@ func (idx *orderDispatchTrackingIndex) hasOpenWork(
 			continue
 		}
 		for _, root := range summary.openRoots {
+			if idx.rootHasLiveMember(indexStoreKey(storeKeys, i), root) {
+				return true, nil
+			}
 			open, err := wispHasOpenWork(store, root)
 			if err != nil {
 				return false, err
@@ -1394,9 +1406,13 @@ func (idx *orderDispatchTrackingIndex) entriesForStore(store beads.Store, storeK
 		return nil, wrapped
 	}
 	entries := make(map[string]orderTrackingSummary)
+	liveRoots := make(map[string]struct{})
 	for _, b := range items {
 		if b.Status == "closed" {
 			continue
+		}
+		if rootID := strings.TrimSpace(b.Metadata[beadmeta.RootBeadIDMetadataKey]); rootID != "" && rootID != b.ID && !isTransientNotificationBead(b) {
+			liveRoots[rootID] = struct{}{}
 		}
 		tracking := orders.IsTrackingBead(b)
 		for _, label := range b.Labels {
@@ -1421,8 +1437,22 @@ func (idx *orderDispatchTrackingIndex) entriesForStore(store beads.Store, storeK
 	// both computed the same result from the same store, so last writer wins.
 	idx.mu.Lock()
 	idx.entries[storeKey] = entries
+	idx.liveRoots[storeKey] = liveRoots
 	idx.mu.Unlock()
 	return entries, nil
+}
+
+// rootHasLiveMember reports whether the index already saw an open stamped
+// member under root. It is a positive-only shortcut: false means "unknown", and
+// the caller must still run the authoritative per-root read.
+func (idx *orderDispatchTrackingIndex) rootHasLiveMember(storeKey string, root beads.Bead) bool {
+	if !isOrderWispRootCandidate(root) || isOrderRootOnlyWispCandidate(root) {
+		return false
+	}
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	_, ok := idx.liveRoots[storeKey][root.ID]
+	return ok
 }
 
 func indexStoreKey(storeKeys []string, index int) string {
@@ -2614,9 +2644,10 @@ func storeHasOpenDescendants(store beads.Store, rootID string, skip func(beads.B
 func storeOpenDescendantIDs(store beads.Store, rootID string, skip func(beads.Bead) bool) ([]string, error) {
 	reader := beads.HandlesFor(store).Live
 	members, err := reader.List(beads.ListQuery{
-		Metadata:      map[string]string{beadmeta.RootBeadIDMetadataKey: rootID},
-		IncludeClosed: true,
-		TierMode:      beads.TierBoth,
+		Metadata: map[string]string{beadmeta.RootBeadIDMetadataKey: rootID},
+		// Closed members are skipped below, so reading them (bd list --all over
+		// the store's whole closed history) buys nothing.
+		TierMode: beads.TierBoth,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing wisp members of %s: %w", rootID, err)
