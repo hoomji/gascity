@@ -1994,6 +1994,43 @@ func defaultScaleCheckCounts(targets []defaultScaleCheckTarget) (map[string]int,
 	return counts, partialTemplates, errs
 }
 
+// demandReadParallelism bounds how many store reads one demand pass keeps in
+// flight at once. Every read is a bd subprocess against the shared Dolt server,
+// so an unbounded fan-out over many rigs would trade a long serial pass for a
+// stampede on the server it is reading from.
+const demandReadParallelism = 8
+
+type controllerDemandReadyResult struct {
+	rows []beads.Bead
+	err  error
+}
+
+// readControllerDemandReady reads the controller-demand ready set of every
+// store concurrently and returns the results index-aligned with stores. A store
+// that appears twice is read once when cache is non-nil, because the cache
+// memoizes per store identity.
+func readControllerDemandReady(cache *readyDemandCache, stores []beads.Store) []controllerDemandReadyResult {
+	results := make([]controllerDemandReadyResult, len(stores))
+	if len(stores) == 1 {
+		results[0].rows, results[0].err = cache.controllerDemandReady(stores[0])
+		return results
+	}
+	sem := make(chan struct{}, demandReadParallelism)
+	var wg sync.WaitGroup
+	for i, store := range stores {
+		i, store := i, store
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			results[i].rows, results[i].err = cache.controllerDemandReady(store)
+		}()
+	}
+	wg.Wait()
+	return results
+}
+
 func defaultScaleCheckCountsAndDemand(cfg *config.City, targets []defaultScaleCheckTarget, caches ...*readyDemandCache) (map[string]int, map[string]scaleCheckDemand, map[string]bool, []error) {
 	cache := optionalReadyDemandCache(caches)
 	counts := make(map[string]int, len(targets))
@@ -2074,14 +2111,22 @@ func defaultScaleCheckCountsAndDemand(cfg *config.City, targets []defaultScaleCh
 	// and "city" groups and would double the template's demand. With the city
 	// probe no longer cold-gated, that double-count would be a persistent
 	// warm condition rather than a one-tick wake overshoot, so dedup by ID.
-	for _, group := range groupOrder {
+	// The reads fan out across the store groups first and are consumed in group
+	// order below, so the counts stay deterministic while a city with many rigs
+	// pays one read's latency instead of the sum of them.
+	groupStores := make([]beads.Store, len(groupOrder))
+	for i, group := range groupOrder {
+		groupStores[i] = group.store
+	}
+	groupReady := readControllerDemandReady(cache, groupStores)
+	for groupIdx, group := range groupOrder {
 		key := group.storeKey
 		// Ready()/CachedReady() iteration surfaces actionable work
 		// matched against gc.routed_to/gc.run_target. Formula orders that
 		// should wake pools must create an actionable root, such as a
 		// vapor/root-only wisp. Molecule containers and formula step
 		// beads remain hidden by readyExcludeTypes.
-		ready, readyErr := cache.controllerDemandReady(group.store)
+		ready, readyErr := groupReady[groupIdx].rows, groupReady[groupIdx].err
 		if readyErr != nil {
 			errs = append(errs, fmt.Errorf("default scale_check %s templates=%s: Ready(): %w", key, strings.Join(sortedStringSet(group.templates), ","), readyErr))
 			partialTemplates = markScaleCheckPartialSet(partialTemplates, group.templates)
