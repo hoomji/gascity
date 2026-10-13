@@ -1604,7 +1604,27 @@ func collectAssignedWorkBeadsWithStores(
 			// unassigned pool work that needs to be reopened. This pass runs
 			// across every store before any ready handoff probes, so already
 			// active work never waits behind unrelated ready scans.
-			if inProgress, err := listBothTiersForControllerDemand(source.store, beads.ListQuery{Status: "in_progress"}); err == nil {
+			// The three list reads are independent subprocess calls against this
+			// store, so they overlap; their results are consumed below in the
+			// original order, which is what the seen-set dedup depends on.
+			var inProgress, openDemand, openRouted []beads.Bead
+			var inProgressErr, openDemandErr, openRoutedErr error
+			var listWG sync.WaitGroup
+			listWG.Add(3)
+			go func() {
+				defer listWG.Done()
+				inProgress, inProgressErr = listBothTiersForControllerDemand(source.store, beads.ListQuery{Status: "in_progress"})
+			}()
+			go func() {
+				defer listWG.Done()
+				openDemand, openDemandErr = listOpenForControllerDemandLive(source.store)
+			}()
+			go func() {
+				defer listWG.Done()
+				openRouted, openRoutedErr = listBothTiersForControllerDemand(source.store, beads.ListQuery{Status: "open"})
+			}()
+			listWG.Wait()
+			if err := inProgressErr; err == nil {
 				appendInProgressWorkUnique(cfg, &result, &resultStores, &resultStoreRefs, readyIDs, inProgress, seen, source.store, source.ref)
 			} else {
 				errs = append(errs, fmt.Errorf("List(in_progress): %w", err))
@@ -1620,7 +1640,7 @@ func collectAssignedWorkBeadsWithStores(
 			// demand (EB-42o8/gc-nz5i; extends gc-4zb/#4395). A Live read reaches
 			// the backing store's raw --status=open filter, which excludes it —
 			// see listOpenForControllerDemandLive.
-			if openDemand, err := listOpenForControllerDemandLive(source.store); err == nil {
+			if err := openDemandErr; err == nil {
 				appendOpenAssignedMoleculeWorkUnique(&result, &resultStores, &resultStoreRefs, readyIDs, openDemand, seen, source.store, source.ref)
 			} else {
 				errs = append(errs, fmt.Errorf("List(open, live demand): %w", err))
@@ -1649,7 +1669,7 @@ func collectAssignedWorkBeadsWithStores(
 			// appendOpenRoutedWorkUnique never markReadyAssigned (see the
 			// skipReadyAssignees note below), and releaseOrphanedPoolAssignments'
 			// own live re-read (liveWorkAssignmentStillReleasable) skips it.
-			if openRouted, err := listBothTiersForControllerDemand(source.store, beads.ListQuery{Status: "open"}); err == nil {
+			if err := openRoutedErr; err == nil {
 				appendOpenRoutedWorkUnique(&result, &resultStores, &resultStoreRefs, openRouted, seen, source.store, source.ref)
 			} else {
 				errs = append(errs, fmt.Errorf("List(open): %w", err))
@@ -2011,24 +2031,33 @@ type controllerDemandReadyResult struct {
 // memoizes per store identity.
 func readControllerDemandReady(cache *readyDemandCache, stores []beads.Store) []controllerDemandReadyResult {
 	results := make([]controllerDemandReadyResult, len(stores))
-	if len(stores) == 1 {
-		results[0].rows, results[0].err = cache.controllerDemandReady(stores[0])
-		return results
+	forEachBounded(len(stores), demandReadParallelism, func(i int) {
+		results[i].rows, results[i].err = cache.controllerDemandReady(stores[i])
+	})
+	return results
+}
+
+// forEachBounded calls fn(0..n-1) with at most limit calls in flight and
+// returns when all have finished. fn must write only to its own index of any
+// shared slice. A single item runs inline.
+func forEachBounded(n, limit int, fn func(i int)) {
+	if n == 1 {
+		fn(0)
+		return
 	}
-	sem := make(chan struct{}, demandReadParallelism)
+	sem := make(chan struct{}, limit)
 	var wg sync.WaitGroup
-	for i, store := range stores {
-		i, store := i, store
+	for i := 0; i < n; i++ {
+		i := i
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			results[i].rows, results[i].err = cache.controllerDemandReady(store)
+			fn(i)
 		}()
 	}
 	wg.Wait()
-	return results
 }
 
 func defaultScaleCheckCountsAndDemand(cfg *config.City, targets []defaultScaleCheckTarget, caches ...*readyDemandCache) (map[string]int, map[string]scaleCheckDemand, map[string]bool, []error) {

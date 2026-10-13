@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/config"
 )
 
 // readGate parks each Ready until a second reader is inside, and records the
@@ -71,5 +72,43 @@ func TestReadControllerDemandReadyOverlapsStoreReads(t *testing.T) {
 		if r.err != nil || len(r.rows) != 1 {
 			t.Errorf("store %d: rows=%d err=%v, want its own single ready bead", i, len(r.rows), r.err)
 		}
+	}
+}
+
+type gatedListStore struct {
+	*beads.MemStore
+	gate *readGate
+}
+
+func (s *gatedListStore) List(query beads.ListQuery) ([]beads.Bead, error) {
+	s.gate.enter()
+	return s.MemStore.List(query)
+}
+
+func TestCollectAssignedWorkOverlapsOneStoresListReads(t *testing.T) {
+	gate := &readGate{met: make(chan struct{})}
+	mem := beads.NewMemStore()
+	created, err := mem.Create(beads.Bead{Title: "active", Assignee: "worker-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inProgress := "in_progress"
+	if err := mem.Update(created.ID, beads.UpdateOpts{Status: &inProgress}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, _, _, _ := collectAssignedWorkBeadsWithStores("", &config.City{}, &gatedListStore{MemStore: mem, gate: gate}, nil, nil, nil)
+
+	if gate.peak < 2 {
+		t.Errorf("peak concurrent list reads = %d, want one store's list reads to overlap", gate.peak)
+	}
+	var found bool
+	for _, b := range got {
+		if b.ID == created.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("assigned in-progress bead %s missing from snapshot %v", created.ID, got)
 	}
 }
