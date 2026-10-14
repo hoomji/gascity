@@ -1088,3 +1088,47 @@ func TestServerConfirmedDeadForwardsToConfirmingBackend(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteRuntimeSendsSessionToNamedBackend(t *testing.T) {
+	defaultSP := runtime.NewFake()
+	acpSP := runtime.NewFake()
+	remoteSP := runtime.NewFake()
+	p := New(defaultSP, acpSP)
+	p.AddRuntime("ssh:dell", remoteSP)
+
+	if p.RouteRuntime("worker", "ssh:unknown") {
+		t.Fatal("RouteRuntime to an unregistered runtime = true, want false")
+	}
+	if !p.RouteRuntime("worker", "ssh:dell") {
+		t.Fatal("RouteRuntime to a registered runtime = false, want true")
+	}
+	route := p.RouteFor("worker")
+	if !route.Known || route.Provider != remoteSP || route.Label != RuntimeBackendLabelPrefix+"ssh:dell" {
+		t.Fatalf("RouteFor(worker) = %+v, want known route to the ssh:dell backend", route)
+	}
+	if err := p.Start(context.Background(), "worker", runtime.Config{Command: "test"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !remoteSP.IsRunning("worker") || defaultSP.IsRunning("worker") || acpSP.IsRunning("worker") {
+		t.Fatal("worker should run on the ssh:dell backend only")
+	}
+	if !p.IsRunning("worker") {
+		t.Fatal("IsRunning(worker) = false, want true")
+	}
+	names, err := p.ListRunning("")
+	if err != nil {
+		t.Fatalf("ListRunning: %v", err)
+	}
+	if !slices.Contains(names, "worker") {
+		t.Fatalf("ListRunning = %v, want it to include the runtime-routed session", names)
+	}
+	if err := p.Stop("worker"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if remoteSP.IsRunning("worker") {
+		t.Fatal("worker should be stopped on the ssh:dell backend")
+	}
+	if route := p.RouteFor("worker"); route.Provider != defaultSP {
+		t.Fatalf("RouteFor(worker) after Stop = %+v, want the default backend", route)
+	}
+}

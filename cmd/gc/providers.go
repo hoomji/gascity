@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -305,18 +306,31 @@ func resolveSessionTransportProvider(ctx sessionProviderContext, sessionBeads *s
 	acpRouteNames := configuredACPRouteNames(sessionBeads, ctx.cityName, ctx.cfg)
 	requireACPWrapper := len(acpRouteNames) > 0
 	needsACPWrapper := requireACPWrapper || (ctx.cfg != nil && hasACPProviderTargets(ctx.cfg))
-	if ctx.providerName != "acp" && needsACPWrapper {
+	// Agents with runtime = "<name>" (a selection name other than the city's)
+	// run on a backend of their own, a named leg of the same auto router.
+	agentRuntimes := configuredAgentRuntimes(ctx.cfg, ctx.providerName)
+	if ctx.providerName != "acp" && (needsACPWrapper || len(agentRuntimes) > 0) {
 		acpSP, acpErr := carried.acp, error(nil)
 		if acpSP == nil {
 			acpSP, acpErr = buildSessionProviderByName(ctx.cfg, "acp", ctx.sc, ctx.cityName, ctx.cityPath)
 		}
 		if acpErr != nil {
-			if requireACPWrapper {
+			if requireACPWrapper || len(agentRuntimes) > 0 {
 				return nil, fmt.Errorf("acp provider: %w", acpErr)
 			}
 			return base, nil
 		}
 		autoSP := sessionauto.New(base, acpSP)
+		for _, rtName := range agentRuntimes {
+			rtSP, rtErr := buildSessionProviderByName(ctx.cfg, rtName, ctx.sc, ctx.cityName, ctx.cityPath)
+			if rtErr != nil {
+				return nil, fmt.Errorf("agent runtime %q: %w", rtName, rtErr)
+			}
+			autoSP.AddRuntime(rtName, rtSP)
+		}
+		for sessName, rtName := range configuredRuntimeRoutes(sessionBeads, ctx.cityName, ctx.cfg, ctx.providerName) {
+			autoSP.RouteRuntime(sessName, rtName)
+		}
 		if sessionBeadSnapshotLoaded(sessionBeads) {
 			autoSP.SeedRoutes(acpRouteNames)
 		} else {
@@ -377,6 +391,99 @@ func configuredACPSessionNames(snapshot *sessionBeadSnapshot, cityName, sessionT
 		names = append(names, sessName)
 	}
 	return names
+}
+
+// agentRuntimeFor returns the runtime selection name an agent's sessions run
+// on when it differs from the city's session provider, and "" when the agent
+// inherits the city's provider or selects the ACP transport (ACP sessions
+// are routed to the ACP leg, never to a runtime leg).
+func agentRuntimeFor(cfg *config.City, a config.Agent, cityProvider string) string {
+	rt := strings.TrimSpace(a.Runtime)
+	if rt == "" || rt == strings.TrimSpace(cityProvider) {
+		return ""
+	}
+	if agentSessionCreateTransport(cfg, a) == "acp" {
+		return ""
+	}
+	return rt
+}
+
+// configuredAgentRuntimes returns the distinct runtime selection names agents
+// select, sorted, for the router's named legs.
+func configuredAgentRuntimes(cfg *config.City, cityProvider string) []string {
+	if cfg == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, a := range cfg.Agents {
+		if rt := agentRuntimeFor(cfg, a, cityProvider); rt != "" && !seen[rt] {
+			seen[rt] = true
+			names = append(names, rt)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// configuredRuntimeRoutes maps the session names of configured agents and
+// named sessions that select a runtime of their own to that runtime. Pool
+// instances and other dynamically-named sessions are routed at start from
+// their TemplateParams (routeTemplateRuntime).
+func configuredRuntimeRoutes(snapshot *sessionBeadSnapshot, cityName string, cfg *config.City, cityProvider string) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	routes := make(map[string]string)
+	for _, a := range cfg.Agents {
+		rt := agentRuntimeFor(cfg, a, cityProvider)
+		if rt == "" {
+			continue
+		}
+		sessName := agent.SessionNameFor(cityName, a.QualifiedName(), cfg.Workspace.SessionTemplate)
+		if snapshot != nil {
+			if beadName := snapshot.FindSessionNameByTemplate(a.QualifiedName()); beadName != "" {
+				sessName = beadName
+			}
+		}
+		if sessName != "" {
+			routes[sessName] = rt
+		}
+	}
+	for _, named := range cfg.NamedSessions {
+		agentCfg := config.FindAgent(cfg, named.TemplateQualifiedName())
+		if agentCfg == nil {
+			continue
+		}
+		rt := agentRuntimeFor(cfg, *agentCfg, cityProvider)
+		if rt == "" {
+			continue
+		}
+		sessionName := config.NamedSessionRuntimeName(cityName, cfg.Workspace, named.QualifiedName())
+		if snapshot != nil {
+			if info, ok := snapshot.FindInfoByNamedIdentity(named.QualifiedName()); ok {
+				if snapName := strings.TrimSpace(info.SessionNameMetadata); snapName != "" {
+					sessionName = snapName
+				}
+			}
+		}
+		if sessionName != "" {
+			routes[sessionName] = rt
+		}
+	}
+	return routes
+}
+
+// routeTemplateRuntime routes a session to its agent's runtime leg when the
+// agent selects a runtime of its own and sp is the auto router.
+func routeTemplateRuntime(sp runtime.Provider, name string, tp TemplateParams) {
+	name = strings.TrimSpace(name)
+	if name == "" || tp.Runtime == "" || tp.IsACP {
+		return
+	}
+	if router, ok := sp.(interface{ RouteRuntime(string, string) bool }); ok {
+		router.RouteRuntime(name, tp.Runtime)
+	}
 }
 
 func hasACPProviderTargets(cfg *config.City) bool {

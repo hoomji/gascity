@@ -4720,6 +4720,7 @@ func (cr *CityRuntime) installDemandSnapshotSideEffects(result DesiredStateResul
 		return
 	}
 	for _, tp := range result.State {
+		routeTemplateRuntime(autoSP, tp.SessionName, tp)
 		if !tp.IsACP || strings.TrimSpace(tp.SessionName) == "" {
 			continue
 		}

@@ -61,6 +61,8 @@ type AgentPatch struct {
 	PromptTemplate *string `toml:"prompt_template,omitempty"`
 	// Session overrides the session transport ("acp" or "tmux").
 	Session *string `toml:"session,omitempty"`
+	// Runtime overrides the runtime backend (e.g. "tmux", "ssh:dell").
+	Runtime *string `toml:"runtime,omitempty"`
 	// Provider overrides the provider name.
 	Provider *string `toml:"provider,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
@@ -558,6 +560,9 @@ func applyAgentMutation(a *Agent, p *AgentPatch, sleepSource string) {
 	}
 	if p.Session != nil {
 		a.Session = *p.Session
+	}
+	if p.Runtime != nil {
+		a.Runtime = *p.Runtime
 	}
 	if p.Provider != nil {
 		a.Provider = *p.Provider

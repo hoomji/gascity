@@ -328,6 +328,7 @@ func startLaunch(ctx context.Context, c txCaps, in launchPass) (startOutcome, er
 	if router, ok := c.start.sp.(interface{ RouteACP(string) }); ok && in.tp.IsACP {
 		router.RouteACP(name)
 	}
+	routeTemplateRuntime(c.start.sp, name, in.tp)
 	leaf, _, _ := runtime.ResolveBackend(c.start.sp, name)
 	prepared.cfg.FreshOnly = true
 	in.w.Templates.installSideEffects(in.agent, in.tp)

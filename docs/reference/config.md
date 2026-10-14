@@ -93,6 +93,7 @@ Agent defines a configured agent in the city.
 | `prompt_template` | string |  |  | PromptTemplate is the path to this agent's prompt template file. Relative paths resolve against the directory of the file that declares the agent: the city directory for city.toml, the fragment's directory for an included fragment, and the pack directory for an agent a pack declares — in pack.toml or in agents/&lt;name&gt;/agent.toml alike. Paths prefixed with "//" resolve against the city root. |
 | `nudge` | string |  |  | Nudge is text typed into the agent's session after startup. Used for CLI agents that don't accept command-line prompts. For a known pool session whose trigger remains unclaimed after the 90-second recovery grace period, an empty or whitespace-only Nudge does not opt out: it sends "Run gc hook --claim --drain-ack --json now; if it returns work, execute it immediately." This fallback applies only to the initial stalled-claim recovery; continuation-claim recovery remains configured-only. Unknown templates receive no fallback. |
 | `session` | string |  |  | Session overrides the session transport for this agent. "" (default) uses the city-level session provider (typically tmux). "acp" uses the Agent Client Protocol (JSON-RPC over stdio). The agent's resolved provider must have supports_acp = true. Enum: `acp` |
+| `runtime` | string |  |  | Runtime selects the runtime backend this agent's sessions run on, using the same names as [session] provider (e.g. "tmux", "ssh:dell", "exec:&lt;script&gt;"). "" (default) inherits the city-level session provider. Composes with session = "acp": an ACP agent ignores it. |
 | `provider` | string |  |  | Provider names the provider preset to use for this agent. |
 | `context_advisory` | ContextAdvisory |  |  | ContextAdvisory overrides context-pressure guidance for this agent. |
 | `upstream` | string |  |  | Upstream selects the model-serving endpoint (a key in [upstreams]) for this agent — WHO serves the model. "" (default) falls back to agent_defaults.upstream; if still empty, no upstream env is injected (ambient behavior). Switching it relaunches the agent in the warm box. |
@@ -176,6 +177,7 @@ AgentOverride modifies a pack-stamped agent for a specific rig.
 | `pre_start` | []string |  |  | PreStart overrides the agent's pre_start commands. |
 | `prompt_template` | string |  |  | PromptTemplate overrides the prompt template path. Relative paths resolve against the declaring config file's directory (pack-safe). Paths prefixed with "//" resolve against the city root. |
 | `session` | string |  |  | Session overrides the session transport ("acp"). |
+| `runtime` | string |  |  | Runtime overrides the runtime backend (e.g. "tmux", "ssh:dell"). |
 | `provider` | string |  |  | Provider overrides the provider name. |
 | `context_advisory` | ContextAdvisory |  |  | ContextAdvisory overrides context-pressure guidance for this agent. |
 | `upstream` | string |  |  | Upstream overrides the model-serving endpoint selection (Phase C). |
@@ -237,6 +239,7 @@ AgentPatch modifies existing agents identified by rig scope and Name.
 | `pre_start` | []string |  |  | PreStart overrides the agent's pre_start commands. |
 | `prompt_template` | string |  |  | PromptTemplate overrides the prompt template path. Relative paths resolve against the declaring config file's directory (pack-safe). Paths prefixed with "//" resolve against the city root. |
 | `session` | string |  |  | Session overrides the session transport ("acp" or "tmux"). |
+| `runtime` | string |  |  | Runtime overrides the runtime backend (e.g. "tmux", "ssh:dell"). |
 | `provider` | string |  |  | Provider overrides the provider name. |
 | `context_advisory` | ContextAdvisory |  |  | ContextAdvisory overrides context-pressure guidance for this agent. |
 | `upstream` | string |  |  | Upstream overrides the model-serving endpoint selection (Phase C). |

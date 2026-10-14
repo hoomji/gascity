@@ -706,6 +706,8 @@ type AgentOverride struct {
 	PromptTemplate *string `toml:"prompt_template,omitempty"`
 	// Session overrides the session transport ("acp").
 	Session *string `toml:"session,omitempty"`
+	// Runtime overrides the runtime backend (e.g. "tmux", "ssh:dell").
+	Runtime *string `toml:"runtime,omitempty"`
 	// Provider overrides the provider name.
 	Provider *string `toml:"provider,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
@@ -3478,6 +3480,11 @@ type Agent struct {
 	// "acp" uses the Agent Client Protocol (JSON-RPC over stdio).
 	// The agent's resolved provider must have supports_acp = true.
 	Session string `toml:"session,omitempty" jsonschema:"enum=acp"`
+	// Runtime selects the runtime backend this agent's sessions run on,
+	// using the same names as [session] provider (e.g. "tmux", "ssh:dell",
+	// "exec:<script>"). "" (default) inherits the city-level session
+	// provider. Composes with session = "acp": an ACP agent ignores it.
+	Runtime string `toml:"runtime,omitempty"`
 	// Provider names the provider preset to use for this agent.
 	Provider string `toml:"provider,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.

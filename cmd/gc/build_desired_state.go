@@ -7371,6 +7371,7 @@ func installAgentSideEffects(bp *agentBuildParams, cfgAgent *config.Agent, tp Te
 			autoSP.RouteACP(tp.SessionName)
 		}
 	}
+	routeTemplateRuntime(bp.sp, tp.SessionName, tp)
 }
 
 // hooksWithoutClaude returns ih with any "claude" entries filtered out.

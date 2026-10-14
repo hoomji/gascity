@@ -115,6 +115,10 @@ type TemplateParams struct {
 	// EffectiveSessionProvider is the actual session provider after applying
 	// city-level defaults.
 	EffectiveSessionProvider string
+	// Runtime is the agent's runtime selection name when it differs from the
+	// city's session provider (config.Agent.Runtime); "" when the agent
+	// inherits the city's provider or uses the ACP transport.
+	Runtime string
 	// CityRuntimes is the city's pack-declared runtime registry
 	// (config.City.Runtimes), keyed by selection name. Consulted by
 	// promptDelivery's oversized-prompt guard so a pack-declared runtime
@@ -768,6 +772,12 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	}
 	params.SessionOverride = cfgAgent.Session
 	params.EffectiveSessionProvider = effectiveSessionProvider(cfgAgent.Session, p.sessionProvider)
+	if !params.IsACP {
+		params.Runtime = agentRuntimeFor(p.city, *cfgAgent, p.sessionProvider)
+		if params.Runtime != "" && strings.TrimSpace(cfgAgent.Session) == "" {
+			params.EffectiveSessionProvider = params.Runtime
+		}
+	}
 	if p.city != nil {
 		params.CityRuntimes = p.city.Runtimes
 	}

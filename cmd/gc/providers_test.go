@@ -1559,3 +1559,56 @@ func TestNewSessionProviderFromContextPreservesRawErrorForExistingCallers(t *tes
 		t.Fatalf("supervisor boundary error = %q, want %q", got, want)
 	}
 }
+
+func TestNewSessionProviderRoutesAgentRuntime(t *testing.T) {
+	localFake := runtime.NewFake()
+	acpFake := runtime.NewFake()
+	remoteFake := runtime.NewFake()
+	oldBuild := buildSessionProviderByName
+	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
+	buildSessionProviderByName = func(_ *config.City, name string, _ config.SessionConfig, _, _ string) (runtime.Provider, error) {
+		switch name {
+		case "ssh:dell":
+			return remoteFake, nil
+		case "acp":
+			return acpFake, nil
+		}
+		return localFake, nil
+	}
+
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "test-city"},
+		Agents: []config.Agent{
+			{Name: "local-worker"},
+			{Name: "dell-worker", Runtime: "ssh:dell"},
+		},
+	}
+	sp, err := newSessionProviderFromContext(sessionProviderContextForCity(cfg, t.TempDir(), "fake"), nil)
+	if err != nil {
+		t.Fatalf("newSessionProviderFromContext: %v", err)
+	}
+
+	dell := agent.SessionNameFor("test-city", "dell-worker", "")
+	local := agent.SessionNameFor("test-city", "local-worker", "")
+	for _, name := range []string{dell, local} {
+		if err := sp.Start(t.Context(), name, runtime.Config{Command: "test"}); err != nil {
+			t.Fatalf("Start(%s): %v", name, err)
+		}
+	}
+	if !remoteFake.IsRunning(dell) || localFake.IsRunning(dell) {
+		t.Errorf("session %q (runtime = \"ssh:dell\") did not run on the ssh:dell runtime", dell)
+	}
+	if !localFake.IsRunning(local) || remoteFake.IsRunning(local) {
+		t.Errorf("session %q (no runtime) did not run on the city's provider", local)
+	}
+
+	// A pool instance's name is not known at construction; it is routed at
+	// start from its TemplateParams.
+	routeTemplateRuntime(sp, "dell-worker-7", TemplateParams{Runtime: "ssh:dell"})
+	if err := sp.Start(t.Context(), "dell-worker-7", runtime.Config{Command: "test"}); err != nil {
+		t.Fatalf("Start(dell-worker-7): %v", err)
+	}
+	if !remoteFake.IsRunning("dell-worker-7") {
+		t.Error("pool instance routed at start did not run on the ssh:dell runtime")
+	}
+}
