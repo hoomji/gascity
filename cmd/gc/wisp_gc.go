@@ -173,7 +173,12 @@ type memoryWispGC struct {
 	interval         time.Duration
 	ttl              time.Duration
 	mailRetentionTTL time.Duration
-	lastRun          time.Time
+
+	// mu guards lastRun and sessionPurgeCursor: a pass runs off the tick
+	// goroutine while the tick reads the cadence and a config reload carries
+	// it to the replacement tracker.
+	mu      sync.Mutex
+	lastRun time.Time
 	// sessionPurgeCursor is where the closed infra session sweep resumes: the
 	// last candidate the previous sweep examined, in (created_at, id) order.
 	// nil starts from the oldest candidate; a sweep that reaches the end of the
@@ -221,17 +226,24 @@ func carryWispGCState(prev, next wispGC) wispGC {
 	if !ok || n == nil {
 		return next
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	n.lastRun = p.lastRun
 	n.sessionPurgeCursor = p.sessionPurgeCursor
 	return n
 }
 
 func (m *memoryWispGC) shouldRun(now time.Time) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return now.Sub(m.lastRun) >= m.interval
 }
 
 func (m *memoryWispGC) runGC(graphStore beads.GraphStore, sessionLedger beads.SessionStore, mailStore beads.MailStore, now time.Time) (int, error) {
+	m.mu.Lock()
 	m.lastRun = now
+	cursor := m.sessionPurgeCursor
+	m.mu.Unlock()
 	// The molecule/wisp/workflow purge arm operates on the graph-class store; the
 	// read-message retention arm on the messaging-class store. Pass the unwrapped
 	// .Store to the generic beads.Store-typed purge helpers.
@@ -302,8 +314,10 @@ func (m *memoryWispGC) runGC(graphStore beads.GraphStore, sessionLedger beads.Se
 	// GC_REAPER_SESSION_PURGE_AGE — and it never deletes a non-session bead.
 	if m.ttl > 0 && sessionLedger.Store != nil {
 		sessionPurged, next, sessionErr := purgeClosedInfraSessionsPage(sessionLedger.Store, now, infraSessionPurgeAge(),
-			wispGCSessionPurgeBatchCap, wispGCSessionPurgeScanCap, m.sessionPurgeCursor)
+			wispGCSessionPurgeBatchCap, wispGCSessionPurgeScanCap, cursor)
+		m.mu.Lock()
 		m.sessionPurgeCursor = next
+		m.mu.Unlock()
 		purged += sessionPurged
 		deleteErr = errors.Join(deleteErr, sessionErr)
 	}
