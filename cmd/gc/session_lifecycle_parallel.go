@@ -1646,6 +1646,11 @@ func applySchemaOptionOverridesForLaunch(agentCfg *runtime.Config, tp *TemplateP
 	if len(args) > 0 {
 		agentCfg.Command = replaceSchemaFlags(agentCfg.Command, resolved.OptionsSchema, args)
 	}
+	// A chosen option's env reaches the provider the way its flag_args do, so
+	// a harness whose only lever is an env var still receives the choice.
+	if optionEnv := config.ResolveExplicitOptionEnv(resolved.OptionsSchema, fullOptions); len(optionEnv) > 0 {
+		agentCfg.Env = mergeEnv(agentCfg.Env, optionEnv)
+	}
 	if command, err := config.BuildProviderResumeCommand(resolved, overrides); err == nil && strings.TrimSpace(command) != "" {
 		dup := *resolved
 		dup.ResumeCommand = command

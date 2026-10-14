@@ -2123,6 +2123,13 @@
           },
           "type": "array",
           "description": "FlagAliases are equivalent CLI argument sequences stripped from legacy\nprovider args. Like FlagArgs, they stay server-side only."
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Env are environment variables set on the provider process when this\nchoice is selected (e.g. {\"MY_HARNESS_EFFORT\": \"low\"}), for a harness\nwhose only lever for the option is an env var rather than a CLI flag.\nLike FlagArgs, they stay server-side only."
         }
       },
       "additionalProperties": false,

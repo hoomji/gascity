@@ -1308,3 +1308,26 @@ func containsArgPair(args []string, pair []string) bool {
 	}
 	return false
 }
+
+func TestResolveExplicitOptionEnv(t *testing.T) {
+	schema := []ProviderOption{
+		{Key: "model", Type: "select", Choices: []OptionChoice{
+			{Value: "a", Env: map[string]string{"SHARED": "model", "MODEL": "a"}},
+			{Value: "b"},
+		}},
+		{Key: "effort", Type: "select", Choices: []OptionChoice{
+			{Value: "low", Env: map[string]string{"SHARED": "effort", "EFFORT": "low"}},
+		}},
+	}
+	got := ResolveExplicitOptionEnv(schema, map[string]string{"model": "a", "effort": "low"})
+	want := map[string]string{"SHARED": "effort", "MODEL": "a", "EFFORT": "low"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ResolveExplicitOptionEnv = %v, want %v", got, want)
+	}
+	if got := ResolveExplicitOptionEnv(schema, map[string]string{"model": "b"}); got != nil {
+		t.Fatalf("ResolveExplicitOptionEnv(no env choice) = %v, want nil", got)
+	}
+	if got := ResolveExplicitOptionEnv(schema, nil); got != nil {
+		t.Fatalf("ResolveExplicitOptionEnv(nil) = %v, want nil", got)
+	}
+}

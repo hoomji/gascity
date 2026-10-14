@@ -654,6 +654,9 @@ func specToResolved(name string, spec *ProviderSpec) *ResolvedProvider {
 					if len(c.FlagAliases) > 0 {
 						rp.OptionsSchema[i].Choices[j].FlagAliases = cloneStringSlices(c.FlagAliases)
 					}
+					if len(c.Env) > 0 {
+						rp.OptionsSchema[i].Choices[j].Env = cloneStringMap(c.Env)
+					}
 				}
 			}
 		}

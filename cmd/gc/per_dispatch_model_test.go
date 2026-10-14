@@ -850,3 +850,50 @@ func (s *readCountingStore) List(query beads.ListQuery) ([]beads.Bead, error) {
 	s.reads.Add(1)
 	return s.Store.List(query)
 }
+
+// envOptionSchemaProvider is optionSchemaProvider with an env-only effort
+// lever: the harness takes its tier from HARNESS_EFFORT, not a CLI flag.
+func envOptionSchemaProvider() *config.ResolvedProvider {
+	rp := optionSchemaProvider()
+	for i := range rp.OptionsSchema {
+		if rp.OptionsSchema[i].Key != "effort" {
+			continue
+		}
+		rp.OptionsSchema[i].Choices = []config.OptionChoice{
+			{Value: "low", Env: map[string]string{"HARNESS_EFFORT": "low"}},
+			{Value: "high", Env: map[string]string{"HARNESS_EFFORT": "high"}},
+		}
+	}
+	return rp
+}
+
+// TestBuildPreparedStartAppliesWorkBeadOptionEnv pins that a work bead's
+// opt_<key> choice reaches the provider's launch env when the choice carries
+// env rather than flag_args.
+func TestBuildPreparedStartAppliesWorkBeadOptionEnv(t *testing.T) {
+	store := beads.NewMemStore()
+	candidate := newOptionSessionCandidate(t, store, map[string]string{"effort": "high"}, nil)
+	candidate.tp.ResolvedProvider = envOptionSchemaProvider()
+
+	prepared, _, err := buildPreparedStart(candidate, &config.City{}, store)
+	if err != nil {
+		t.Fatalf("buildPreparedStart: %v", err)
+	}
+	if got := prepared.cfg.Env["HARNESS_EFFORT"]; got != "high" {
+		t.Fatalf("prepared env HARNESS_EFFORT = %q, want %q (env = %v)", got, "high", prepared.cfg.Env)
+	}
+}
+
+// TestApplyTemplateOverridesToConfigInfoAppliesOptionEnv pins that the drift
+// fingerprint path sees the same choice env the launch path applies.
+func TestApplyTemplateOverridesToConfigInfoAppliesOptionEnv(t *testing.T) {
+	agentCfg := runtime.Config{Command: "claude", Env: map[string]string{"KEEP": "1"}}
+	tp := TemplateParams{Command: "claude", ResolvedProvider: envOptionSchemaProvider()}
+	applyTemplateOverridesToConfigInfo(&agentCfg, sessionpkg.Info{TemplateOverrides: `{"effort":"low"}`}, tp)
+	if got := agentCfg.Env["HARNESS_EFFORT"]; got != "low" {
+		t.Fatalf("env HARNESS_EFFORT = %q, want %q (env = %v)", got, "low", agentCfg.Env)
+	}
+	if got := agentCfg.Env["KEEP"]; got != "1" {
+		t.Fatalf("env KEEP = %q, want provider env preserved", got)
+	}
+}
