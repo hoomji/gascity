@@ -70,6 +70,15 @@ func (c PreflightChecker) Check(scope string) (PreflightResult, error) {
 	// of a postgres city). Nothing is cached: every Check re-reads metadata,
 	// so a long-lived controller sees an operator's config change on the next
 	// open exactly as before.
+	//
+	// The same holds for the identity probe. identity_match's production reader
+	// dials whatever endpoint the scope's .beads/config.yaml resolves
+	// (cmd/gc.canonicalScopeDoltTarget), and a scope whose metadata names a
+	// non-dolt backend can still carry the dolt.host/dolt.port residue of a
+	// migration -- so on the blocked branch it spent seconds pinging a Dolt
+	// server whose answer could not change a BLOCKED verdict. Identity is not
+	// probed once an earlier check has blocked; the project_id presence check,
+	// which reads metadata only, still runs.
 	var (
 		checks   []PreflightCheckResult
 		bdCtxErr error
@@ -80,7 +89,7 @@ func (c PreflightChecker) Check(scope string) (PreflightResult, error) {
 			metadataCheck,
 			bdContextNotConsultedCheck(PreflightCheckBDContextAgreement, blocker),
 			bdContextNotConsultedCheck(PreflightCheckDoltModeSafe, blocker),
-			c.checkIdentityMatch(scope, metadata),
+			identityNotConsultedCheck(metadata, blocker),
 			bdContextNotConsultedCheck(PreflightCheckVersionCompat, blocker),
 			c.checkContractShape(metadata),
 		}
@@ -145,6 +154,21 @@ func bdContextNotConsultedCheck(id PreflightCheckID, blocker PreflightCheckResul
 		PreflightDetails{MetadataBackend: blocker.Details.MetadataBackend, Provider: blocker.Details.Provider})
 }
 
+// identityNotConsultedCheck reports identity_match for a scope blocker already
+// FAILed: the metadata-only half (is project_id present?) is still evaluated,
+// because it needs no dial and names a real repair, but the database is not
+// asked for its _project_id. It WARNs when project_id is present and FAILs
+// exactly as checkIdentityMatch does when it is missing; neither state can move
+// the gate or the fallback reason off the blocker's FAIL, which comes first.
+func identityNotConsultedCheck(metadata preflightMetadata, blocker PreflightCheckResult) PreflightCheckResult {
+	details := PreflightDetails{MetadataProjectID: metadata.ProjectID}
+	if metadata.ProjectID == "" {
+		return NewPreflightCheckResult(PreflightCheckIdentityMatch, PreflightCheckFail, "metadata project_id is missing", details)
+	}
+	return NewPreflightCheckResult(PreflightCheckIdentityMatch, PreflightCheckWarn,
+		fmt.Sprintf("database identity not probed; native store is already blocked by %s", blocker.ID), details)
+}
+
 func (c PreflightChecker) readMetadata(scope string) (preflightMetadata, error) {
 	files := c.FS
 	if files == nil {
@@ -189,15 +213,45 @@ func ProviderUsesBDContract(provider string) bool {
 	return base == "gc-beads-bd"
 }
 
+// nativeStoreBackends is the set of metadata backends the native store can
+// serve. It is the single answer to "may a native open even be attempted for
+// this metadata backend?": both the preflight's metadata_backend check and the
+// store factory's probe-free pre-check (internal/beads.decideMetadataBackend)
+// read it, so the two cannot disagree. Every backend outside it is decided from
+// metadata.json alone — no bd context, no database dial — because no probe
+// answer can make it native-eligible.
+//
+// It deliberately names what the native store SERVES, not what it refuses:
+// a backend this build has never heard of falls outside the set without
+// anyone having to list it.
+var nativeStoreBackends = map[string]bool{
+	"dolt": true,
+}
+
+// NativeStoreServesBackend reports whether the native store can serve a scope
+// whose .beads/metadata.json names backend. The empty backend is not served:
+// metadata that names nothing is the preflight's "missing" FAIL.
+func NativeStoreServesBackend(backend string) bool {
+	return nativeStoreBackends[strings.TrimSpace(backend)]
+}
+
+// UnsupportedMetadataBackendSummary is the operator-facing reason a scope whose
+// metadata names a backend outside the native store's set falls back to the bd
+// CLI. The preflight check and the factory's probe-free pre-check share it so
+// the logged reason is the same sentence whichever of the two decided.
+func UnsupportedMetadataBackendSummary(backend string) string {
+	return fmt.Sprintf("Metadata backend %q is unsupported; the native store serves dolt only", strings.TrimSpace(backend))
+}
+
 func (c PreflightChecker) checkMetadataBackend(metadata preflightMetadata) PreflightCheckResult {
 	details := PreflightDetails{MetadataBackend: metadata.Backend}
-	switch metadata.Backend {
-	case "dolt":
-		return NewPreflightCheckResult(PreflightCheckMetadataBackend, PreflightCheckPass, "Metadata backend is dolt", details)
-	case "":
+	switch {
+	case metadata.Backend == "":
 		return NewPreflightCheckResult(PreflightCheckMetadataBackend, PreflightCheckFail, "Metadata backend is missing", details)
+	case NativeStoreServesBackend(metadata.Backend):
+		return NewPreflightCheckResult(PreflightCheckMetadataBackend, PreflightCheckPass, fmt.Sprintf("Metadata backend is %s", metadata.Backend), details)
 	default:
-		return NewPreflightCheckResult(PreflightCheckMetadataBackend, PreflightCheckFail, fmt.Sprintf("Metadata backend %q is unsupported; the native store serves dolt only", metadata.Backend), details)
+		return NewPreflightCheckResult(PreflightCheckMetadataBackend, PreflightCheckFail, UnsupportedMetadataBackendSummary(metadata.Backend), details)
 	}
 }
 
