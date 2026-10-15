@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/processenv"
 	"github.com/gastownhall/gascity/internal/runtime"
 	"github.com/gastownhall/gascity/internal/runtime/proctable"
@@ -305,8 +306,26 @@ type executor interface {
 // realExecutor runs actual tmux subprocesses.
 type realExecutor struct{}
 
-func (realExecutor) execute(args []string) (string, error) {
+// tmuxCommand builds a tmux invocation whose environment excludes any native
+// Dolt open window in flight. The first tmux client to find no server starts
+// one that keeps its environment as the global environment of every later
+// session, so a client spawned inside the window (which os.Setenv projects
+// process-wide for BEADS_DOLT_SERVER_DATABASE and friends) would freeze that
+// projection for the life of the server.
+func tmuxCommand(args ...string) *exec.Cmd {
 	cmd := exec.Command("tmux", args...)
+	cmd.Env = beads.ProcessEnvSnapshotExcludingNativeDoltOpen()
+	return cmd
+}
+
+func tmuxCommandContext(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "tmux", args...)
+	cmd.Env = beads.ProcessEnvSnapshotExcludingNativeDoltOpen()
+	return cmd
+}
+
+func (realExecutor) execute(args []string) (string, error) {
+	cmd := tmuxCommand(args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -318,7 +337,7 @@ func (realExecutor) execute(args []string) (string, error) {
 }
 
 func (realExecutor) executeCtx(ctx context.Context, args []string) (string, error) {
-	cmd := exec.CommandContext(ctx, "tmux", args...)
+	cmd := tmuxCommandContext(ctx, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -4947,9 +4966,9 @@ func CurrentSessionName() string {
 	var out []byte
 	var err error
 	if pane != "" {
-		out, err = exec.Command("tmux", "display-message", "-t", pane, "-p", "#{session_name}").Output()
+		out, err = tmuxCommand("display-message", "-t", pane, "-p", "#{session_name}").Output()
 	} else {
-		out, err = exec.Command("tmux", "display-message", "-p", "#{session_name}").Output()
+		out, err = tmuxCommand("display-message", "-p", "#{session_name}").Output()
 	}
 	if err != nil {
 		return ""

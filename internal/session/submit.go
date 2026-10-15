@@ -652,7 +652,7 @@ func ensureSessionSubmitPoller(cityPath, agentName, sessionName string) error {
 			return fmt.Errorf("refusing to start nudge poller with Go test binary %q", exe)
 		}
 		cmd := exec.Command(exe, nudgepoller.CommandArgs(cityPath, sessionName, agentName)...)
-		cmd.Env = execenv.WithUsageMetricsDisabled(os.Environ())
+		cmd.Env = execenv.WithUsageMetricsDisabled(beads.ProcessEnvSnapshotExcludingNativeDoltOpen())
 		logFile, err := os.OpenFile(sessionSubmitPollerLogPath(cityPath, sessionName, agentName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 		if err != nil {
 			return err
