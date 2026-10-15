@@ -802,7 +802,7 @@ func (p *Provider) Attach(name string) error {
 		args = append(args, "-L", p.cfg.SocketName)
 	}
 	args = append(args, "attach-session", "-t", name)
-	cmd := exec.Command("tmux", args...)
+	cmd := tmuxCommand(args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

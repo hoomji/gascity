@@ -97,6 +97,13 @@ func ProcessEnvSnapshotExcludingNativeDoltOpen() []string {
 	return os.Environ()
 }
 
+// HoldNativeDoltOpenEnvWindow projects env as a native Dolt open would and holds
+// nativeDoltOpenEnvMu until release is called. It exists so a caller outside
+// this package can prove its subprocesses do not inherit the projection.
+func HoldNativeDoltOpenEnvWindow(env map[string]string) (release func(), err error) {
+	return withNativeDoltOpenEnv(env)
+}
+
 // AmbientNativeDoltOpenEnv returns the ambient process-env value for key, read
 // under nativeDoltOpenEnvMu so it reflects the restored ambient environment
 // rather than a value a concurrent native Dolt open is temporarily projecting.
