@@ -146,6 +146,38 @@ func ResolveExplicitOptions(schema []ProviderOption, overrides map[string]string
 	return extraArgs, nil
 }
 
+// ExplicitOptionEnv returns the merged Env of the choices selected by
+// overrides, walked in schema declaration order so a later option wins a shared
+// key. It is the env half of ResolveExplicitOptions: a choice can reach a
+// harness whose only lever is an environment variable (e.g. an effort tier read
+// from GC_EFFORT), not just a CLI flag. Values matched only through an open
+// option's FlagTemplate have no declared choice and contribute no env. Callers
+// validate overrides with ResolveExplicitOptions first; unknown keys and values
+// are skipped here. Returns nil when no selected choice carries Env.
+func ExplicitOptionEnv(schema []ProviderOption, overrides map[string]string) map[string]string {
+	if len(overrides) == 0 {
+		return nil
+	}
+	var env map[string]string
+	for _, opt := range schema {
+		value, ok := overrides[opt.Key]
+		if !ok {
+			continue
+		}
+		choice := findChoice(opt.Choices, value)
+		if choice == nil || len(choice.Env) == 0 {
+			continue
+		}
+		if env == nil {
+			env = make(map[string]string, len(choice.Env))
+		}
+		for k, v := range choice.Env {
+			env[k] = v
+		}
+	}
+	return env
+}
+
 func completeResumeCommandDefaults(command, resumeFlag, resumeStyle string, schema []ProviderOption, effectiveDefaults map[string]string) string {
 	if strings.TrimSpace(command) == "" || len(schema) == 0 || len(effectiveDefaults) == 0 {
 		return command

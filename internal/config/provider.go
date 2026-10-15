@@ -57,6 +57,11 @@ type OptionChoice struct {
 	// FlagAliases are equivalent CLI argument sequences stripped from legacy
 	// provider args. Like FlagArgs, they stay server-side only.
 	FlagAliases [][]string `toml:"flag_aliases,omitempty" json:"-"`
+	// Env are environment variables set on the provider process when this
+	// choice is selected (e.g. {"GC_EFFORT" = "low"}), so a harness with no
+	// CLI flag for the option still receives it. Keys merge in schema
+	// declaration order. Like FlagArgs, they stay server-side only.
+	Env map[string]string `toml:"env,omitempty" json:"-"`
 }
 
 // ProviderSpec defines a named provider's startup parameters.
