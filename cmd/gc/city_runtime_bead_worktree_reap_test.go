@@ -43,6 +43,7 @@ func runReapTick(t *testing.T, cr *CityRuntime) {
 	var lastProviderName string
 	var prevPoolRunning map[string]bool
 	cr.tick(context.Background(), &dirty, &lastProviderName, cr.cityPath, &prevPoolRunning, "test")
+	cr.wispGCDone.Wait()
 }
 
 // TestCityRuntimeTick_SkipsClosedBeadWorktreeReapWhenDisabled verifies that the

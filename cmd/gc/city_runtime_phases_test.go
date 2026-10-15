@@ -350,6 +350,9 @@ func newPhaseFixtureRuntime(t *testing.T, withReload, withLane bool) (*CityRunti
 		}
 		runTestInventoryPass(cr)
 	}
+	// The store-call sequence below pins the wisp GC pass in its legacy place in
+	// the tick; the controller runs it off the tick goroutine.
+	cr.wispGCInline = true
 	return cr, store
 }
 
