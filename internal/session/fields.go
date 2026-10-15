@@ -245,7 +245,7 @@ var fields = withObserved(with(with(with(with(with(with(with(registry, false, v2
 	"continuation_claim_nudge_root", "continuation_claim_nudge_store_ref", "continuation_claim_nudge_generation",
 	"continuation_claim_nudge_count", "continuation_claim_nudge_at", "execution_claim_nudge_work", "execution_claim_nudge_root",
 	"execution_claim_nudge_store_ref", "execution_claim_nudge_count", "execution_claim_nudge_at", "execution_claim_nudge_token", "execution_claim_started", "execution_claim_nudge_stalled",
-	"execution_claim_nudge_stalled_token", "execution_claim_hold", "idle_claim_nudge_hold", "continuation_claim_nudge_hold", "warm_bind_notice_trigger"), true, v2(srcHeals, "asleepHealPatch"), "session_key", "started_config_hash",
+	"execution_claim_nudge_stalled_token", "execution_claim_hold", "idle_claim_nudge_hold", "continuation_claim_nudge_hold", "warm_bind_notice_trigger", "execution_claim_nudge_decays"), true, v2(srcHeals, "asleepHealPatch"), "session_key", "started_config_hash",
 	PrimedAtMetadataKey, PrimingAttemptedAtMetadataKey, PromptHashMetadataKey),
 	false, v2("cmd/gc/allocator_create_named.go", "createEffects.writeNamed"), "agent_name", CanonicalInstanceNameMetadata, CanonicalPoolSlotMetadata,
 	"command", NamedSessionIdentityMetadata, NamedSessionModeMetadata, NamedSessionMetadataKey, "continuation_epoch", "dependency_only",
@@ -482,7 +482,7 @@ var registry = slices.Concat([]Field{
 	// are written every pass, under either controller.
 	same(ClassAdvisory, true, sites(legacy("cmd/gc/execution_backstop.go", "writeExecutionClaimMarker")), "execution_claim_nudge_work",
 		"execution_claim_nudge_root", "execution_claim_nudge_store_ref", "execution_claim_nudge_count", "execution_claim_nudge_at",
-		"execution_claim_nudge_token"),
+		"execution_claim_nudge_token", "execution_claim_nudge_decays"),
 	same(ClassAdvisory, true, sites(legacy("cmd/gc/execution_backstop.go", "poolExecutionBackstop.exhausted")), "execution_claim_nudge_stalled",
 		"execution_claim_nudge_stalled_token"),
 	same(ClassAdvisory, true, sites(legacy("cmd/gc/execution_backstop.go", "poolExecutionBackstop.observeHold")), "execution_claim_hold"),

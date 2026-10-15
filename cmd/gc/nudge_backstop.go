@@ -73,6 +73,40 @@ type backstopPredicate interface {
 	clear(store beads.Store, s *beads.Bead, stdout io.Writer) bool
 }
 
+// activityDecayingBackstop is an optional backstopPredicate extension. A
+// predicate whose outstanding condition is also what a working agent looks
+// like (an in-progress claim) cannot tell "working slowly" from "stalled" by
+// bead state alone, so it may re-arm its own pacing window when the runtime
+// observed activity after the previous attempt. The predicate owns the bound.
+type activityDecayingBackstop interface {
+	// decay re-arms the predicate's pacing window for target and reports
+	// whether it did; true ends this tick for the session.
+	decay(store beads.Store, s *beads.Bead, target backstopTarget, sessName string, last, now time.Time, stdout io.Writer) bool
+}
+
+// decayedWindow gives a decaying predicate the chance to re-arm instead of
+// stepping toward the terminal action. attempts>0 is the gate: at attempts==0
+// the grace check already grants the first free pass.
+func decayedWindow(
+	pred backstopPredicate,
+	store beads.Store,
+	s *beads.Bead,
+	target backstopTarget,
+	sessName string,
+	attempts int,
+	last, now time.Time,
+	stdout io.Writer,
+) bool {
+	if attempts == 0 {
+		return false
+	}
+	decayer, ok := pred.(activityDecayingBackstop)
+	if !ok {
+		return false
+	}
+	return decayer.decay(store, s, target, sessName, last, now, stdout)
+}
+
 // backstopHoldObserver is an optional predicate extension. A predicate that
 // implements it is told which engine-level gate held a session this tick
 // (backstopHold* reasons) and when the session became actionable again, so it
@@ -273,6 +307,11 @@ func runNudgeBackstop(
 			clearBackstopHold(pred, store, s, stdout)
 			withdrawBackstopNotices(store, s, label, "the reminder's target changed", stdout)
 			pred.observe(store, s, target, now, stdout)
+			continue
+		}
+
+		if decayedWindow(pred, store, s, target, sessName, attempts, last, now, stdout) {
+			clearBackstopHold(pred, store, s, stdout)
 			continue
 		}
 

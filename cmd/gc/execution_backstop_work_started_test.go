@@ -112,9 +112,13 @@ func TestExecutionBackstopReadsTheWorkStartedCell(t *testing.T) {
 			f.tick(t) // the grace has run
 
 			if !tc.started {
-				if len(f.drained) != 1 || f.sessionMeta(t, executionClaimStartedKey) != "" {
-					t.Fatalf("no started evidence: drains %v, stamp %q; want one drain at 0/3 and no stamp, as before; stdout=%s",
-						f.drained, f.sessionMeta(t, executionClaimStartedKey), f.stdout.String())
+				// City patch (nudge before draining a quiet claimed pool slot): an
+				// unstarted seat with no configured nudge gets the default pool claim
+				// nudge first, not the cold drain at 0/3; still no started stamp.
+				got := f.nudgesDelivered()
+				if len(f.drained) != 0 || len(got) != 1 || !strings.Contains(got[0], "--drain-ack") || f.sessionMeta(t, executionClaimStartedKey) != "" {
+					t.Fatalf("no started evidence: drains %v, nudges %q, stamp %q; want one default pool nudge, no drain and no stamp; stdout=%s",
+						f.drained, got, f.sessionMeta(t, executionClaimStartedKey), f.stdout.String())
 				}
 				return
 			}

@@ -144,6 +144,10 @@ const (
 	// is written only when the reason changes and cleared once the backstop can
 	// act again or the claim is gone.
 	executionClaimHoldKey = "execution_claim_hold"
+	// executionClaimNudgeDecayKey counts the activity re-arms this claim has
+	// spent, so a seat that keeps answering nudges and pausing again is still
+	// drained after a bounded number of windows.
+	executionClaimNudgeDecayKey = "execution_claim_nudge_decays"
 )
 
 // Execution-backstop hold reasons recorded in executionClaimHoldKey, alongside
@@ -509,6 +513,11 @@ func (p poolExecutionBackstop) state(s beads.Bead, target backstopTarget) (same 
 	return same, atoiOr0(s.Metadata[executionClaimNudgeCountKey]), parseRFC3339OrZero(s.Metadata[executionClaimNudgeAtKey])
 }
 
+// maxExecutionClaimNudgeDecays bounds the activity re-arms per claim: with the
+// 3-minute backoff, a seat that answers every nudge and goes quiet again is
+// drained after at most ~7 windows rather than never.
+const maxExecutionClaimNudgeDecays = 6
+
 // content is the agent's configured claim nudge. A seat whose stamp shows the
 // marker's claim started this incarnation gets the held-claim default when
 // none is configured (heldClaimNudgeFor: the started-rung text, which names
@@ -517,11 +526,64 @@ func (p poolExecutionBackstop) state(s beads.Bead, target backstopTarget) (same 
 // default; escalatesNext holds it until the stamp lands. A started seat whose
 // template names no configured agent gets no default either, and is held as
 // executing, as in the stamp-failure case.
+// Any other seat falls back to defaultPoolClaimNudge when the agent is known but
+// configures no nudge (stalledPoolClaimNudgeFor), so a quiet claimed pool slot is
+// nudged before it is drained cold; an unknown template still yields "" (#6524).
 func (p poolExecutionBackstop) content(s beads.Bead) string {
 	if p.markedStarted(s, s.Metadata[executionClaimNudgeWorkKey]) {
 		return heldClaimNudgeFor(p.cfg, s, s.Metadata[executionClaimNudgeWorkKey])
 	}
-	return claimNudgeFor(p.cfg, s)
+	return stalledPoolClaimNudgeFor(p.cfg, s)
+}
+
+// decay implements activityDecayingBackstop: runtime activity after the last
+// attempt means the seat answered the nudge or is working in bursts, so its
+// window re-arms (attempts forgiven) up to maxExecutionClaimNudgeDecays times.
+//
+// An incarnation already escalated on this claim never re-arms, whatever the
+// latch's age: its drain is in flight (activity from a seat answering it is
+// not work to wait out), or was lost and must be re-requested, not traded for
+// a fresh round of nudges.
+//
+// A seat marked started never re-arms either: it is held as executing and gets
+// the held-claim nudge up to the attempt cap, so a re-arm would only re-nudge a
+// seat waiting on a human (TestExecutionBackstopNeverDrainsAStartedSeatWaitingOnAHuman).
+func (p poolExecutionBackstop) decay(store beads.Store, s *beads.Bead, target backstopTarget, sessName string, last, now time.Time, stdout io.Writer) bool {
+	if p.escalated(s) || p.markedStarted(*s, s.Metadata[executionClaimNudgeWorkKey]) || !p.renewedSince(sessName, last) {
+		return false
+	}
+	decays := atoiOr0(s.Metadata[executionClaimNudgeDecayKey])
+	if decays >= maxExecutionClaimNudgeDecays {
+		return false
+	}
+	attempts := atoiOr0(s.Metadata[executionClaimNudgeCountKey])
+	if !writeExecutionClaimMarker(store, s, target, 0, decays+1, now, stdout) {
+		return false
+	}
+	fmt.Fprintf(stdout, //nolint:errcheck // best-effort
+		"execution-claim-nudge: %s showed activity since its last nudge for %s; re-arming its window (re-arm %d/%d, forgiving %d/%d attempts)\n",
+		sessName, target.ID, decays+1, maxExecutionClaimNudgeDecays, attempts, idleClaimNudgeMaxAttempts)
+	return true
+}
+
+// escalated reports whether the session's current incarnation already carries
+// an escalation latch, live or expired.
+func (p poolExecutionBackstop) escalated(s *beads.Bead) bool {
+	return strings.TrimSpace(s.Metadata[executionClaimNudgeStalledKey]) != "" &&
+		strings.TrimSpace(s.Metadata[executionClaimNudgeStalledTokenKey]) == strings.TrimSpace(s.Metadata["instance_token"])
+}
+
+// renewedSince reports whether the runtime observed activity for sessName after
+// last. Fails closed: an unreadable or unset signal is not renewal.
+func (p poolExecutionBackstop) renewedSince(sessName string, last time.Time) bool {
+	if last.IsZero() {
+		return false
+	}
+	activity, err := p.sp.GetLastActivity(sessName)
+	if err != nil || activity.IsZero() {
+		return false
+	}
+	return activity.After(last)
 }
 
 // revalidate re-reads the claim through the owning store's authoritative live
@@ -652,11 +714,11 @@ func (p poolExecutionBackstop) markStarted(s *beads.Bead, beadID string) bool {
 }
 
 func (p poolExecutionBackstop) observe(store beads.Store, s *beads.Bead, target backstopTarget, now time.Time, stdout io.Writer) {
-	writeExecutionClaimMarker(store, s, target, 0, now, stdout)
+	writeExecutionClaimMarker(store, s, target, 0, 0, now, stdout)
 }
 
 func (p poolExecutionBackstop) reserve(store beads.Store, s *beads.Bead, target backstopTarget, attempts int, now time.Time, stdout io.Writer) bool {
-	return writeExecutionClaimMarker(store, s, target, attempts, now, stdout)
+	return writeExecutionClaimMarker(store, s, target, attempts, atoiOr0(s.Metadata[executionClaimNudgeDecayKey]), now, stdout)
 }
 
 // observeHold records which gate held s. It writes only when the reason
@@ -791,8 +853,9 @@ func (p poolExecutionBackstop) clear(store beads.Store, s *beads.Bead, stdout io
 	return clearExecutionClaimMarker(store, s, stdout)
 }
 
-func writeExecutionClaimMarker(store beads.Store, s *beads.Bead, target backstopTarget, attempts int, now time.Time, stdout io.Writer) bool {
+func writeExecutionClaimMarker(store beads.Store, s *beads.Bead, target backstopTarget, attempts, decays int, now time.Time, stdout io.Writer) bool {
 	return writeSessionMetadata(store, s, map[string]string{
+		executionClaimNudgeDecayKey:    strconv.Itoa(decays),
 		executionClaimNudgeWorkKey:     target.ID,
 		executionClaimNudgeRootKey:     target.RootID,
 		executionClaimNudgeStoreRefKey: target.StoreRef,
@@ -817,6 +880,7 @@ func clearExecutionClaimMarker(store beads.Store, s *beads.Bead, stdout io.Write
 		executionClaimNudgeStalledKey,
 		executionClaimNudgeStalledTokenKey,
 		executionClaimHoldKey,
+		executionClaimNudgeDecayKey,
 	}
 	dirty := false
 	for _, key := range keys {
