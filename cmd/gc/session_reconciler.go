@@ -6744,10 +6744,14 @@ func applyTemplateOverridesToConfigInfo(agentCfg *runtime.Config, info sessionpk
 		log.Printf("WARNING: session %s: unhonored template option pin (%v); schema flags not applied", info.ID, err)
 		return
 	}
-	if len(extra) == 0 {
-		return
+	if len(extra) > 0 {
+		agentCfg.Command = replaceSchemaFlags(agentCfg.Command, tp.ResolvedProvider.OptionsSchema, extra)
 	}
-	agentCfg.Command = replaceSchemaFlags(agentCfg.Command, tp.ResolvedProvider.OptionsSchema, extra)
+	// Mirror applySchemaOptionOverridesForLaunch so the drift hash sees the
+	// same choice env the launch sets.
+	if optionEnv := config.ExplicitOptionEnv(tp.ResolvedProvider.OptionsSchema, fullOptions); len(optionEnv) > 0 {
+		agentCfg.Env = mergeEnv(agentCfg.Env, optionEnv)
+	}
 }
 
 // namedSessionActiveUseReasonInfo is the session.Info sibling of

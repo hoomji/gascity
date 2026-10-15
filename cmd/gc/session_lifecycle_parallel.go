@@ -1717,6 +1717,11 @@ func applySchemaOptionOverridesForLaunch(agentCfg *runtime.Config, tp *TemplateP
 	if len(args) > 0 {
 		agentCfg.Command = replaceSchemaFlags(agentCfg.Command, resolved.OptionsSchema, args)
 	}
+	// The chosen choices' env reaches harnesses whose only lever is an env var
+	// (e.g. GC_EFFORT). It is layered over the provider env, so the choice wins.
+	if optionEnv := config.ExplicitOptionEnv(resolved.OptionsSchema, fullOptions); len(optionEnv) > 0 {
+		agentCfg.Env = mergeEnv(agentCfg.Env, optionEnv)
+	}
 	if command, err := config.BuildProviderResumeCommand(resolved, overrides); err == nil && strings.TrimSpace(command) != "" {
 		dup := *resolved
 		dup.ResumeCommand = command

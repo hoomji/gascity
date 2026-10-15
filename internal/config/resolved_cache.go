@@ -186,6 +186,9 @@ func deepCopyResolvedProvider(r ResolvedProvider) ResolvedProvider {
 					if c.FlagAliases != nil {
 						nc.FlagAliases = cloneStringSlices(c.FlagAliases)
 					}
+					if c.Env != nil {
+						nc.Env = cloneStringMap(c.Env)
+					}
 					nopt.Choices[j] = nc
 				}
 			}

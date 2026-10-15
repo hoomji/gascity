@@ -628,6 +628,7 @@ OptionChoice is one allowed value for a "select" option.
 | `label` | string | **yes** |  | Label is the human-readable choice name shown in tooling. |
 | `flag_args` | []string | **yes** |  | FlagArgs are the CLI arguments injected when this choice is selected. json:"-" is intentional: FlagArgs must never appear in the public API DTO (security boundary — prevents clients from seeing internal CLI flags). |
 | `flag_aliases` | []array |  |  | FlagAliases are equivalent CLI argument sequences stripped from legacy provider args. Like FlagArgs, they stay server-side only. |
+| `env` | map[string]string |  |  | Env are environment variables set on the provider process when this choice is selected (e.g. &#123;"GC_EFFORT" = "low"&#125;), so a harness with no CLI flag for the option still receives it. Keys merge in schema declaration order. Like FlagArgs, they stay server-side only. |
 
 ## OrderOverride
 

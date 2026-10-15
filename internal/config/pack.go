@@ -1807,6 +1807,7 @@ func deepCopyOptionChoices(in []OptionChoice) []OptionChoice {
 		out[i] = in[i]
 		out[i].FlagArgs = append([]string(nil), in[i].FlagArgs...)
 		out[i].FlagAliases = cloneStringSlices(in[i].FlagAliases)
+		out[i].Env = cloneStringMap(in[i].Env)
 	}
 	return out
 }
