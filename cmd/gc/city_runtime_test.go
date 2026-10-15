@@ -4130,6 +4130,7 @@ func TestCityRuntimeTick_LogsWispGCPurgeCountWithNonFatalError(t *testing.T) {
 	var lastProviderName string
 	var prevPoolRunning map[string]bool
 	cr.tick(context.Background(), &dirty, &lastProviderName, cr.cityPath, &prevPoolRunning, "test")
+	cr.wispGCDone.Wait()
 
 	if !strings.Contains(stderr.String(), "test-city: wisp gc: delete failed") {
 		t.Fatalf("stderr = %q, want wisp gc error", stderr.String())
@@ -4166,6 +4167,7 @@ func TestCityRuntimeTick_PrefixesEachJoinedWispGCErrorLine(t *testing.T) {
 	var lastProviderName string
 	var prevPoolRunning map[string]bool
 	cr.tick(context.Background(), &dirty, &lastProviderName, cr.cityPath, &prevPoolRunning, "test")
+	cr.wispGCDone.Wait()
 
 	got := stderr.String()
 	for _, want := range []string{
@@ -4175,6 +4177,96 @@ func TestCityRuntimeTick_PrefixesEachJoinedWispGCErrorLine(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stderr = %q, want line %q", got, want)
 		}
+	}
+}
+
+// gatedWispGC holds a run open until released, counting how many runs began, so
+// a test can observe the tick while a pass is in flight.
+type gatedWispGC struct {
+	started chan struct{}
+	release chan struct{}
+	runs    *atomic.Int32
+	purged  int
+}
+
+func (g gatedWispGC) shouldRun(time.Time) bool { return true }
+
+func (g gatedWispGC) runGC(beads.GraphStore, beads.SessionStore, beads.MailStore, time.Time) (int, error) {
+	g.runs.Add(1)
+	g.started <- struct{}{}
+	<-g.release
+	return g.purged, nil
+}
+
+// Kills: the wisp GC pass running on the tick goroutine (the tick blocks for
+// the whole pass), and a due tick stacking a second pass on an in-flight one.
+func TestCityRuntimeTick_WispGCRunsOffTheTickGoroutine(t *testing.T) {
+	var stdout lockedBuffer
+	gc := gatedWispGC{
+		started: make(chan struct{}, 4),
+		release: make(chan struct{}),
+		runs:    &atomic.Int32{},
+		purged:  3,
+	}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(gc.release) }) }
+	t.Cleanup(release)
+	cr := &CityRuntime{
+		cityPath:            t.TempDir(),
+		cityName:            "test-city",
+		cfg:                 &config.City{},
+		sp:                  runtime.NewFake(),
+		standaloneCityStore: beads.NewMemStore(),
+		wg:                  gc,
+		rec:                 events.Discard,
+		logPrefix:           "test-city",
+		stdout:              &stdout,
+		stderr:              io.Discard,
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
+			return DesiredStateResult{State: map[string]TemplateParams{}}
+		},
+	}
+	var dirty atomic.Bool
+	var lastProviderName string
+	var prevPoolRunning map[string]bool
+	tick := func() {
+		cr.tick(context.Background(), &dirty, &lastProviderName, cr.cityPath, &prevPoolRunning, "test")
+	}
+
+	tickReturned := make(chan struct{})
+	go func() {
+		tick()
+		close(tickReturned)
+	}()
+	select {
+	case <-tickReturned:
+	case <-time.After(10 * time.Second):
+		release()
+		t.Fatal("tick blocked on an in-flight wisp GC run")
+	}
+	select {
+	case <-gc.started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the due wisp GC run never started")
+	}
+
+	// A second due tick while the first run is still going must not start another.
+	tick()
+	if got := gc.runs.Load(); got != 1 {
+		t.Fatalf("runs started while one was in flight = %d, want 1", got)
+	}
+
+	release()
+	cr.wispGCDone.Wait()
+	if !strings.Contains(stdout.String(), "Bead GC: purged 3 expired bead(s)") {
+		t.Fatalf("stdout = %q, want the purge count once the run returns", stdout.String())
+	}
+
+	// With the run finished, the next due tick starts a fresh one.
+	tick()
+	cr.wispGCDone.Wait()
+	if got := gc.runs.Load(); got != 2 {
+		t.Fatalf("runs after the first returned = %d, want 2", got)
 	}
 }
 
