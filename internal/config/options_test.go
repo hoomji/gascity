@@ -1308,3 +1308,85 @@ func containsArgPair(args []string, pair []string) bool {
 	}
 	return false
 }
+
+// TestExplicitOptionEnv pins the env half of explicit option resolution: the
+// selected choices' Env merges in schema order, open-template values and
+// unselected options contribute nothing, and no overrides means nil.
+func TestExplicitOptionEnv(t *testing.T) {
+	schema := []ProviderOption{
+		{
+			Key: "effort",
+			Choices: []OptionChoice{
+				{Value: "low", FlagArgs: []string{"--effort", "low"}, Env: map[string]string{"GC_EFFORT": "low"}},
+				{Value: "high", FlagArgs: []string{"--effort", "high"}, Env: map[string]string{"GC_EFFORT": "high", "GC_EFFORT_FLAG": "1"}},
+			},
+		},
+		{
+			Key:          "model",
+			FlagTemplate: []string{"--model", OptionValuePlaceholder},
+			Choices: []OptionChoice{
+				{Value: "sonnet", FlagArgs: []string{"--model", "sonnet"}, Env: map[string]string{"GC_EFFORT": "shared", "GC_MODEL": "sonnet"}},
+			},
+		},
+	}
+
+	if got := ExplicitOptionEnv(schema, nil); got != nil {
+		t.Fatalf("ExplicitOptionEnv(nil) = %v, want nil", got)
+	}
+	if got, want := ExplicitOptionEnv(schema, map[string]string{"effort": "high"}), map[string]string{"GC_EFFORT": "high", "GC_EFFORT_FLAG": "1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ExplicitOptionEnv(effort=high) = %v, want %v", got, want)
+	}
+	if got, want := ExplicitOptionEnv(schema, map[string]string{"model": "sonnet", "effort": "low"}), map[string]string{"GC_EFFORT": "shared", "GC_MODEL": "sonnet"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ExplicitOptionEnv(both) = %v, want %v (later schema option wins a shared key)", got, want)
+	}
+	if got := ExplicitOptionEnv(schema, map[string]string{"model": "some-new-model"}); got != nil {
+		t.Fatalf("ExplicitOptionEnv(open value) = %v, want nil", got)
+	}
+}
+
+// TestOptionChoiceEnvTOMLThroughResolve pins that a choice's env table decodes
+// from city.toml and survives provider resolution as an independent copy.
+func TestOptionChoiceEnvTOMLThroughResolve(t *testing.T) {
+	cfg, err := Parse([]byte(`
+[workspace]
+name = "test"
+
+[providers.dsh]
+command = "dsh-minimal"
+prompt_mode = "arg"
+
+[[providers.dsh.options_schema]]
+key = "effort"
+label = "Effort"
+type = "select"
+default = "low"
+
+  [[providers.dsh.options_schema.choices]]
+  value = "low"
+  label = "Low"
+  env = { GC_EFFORT = "low" }
+
+  [[providers.dsh.options_schema.choices]]
+  value = "high"
+  label = "High"
+  env = { GC_EFFORT = "high" }
+
+[[agent]]
+name = "worker"
+provider = "dsh"
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	rp, err := ResolveProvider(&cfg.Agents[0], &cfg.Workspace, cfg.Providers, lookPathOnly("dsh-minimal"))
+	if err != nil {
+		t.Fatalf("ResolveProvider: %v", err)
+	}
+	if got, want := ExplicitOptionEnv(rp.OptionsSchema, map[string]string{"effort": "high"}), map[string]string{"GC_EFFORT": "high"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved env for effort=high = %v, want %v", got, want)
+	}
+	rp.OptionsSchema[0].Choices[1].Env["GC_EFFORT"] = "mutated"
+	if got := cfg.Providers["dsh"].OptionsSchema[0].Choices[1].Env["GC_EFFORT"]; got != "high" {
+		t.Fatalf("spec env = %q after mutating the resolved copy, want high (no aliasing)", got)
+	}
+}
