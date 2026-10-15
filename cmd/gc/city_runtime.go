@@ -167,6 +167,17 @@ type CityRuntime struct {
 	orderRescanLast         time.Time
 	trace                   *sessionReconcilerTraceManager
 
+	// wispGCRunning marks a wisp GC pass that has been handed off the tick
+	// goroutine and has not returned. A due tick that finds it set skips the
+	// launch rather than stacking a second pass on the same store.
+	// wispGCDone lets tests wait for a handed-off pass.
+	wispGCRunning atomic.Bool
+	wispGCDone    sync.WaitGroup
+	// wispGCInline runs a due pass on the tick goroutine, as the legacy tick
+	// did. Tests that pin the tick's exact store-call order set it; the
+	// controller never does.
+	wispGCInline bool
+
 	// routeRecovery is the route-repair lane: an event-fed delta pass in the
 	// tick and a cadenced authoritative scan behind it. Created on first use so
 	// a directly-constructed runtime needs no wiring.
@@ -1893,6 +1904,10 @@ func (cr *CityRuntime) tickReconcileExecutionCompletions(p *tickPass) bool {
 // city store today, so the GC is byte-identical. The closed session purge arm
 // gets the sessions class only when it is relocated onto a SQLite infra
 // ledger; on an unsplit city it gets nothing and never touches the work store.
+//
+// The pass is handed off the tick goroutine: on a large store it is minutes of
+// serial per-root subprocess probes, and while it ran on the tick no order was
+// dispatched and no session reconciled. The tick only decides a pass is due.
 func (cr *CityRuntime) tickWispGC(p *tickPass) bool {
 	if graphStore := cr.graphBeadStore(); cr.wg != nil && graphStore.Store != nil && cr.wg.shouldRun(time.Now()) {
 		phaseStart := time.Now()
@@ -1904,8 +1919,8 @@ func (cr *CityRuntime) tickWispGC(p *tickPass) bool {
 		if _, relocated := graphClassBinding(cr.storageRoutes); relocated { // residency:allow — asks only whether the graph class is relocated; the legs come from the census plan (workLegs)
 			legs = cr.workLegs()
 		}
-		purged, gcErr := cr.wg.runGC(legs, graphStore, cr.infraSessionLedger(), cr.mailBeadStore(), time.Now())
-		payload := map[string]any{"purged": purged}
+		started := cr.startWispGC(cr.wg, legs, graphStore, cr.infraSessionLedger(), cr.mailBeadStore())
+		payload := map[string]any{"started": started}
 		if legs != nil {
 			// The work arm runs on its own lane; the tick only wakes it and
 			// records how stale its last pass is.
@@ -1916,19 +1931,50 @@ func (cr *CityRuntime) tickWispGC(p *tickPass) bool {
 			}
 		}
 		p.recordPhase(TraceSiteControllerTickPhase, "wisp_gc", phaseStart, payload)
-		if gcErr != nil {
-			for _, line := range strings.Split(gcErr.Error(), "\n") {
-				if line == "" {
-					continue
-				}
-				fmt.Fprintf(cr.stderr, "%s: wisp gc: %s\n", cr.logPrefix, line) //nolint:errcheck // best-effort stderr
-			}
-		}
-		if purged > 0 {
-			fmt.Fprintf(cr.stdout, "Bead GC: purged %d expired bead(s)\n", purged) //nolint:errcheck // best-effort stdout
-		}
 	}
 	return false
+}
+
+// startWispGC runs one wisp GC pass on its own goroutine and returns at once,
+// so the tick never waits on it. At most one pass is in flight: a due tick that
+// finds one running does nothing and reports false. The tracker stamps its own
+// last-run time when the pass begins, so a pass that outlives its interval does
+// not re-trigger itself on return.
+func (cr *CityRuntime) startWispGC(gc wispGC, legs wispGCLegs, graphStore beads.GraphStore, sessionLedger beads.SessionStore, mailStore beads.MailStore) bool {
+	if !cr.wispGCRunning.CompareAndSwap(false, true) {
+		return false
+	}
+	cr.wispGCDone.Add(1)
+	run := func() {
+		defer cr.wispGCDone.Done()
+		defer cr.wispGCRunning.Store(false)
+		cr.safeTick(func() { cr.runWispGCPass(gc, legs, graphStore, sessionLedger, mailStore) }, "wisp-gc")
+	}
+	if cr.wispGCInline {
+		run()
+		return true
+	}
+	go run()
+	return true
+}
+
+// runWispGCPass runs one pass and reports its result: the purge count and
+// duration on stdout, and each line of a joined error on stderr. A pass error
+// is best-effort and never stops the next one.
+func (cr *CityRuntime) runWispGCPass(gc wispGC, legs wispGCLegs, graphStore beads.GraphStore, sessionLedger beads.SessionStore, mailStore beads.MailStore) {
+	start := time.Now()
+	purged, gcErr := gc.runGC(legs, graphStore, sessionLedger, mailStore, start)
+	if gcErr != nil {
+		for _, line := range strings.Split(gcErr.Error(), "\n") {
+			if line == "" {
+				continue
+			}
+			fmt.Fprintf(cr.stderr, "%s: wisp gc: %s\n", cr.logPrefix, line) //nolint:errcheck // best-effort stderr
+		}
+	}
+	if purged > 0 {
+		fmt.Fprintf(cr.stdout, "Bead GC: purged %d expired bead(s) in %s\n", purged, time.Since(start).Round(time.Millisecond)) //nolint:errcheck // best-effort stdout
+	}
 }
 
 func (cr *CityRuntime) tickWorkspaceService(p *tickPass) bool {
