@@ -283,6 +283,10 @@ type preparedStart struct {
 	// re-derivation from the template (S19 re-eligibility).
 	promptDelivered bool
 	promptHash      string
+	// resumeReprimed reports that a resume re-sent the full startup prompt
+	// because the recorded prompt_hash was missing or differed. The commit
+	// stamps prompt_hash alone (no primed_at: a resume is not a fresh launch).
+	resumeReprimed bool
 	// capacityTicket is the endpoint capacity admission for this attempt,
 	// nil when the endpoint is unguarded. Every path that holds one resolves
 	// it exactly once (resolveStartCapacity / abandonCapacityTicket).
@@ -1406,10 +1410,24 @@ func buildPreparedStartWithTranscript(
 	// replays the transient initial_message, so hashing the delivered bytes would
 	// make the stored hash never match the re-derivation and re-prime forever.
 	promptHash := sessionpkg.PromptHash(tp.Prompt)
+	resumeReprimed := false
 	if !firstStart && !forceFresh && hasResumeKey {
 		agentCfg.PromptSuffix = ""
 		agentCfg.PromptFlag = ""
-		agentCfg.Nudge = restartPromptNudge(tp.Prompt, tp.Hints.Nudge)
+		// A resume continues the provider conversation, which already holds
+		// the startup prompt it was primed with. Re-sending the full prompt on
+		// every wake (each gc stop/start, each drain-ack recycle) stacked a
+		// ~13k-token copy per wake into the same context. Deliver the prompt
+		// again only when the rendered template changed since the recorded
+		// priming (S19 Stage 4); otherwise send a short resume note plus the
+		// provider hint so the session still gets a turn. A re-prime stamps
+		// the new hash so the next unchanged resume stays short.
+		if promptHash != "" && candidate.info.PromptHashMetadata == promptHash {
+			agentCfg.Nudge = resumeUnchangedPromptNudge(tp.Hints.Nudge)
+		} else {
+			agentCfg.Nudge = restartPromptNudge(tp.Prompt, tp.Hints.Nudge)
+			resumeReprimed = strings.TrimSpace(tp.Prompt) != ""
+		}
 		if agentCfg.Env != nil {
 			delete(agentCfg.Env, startupPromptDeliveredEnv)
 		}
@@ -1492,6 +1510,7 @@ func buildPreparedStartWithTranscript(
 		prePolicyLaunchHash:    prePolicyLaunchHash,
 		promptDelivered:        promptDelivered,
 		promptHash:             promptHash,
+		resumeReprimed:         resumeReprimed,
 		transcriptRoots:        transcriptRoots,
 		conversationReset:      conversationReset,
 		resumed:                resumed,
@@ -2192,6 +2211,26 @@ func appendInitialMessageToStartupNudge(nudge, msg string) string {
 		return nudge + startupPromptNudgeSeparator + userMessage
 	}
 	return userMessage
+}
+
+// resumePromptHash is the prompt_hash a resume re-prime stamps without
+// primed_at (see preparedStart.resumeReprimed); empty otherwise.
+func resumePromptHash(prepared *preparedStart) string {
+	if prepared == nil || prepared.promptDelivered || !prepared.resumeReprimed {
+		return ""
+	}
+	return prepared.promptHash
+}
+
+// resumeUnchangedPromptNudge is the wake text for a resumed conversation whose
+// startup prompt is unchanged: the prompt is already in the transcript, so only
+// a one-line note (plus the provider's own hint) is typed in.
+func resumeUnchangedPromptNudge(nudge string) string {
+	const note = "Session resumed. Your startup prompt is unchanged and already in this conversation; do not expect it again. Run your wake checklist now."
+	if strings.TrimSpace(nudge) == "" {
+		return note
+	}
+	return note + startupPromptNudgeSeparator + nudge
 }
 
 func restartPromptNudge(prompt, nudge string) string {
@@ -3285,6 +3324,7 @@ func startCommitPatch(prepared *preparedStart, info sessionpkg.Info, now time.Ti
 		Now:                 now,
 		PrimedAt:            primedAt,
 		PromptHash:          promptHash,
+		ResumePromptHash:    resumePromptHash(prepared),
 		RuntimeBinding:      prepared.runtimeBinding,
 	})
 	// The resume backstop (mc-bm1af): whether this incarnation was launched
@@ -3753,6 +3793,7 @@ func recoverRunningPendingCreate(
 		Now:                 now,
 		PrimedAt:            primedAt,
 		PromptHash:          promptHash,
+		ResumePromptHash:    resumePromptHash(prepared),
 		// The runtime is already live: record the thread it hosts the
 		// session in, as every confirmed start does.
 		RuntimeBinding: startedRuntimeBinding(context.Background(), cityPath, sp, prepared.candidate.name()),

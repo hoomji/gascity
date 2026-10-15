@@ -393,6 +393,13 @@ type CommitStartedPatchInput struct {
 	// priming_attempted_at is never emitted here.
 	PrimedAt   time.Time
 	PromptHash string
+	// ResumePromptHash, when non-empty and PrimedAt is zero, records the
+	// prompt_hash of a startup prompt re-sent into a resumed conversation
+	// because the recorded hash was missing or stale. It stamps prompt_hash
+	// alone: primed_at stays the fresh-launch marker, so a resume never
+	// stamps it, while the next resume with an unchanged template sends the
+	// short note instead of the whole prompt again.
+	ResumePromptHash string
 	// RuntimeBinding is the patch recording the thread the runtime hosts
 	// the session in, read after the start (RuntimeBindingPatch); empty
 	// writes no binding keys.
@@ -447,6 +454,8 @@ func CommitStartedPatch(input CommitStartedPatchInput) MetadataPatch {
 	if !input.PrimedAt.IsZero() && input.PromptHash != "" {
 		patch[PrimedAtMetadataKey] = input.PrimedAt.UTC().Format(time.RFC3339)
 		patch[PromptHashMetadataKey] = input.PromptHash
+	} else if input.PrimedAt.IsZero() && input.ResumePromptHash != "" {
+		patch[PromptHashMetadataKey] = input.ResumePromptHash
 	}
 	maps.Copy(patch, input.RuntimeBinding)
 	return patch
