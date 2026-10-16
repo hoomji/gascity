@@ -177,3 +177,28 @@ func TestDoHookClaimPublishesRunMapOnExistingAssignment(t *testing.T) {
 		t.Fatalf("run-map publish = %+v, want existing assignment mapping", spy)
 	}
 }
+
+// The shell probes and the Go claim must agree that mail is never work: an
+// open message ahead of a routed step is skipped and the step is claimed.
+func TestDoHookClaimSkipsMessageBeadAndClaimsRoutedStep(t *testing.T) {
+	spy := &publishRunMapSpy{}
+	ops, opts := claimOpsForRunMap("step-1", map[string]string{"gc.routed_to": "worker"}, spy)
+	ops.Runner = func(string, string) (string, error) {
+		return `[{"id":"msg-1","status":"open","issue_type":"message","assignee":"worker-1"},` +
+			`{"id":"step-1","status":"open","issue_type":"task","metadata":{"gc.routed_to":"worker"}}]`, nil
+	}
+	var claimed []string
+	claim := ops.Claim
+	ops.Claim = func(ctx context.Context, dir string, env []string, id, assignee string) (beads.Bead, bool, error) {
+		claimed = append(claimed, id)
+		return claim(ctx, dir, env, id, assignee)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if !reflect.DeepEqual(claimed, []string{"step-1"}) {
+		t.Fatalf("claimed %q, want only step-1 (message skipped)", claimed)
+	}
+}
