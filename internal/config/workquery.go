@@ -302,6 +302,14 @@ func ephemeralStatusSnapshotShell(shellVar, status string) string {
 		bdQueryEphemeralStatusQuietShell(status) + `); ` + shellVar + `_set=1; }; `
 }
 
+// excludeMessageBeadsJQClause drops mail/message beads. The Go claim path
+// (hookClaimCandidateIsMessage) never serves them, so a shell probe that
+// returned one would end the tick as no_work and starve the routed pool tier
+// below it.
+func excludeMessageBeadsJQClause() string {
+	return ` | select(((.issue_type // .type // "") != "message"))`
+}
+
 // ephemeralReadyBaseSelectorJQ composes the selector clauses shared by every
 // ephemeral ready-tier filter: the caller's own assignee/routing selector,
 // plus the epic exclusion and, when excludeServeLabels is set, the exclusion of
@@ -312,7 +320,7 @@ func ephemeralStatusSnapshotShell(shellVar, status string) string {
 // which is precise enough to prove "definitely no dependencies" but not to
 // resolve whether a nonzero count is still open.
 func ephemeralReadyBaseSelectorJQ(selector string, excludeServeLabels bool) string {
-	body := selector + ` | select(((.issue_type // .type // "") != "epic"))`
+	body := selector + ` | select(((.issue_type // .type // "") != "epic"))` + excludeMessageBeadsJQClause()
 	if excludeServeLabels {
 		body += excludeLabelsJQClause(PoolDemandServeRulesForQuery().ExcludeLabels)
 	}
@@ -856,7 +864,7 @@ func legacyControlAssignedReadyWorkQueryScript(topo QueryTopology) string {
 // re-served on every hook tick (ga-qjozkw).
 func ephemeralAssignedInProgressProbeScript(shellVar string, topo QueryTopology) string {
 	_ = topo
-	filter := `[.[] | select((.assignee // "") == $id)` + excludeHoldLabelsJQClause() + `] | .[:1]`
+	filter := `[.[] | select((.assignee // "") == $id)` + excludeMessageBeadsJQClause() + excludeHoldLabelsJQClause() + `] | .[:1]`
 	// federated=false: this row comes from `bd query`, which never carries a
 	// resolved blocked_by, so the carried-lookup branch would only ever fall
 	// through to bd show — skip straight to it. checkHold=false: the filter
@@ -872,7 +880,7 @@ func ephemeralAssignedInProgressProbeScript(shellVar string, topo QueryTopology)
 
 func ephemeralAssignedInProgressProbeScriptDeferringGraphAnchor(shellVar string, topo QueryTopology) string {
 	_ = topo
-	baseFilter := `[.[] | select((.assignee // "") == $id)` + excludeHoldLabelsJQClause() + `]`
+	baseFilter := `[.[] | select((.assignee // "") == $id)` + excludeMessageBeadsJQClause() + excludeHoldLabelsJQClause() + `]`
 	return ephemeralStatusSnapshotShell("gc_open_ephemeral_in_progress", "in_progress") +
 		`r=$(printf "%s" "$gc_open_ephemeral_in_progress" | jq --arg id "$` + shellVar + `" ` + shellquote.Quote(baseFilter+` | .[:1]`) + ` 2>/dev/null); ` +
 		`if [ -n "$r" ] && [ "$r" != "[]" ]; then ` +
