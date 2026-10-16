@@ -196,7 +196,7 @@ func Catalog() []Entry {
 					"failing mac-quality and skipping every downstream job including the packages-core shard "+
 					"this test would run in) currently blocks that evidence. Promote to proved once ga-csh74h "+
 					"is fixed and a clean Darwin run of TestACPDefaultDirConformance is recorded."+
-					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 7389c31cc610684ba190 (gld-run7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
+					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 2153e797b8f888043788 (gl-run2153e797b8f888043788, retry of 7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
 			),
 			provedRuntime(
 				repoSymbol("internal/runtime/acp", "NewSeamBackedWithDir"),
@@ -230,7 +230,7 @@ func Catalog() []Entry {
 				repoSymbol("internal/runtime/herdr", "New"),
 				time.Date(2026, time.November, 24, 0, 0, 0, 0, time.UTC),
 				"the full conformance run is an opt-in live journey (make test-herdr-live, or GC_FAST_UNIT=0) and skips in the unit lane, in short mode, and when the herdr executable is absent."+
-					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 7389c31cc610684ba190 (gld-run7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
+					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 2153e797b8f888043788 (gl-run2153e797b8f888043788, retry of 7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
 			),
 		),
 		builtin(
@@ -275,7 +275,7 @@ func Catalog() []Entry {
 				repoSymbol("internal/runtime/tmux", "NewSeamBackedWithConfig"),
 				time.Date(2026, time.November, 18, 0, 0, 0, 0, time.UTC),
 				"the existing full conformance run skips when the tmux executable is absent."+
-					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 7389c31cc610684ba190 (gld-run7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
+					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 2153e797b8f888043788 (gl-run2153e797b8f888043788, retry of 7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
 			),
 		),
 		{
