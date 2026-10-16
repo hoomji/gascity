@@ -186,7 +186,7 @@ func Catalog() []Entry {
 			"acp", "exact:acp", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/acp", "NewSeamBacked"),
-				time.Date(2026, time.October, 8, 0, 0, 0, 0, time.UTC),
+				time.Date(2026, time.November, 30, 0, 0, 0, 0, time.UTC),
 				"TestACPDefaultDirConformance (internal/runtime/acp/conformance_test.go) calls "+
 					"NewSeamBacked directly through runtimetest.RunProviderTests with no dir injection, reusing "+
 					"the fakeacp fixture; verified clean on Linux (single run, -count=3 repeated, -race, and two "+
@@ -195,7 +195,8 @@ func Catalog() []Entry {
 					"setup-gascity-macos's go-version default is stale against go.mod's `go 1.26.6` requirement, "+
 					"failing mac-quality and skipping every downstream job including the packages-core shard "+
 					"this test would run in) currently blocks that evidence. Promote to proved once ga-csh74h "+
-					"is fixed and a clean Darwin run of TestACPDefaultDirConformance is recorded.",
+					"is fixed and a clean Darwin run of TestACPDefaultDirConformance is recorded."+
+					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 7389c31cc610684ba190 (gld-run7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
 			),
 			provedRuntime(
 				repoSymbol("internal/runtime/acp", "NewSeamBackedWithDir"),
@@ -227,8 +228,9 @@ func Catalog() []Entry {
 			"herdr", "exact:herdr", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/herdr", "New"),
-				time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC),
-				"the full conformance run is an opt-in live journey (make test-herdr-live, or GC_FAST_UNIT=0) and skips in the unit lane, in short mode, and when the herdr executable is absent",
+				time.Date(2026, time.November, 24, 0, 0, 0, 0, time.UTC),
+				"the full conformance run is an opt-in live journey (make test-herdr-live, or GC_FAST_UNIT=0) and skips in the unit lane, in short mode, and when the herdr executable is absent."+
+					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 7389c31cc610684ba190 (gld-run7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
 			),
 		),
 		builtin(
@@ -271,8 +273,9 @@ func Catalog() []Entry {
 			"tmux", "exact:tmux", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/tmux", "NewSeamBackedWithConfig"),
-				time.Date(2026, time.September, 17, 0, 0, 0, 0, time.UTC),
-				"the existing full conformance run skips when the tmux executable is absent",
+				time.Date(2026, time.November, 18, 0, 0, 0, 0, time.UTC),
+				"the existing full conformance run skips when the tmux executable is absent."+
+					" Re-dated 2026-10-16 under ga-80po0c.3 by fleet dispatch 7389c31cc610684ba190 (gld-run7389c31cc610684ba190): the lapsed waiver still holds, no replacement proof has landed.",
 			),
 		),
 		{
