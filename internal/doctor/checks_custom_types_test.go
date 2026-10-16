@@ -67,6 +67,18 @@ func TestCustomTypesCheck_MissingTypes(t *testing.T) {
 	}
 }
 
+// failOrSkipBD ends a test on a failed bd call. A bd built with CGO_ENABLED=0
+// cannot open an embedded Dolt store at all, which says nothing about the
+// check under test, so that one refusal skips rather than fails; every other
+// failure stays fatal.
+func failOrSkipBD(t *testing.T, args []string, out []byte, err error) {
+	t.Helper()
+	if strings.Contains(string(out), "embedded Dolt requires a CGO build") {
+		t.Skip("bd on PATH was built without CGO and cannot open an embedded Dolt store")
+	}
+	t.Fatalf("bd %s: %v\n%s", strings.Join(args, " "), err, out)
+}
+
 // TestCustomTypesCheck_TableDrift proves detect+heal of the bug this bead
 // fixes: config.yaml's types.custom CSV can list a type (e.g. "step") that
 // the normalized custom_types TABLE doesn't have a row for. bd's create
@@ -119,7 +131,7 @@ func TestCustomTypesCheck_TableDrift(t *testing.T) {
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf("bd %s: %v\n%s", strings.Join(args, " "), err, out)
+			failOrSkipBD(t, args, out, err)
 		}
 		return string(out)
 	}
@@ -211,7 +223,7 @@ func TestCustomTypesCheck_TableDriftUsesTestOwnedDoltContext(t *testing.T) {
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf("bd %s: %v\n%s", strings.Join(args, " "), err, out)
+			failOrSkipBD(t, args, out, err)
 		}
 		return string(out)
 	}
