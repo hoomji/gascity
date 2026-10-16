@@ -85,6 +85,28 @@ func testOwnedHome(t *testing.T) string {
 	return home
 }
 
+// isolateBeadsStore makes dir look like a git repository root so bd's upward
+// search for a workspace stops there. bd walks from its working directory to
+// the nearest git root (or the filesystem root when there is none), and a
+// TMPDIR under a home that holds a live ~/.beads (the fleet layout) hands the
+// throwaway store an ancestor workspace: `bd init` aborts with "Found existing
+// Dolt database" and `bd config get` answers from the ancestor, so the check
+// under test never sees the empty store it was given. A bare HEAD, objects/
+// and refs/ is all git needs to accept the directory as a root, and building
+// it by hand keeps the helper free of a subprocess.
+func isolateBeadsStore(t *testing.T, dir string) {
+	t.Helper()
+	for _, sub := range []string{"objects", "refs"} {
+		if err := os.MkdirAll(filepath.Join(dir, ".git", sub), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	head := filepath.Join(dir, ".git", "HEAD")
+	if err := os.WriteFile(head, []byte("ref: refs/heads/main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRetryRemoveAllRetriesUntilRemovalSucceeds(t *testing.T) {
 	calls := 0
 	err := retryRemoveAll(t.TempDir(), func(string) error {

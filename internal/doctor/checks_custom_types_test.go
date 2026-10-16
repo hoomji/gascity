@@ -50,6 +50,7 @@ func TestCustomTypesCheck_MissingTypes(t *testing.T) {
 	testOwnedHome(t)
 
 	dir := guardedTempDir(t)
+	isolateBeadsStore(t, dir)
 	beadsDir := filepath.Join(dir, ".beads")
 	if err := os.MkdirAll(beadsDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -124,6 +125,7 @@ func TestCustomTypesCheck_TableDrift(t *testing.T) {
 	testOwnedHome(t)
 
 	dir := guardedTempDir(t)
+	isolateBeadsStore(t, dir)
 
 	runBD := func(args ...string) string {
 		t.Helper()
@@ -215,12 +217,21 @@ func TestCustomTypesCheck_TableDriftUsesTestOwnedDoltContext(t *testing.T) {
 
 	home := testOwnedHome(t)
 
-	dir := guardedTempDir(t)
+	// dir sits inside a directory that already holds a bd workspace, the
+	// layout of a TMPDIR under a home with a live ~/.beads: init must create
+	// dir's own store instead of aborting on the ancestor's.
+	ancestor := guardedTempDir(t)
+	isolateBeadsStore(t, ancestor)
+	dir := filepath.Join(ancestor, "nested")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	isolateBeadsStore(t, dir)
 
-	runBD := func(args ...string) string {
+	runBD := func(at string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command("bd", args...)
-		cmd.Dir = dir
+		cmd.Dir = at
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			failOrSkipBD(t, args, out, err)
@@ -228,8 +239,9 @@ func TestCustomTypesCheck_TableDriftUsesTestOwnedDoltContext(t *testing.T) {
 		return string(out)
 	}
 
-	initOut := runBD("init", "--non-interactive", "-p", "tst2", "--skip-hooks", "--skip-agents")
-	setOut := runBD("config", "set", "types.custom", strings.Join(RequiredCustomTypes, ","))
+	runBD(ancestor, "init", "--non-interactive", "-p", "anc", "--skip-hooks", "--skip-agents")
+	initOut := runBD(dir, "init", "--non-interactive", "-p", "tst2", "--skip-hooks", "--skip-agents")
+	setOut := runBD(dir, "config", "set", "types.custom", strings.Join(RequiredCustomTypes, ","))
 
 	homeConfigPath := filepath.Join(home, ".beads", "config.yaml")
 	if _, err := os.Stat(homeConfigPath); !os.IsNotExist(err) {
