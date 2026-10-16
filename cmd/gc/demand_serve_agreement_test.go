@@ -219,10 +219,13 @@ func TestTierThreeServeRulesMatchTheGeneratedQuery(t *testing.T) {
 			t.Errorf("rules exclude label %q but the generated query does not", label)
 		}
 	}
-	// And the reverse: every exclude-type/-label the query carries must be a
-	// declared rule, or the controller is blind to it.
+	// And the reverse: every exclude-type/-label a pool-demand read carries
+	// must be a declared rule, or the controller is blind to it. Assignee-scoped
+	// reads are out of scope: a row with an assignee is never routed pool demand,
+	// so a filter only they carry (--exclude-type=message) cannot blind the
+	// controller.
 	for _, flag := range []string{"--exclude-type=", "--exclude-label "} {
-		for _, got := range queryFlagValues(query, flag) {
+		for _, got := range demandReadFlagValues(query, flag) {
 			if !ruleDeclares(rules, flag, got) {
 				t.Errorf("the generated query carries %s%s but PoolDemandServeRules does not declare it", flag, got)
 			}
@@ -230,9 +233,19 @@ func TestTierThreeServeRulesMatchTheGeneratedQuery(t *testing.T) {
 	}
 }
 
-func queryFlagValues(query, flag string) []string {
+// demandReadFlagValues returns the values of flag across the reads in query
+// that are not scoped to an assignee. Each read is the text from the nearest
+// preceding "$(" to the flag.
+func demandReadFlagValues(query, flag string) []string {
 	var out []string
+	offset := 0
 	for _, part := range strings.Split(query, flag)[1:] {
+		offset += strings.Index(query[offset:], flag)
+		read := query[strings.LastIndex(query[:offset], "$("):offset]
+		offset += len(flag)
+		if strings.Contains(read, "--assignee=") && !strings.Contains(read, "--unassigned") {
+			continue
+		}
 		value := strings.TrimSpace(part)
 		value = strings.Trim(strings.Fields(value)[0], `"`)
 		out = append(out, value)
