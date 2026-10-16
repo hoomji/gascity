@@ -305,9 +305,11 @@ func ephemeralStatusSnapshotShell(shellVar, status string) string {
 // excludeMessageBeadsJQClause drops mail/message beads. The Go claim path
 // (hookClaimCandidateIsMessage) never serves them, so a shell probe that
 // returned one would end the tick as no_work and starve the routed pool tier
-// below it.
+// below it. It folds case and surrounding whitespace exactly as Go does
+// (TrimSpace + EqualFold) and reads only issue_type, the one field Go decodes
+// (beads.Bead.Type); a legacy .type key is not honored on either side.
 func excludeMessageBeadsJQClause() string {
-	return ` | select(((.issue_type // .type // "") != "message"))`
+	return ` | select((((.issue_type // "") | tostring | gsub("^\\s+|\\s+$"; "") | ascii_downcase) != "message"))`
 }
 
 // ephemeralReadyBaseSelectorJQ composes the selector clauses shared by every
@@ -606,7 +608,7 @@ func assignedInProgressTierCommandWithLimit(shellVar string, topo QueryTopology,
 	if fed {
 		reader = gcReadyCommand + ` --status in_progress`
 	}
-	return `r=$(` + reader + ` --assignee="$` + shellVar + `" --json --limit=` + strconv.Itoa(limit) +
+	return `r=$(` + reader + ` --assignee="$` + shellVar + `" --exclude-type=message --json --limit=` + strconv.Itoa(limit) +
 		readyReaderStderrSink(fed) + `)` + readyReaderFailurePropagation(fed) + `; `
 }
 
@@ -778,7 +780,7 @@ func inProgressBlockedByEnrichmentScriptWithServeAction(federated bool, checkHol
 func assignedReadyTierCommand(shellVar string, topo QueryTopology) string {
 	fed := topo.FederatedReady
 	return `r=$(` + readyReaderCommand(fed) + bdReadyIncludeEphemeralArg(topo.includeEphemeralReady()) +
-		` --assignee="$` + shellVar + `" --json --limit=1` + readyReaderStderrSink(fed) + `)` +
+		` --assignee="$` + shellVar + `" --exclude-type=message --json --limit=1` + readyReaderStderrSink(fed) + `)` +
 		readyReaderFailurePropagation(fed) + `; `
 }
 
