@@ -318,12 +318,11 @@ func TestGcBeadsBdProxiedInitDiesWithoutIdleTimeout(t *testing.T) {
 			_ = os.Remove(logPath)
 			writeScopeBeadsMetadata(t, scopeDir, `{"database":"dolt","backend":"dolt","dolt_mode":"proxied-server","dolt_database":"prov"}`)
 			cmd := exec.Command(scriptPath, "init", scopeDir, "prov")
-			cmd.Env = sanitizedBaseEnv(append([]string{
-				"GC_CITY_PATH=" + scopeDir,
-				"BEADS_DIR=" + filepath.Join(scopeDir, ".beads"),
-				"BD_BIN=" + bdPath,
-				"HOME=" + t.TempDir(),
-			}, tc.env...)...)
+			cmd.Env = sanitizedBaseEnv(append(append(gcBeadsBdTestHomeEnv(t),
+				"GC_CITY_PATH="+scopeDir,
+				"BEADS_DIR="+filepath.Join(scopeDir, ".beads"),
+				"BD_BIN="+bdPath,
+			), tc.env...)...)
 			out, err := cmd.CombinedOutput()
 			if err == nil {
 				t.Fatalf("proxied init without %s succeeded:\n%s", config.ProxiedIdleTimeoutEnv, out)
