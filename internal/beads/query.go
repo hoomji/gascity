@@ -3,6 +3,7 @@ package beads
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"time"
 )
@@ -88,6 +89,27 @@ func TierModeFromOpts(opts []QueryOpt) TierMode {
 	}
 }
 
+// MetadataAny is the key and the value set of a ListQuery.MetadataAny filter.
+type MetadataAny struct {
+	Key    string
+	Values []string
+}
+
+// Active reports whether the filter narrows a query. A key with no values is
+// active and matches nothing, so an empty batch cannot widen into a full scan.
+func (m MetadataAny) Active() bool { return m.Key != "" }
+
+// Matches reports whether the bead holds Key with one of Values. A backend
+// that cannot spell the value set, or a wrapper that cannot know whether its
+// inner store honored the filter, uses it to cut the exact answer itself.
+func (m MetadataAny) Matches(b Bead) bool {
+	value, ok := b.Metadata[m.Key]
+	if !ok {
+		return false
+	}
+	return slices.Contains(m.Values, value)
+}
+
 // ListQuery describes a filtered bead lookup.
 //
 // Queries are conjunctive: every populated field must match. A zero-value query
@@ -117,8 +139,16 @@ type ListQuery struct {
 	// into its backend returns a superset, which ApplyListQuery/Matches then cut
 	// exactly — so the RESULT is always exact and only the pushdown is
 	// best-effort. It counts as a filter, so an IDs query needs no AllowScan.
-	IDs           []string
-	Metadata      map[string]string
+	IDs      []string
+	Metadata map[string]string
+	// MetadataAny matches beads whose metadata[Key] equals any of Values: the
+	// IN-list form of a batch of Metadata equality lookups, so a lane that
+	// already knows every value it needs pays one listing instead of one per
+	// value. Backends push down at most the PRESENCE of Key (a superset, since
+	// the value cut is not an equality they can spell as one filter);
+	// Matches cuts the exact answer, so the result is exact whatever the
+	// backend pushed. A zero value is no filter.
+	MetadataAny   MetadataAny
 	CreatedBefore time.Time
 	// UpdatedBefore matches beads whose UpdatedAt is before this timestamp.
 	// Legacy beads with zero UpdatedAt fall back to CreatedAt. Purge callers
@@ -222,6 +252,7 @@ func (q ListQuery) HasFilter() bool {
 		q.ParentID != "" ||
 		len(q.IDs) > 0 ||
 		len(q.Metadata) > 0 ||
+		q.MetadataAny.Active() ||
 		!q.CreatedBefore.IsZero() ||
 		!q.UpdatedBefore.IsZero() ||
 		q.SeekAfter != nil
@@ -295,6 +326,9 @@ func (q ListQuery) Matches(b Bead) bool {
 		}
 	}
 	if len(q.Metadata) > 0 && !matchesMetadata(b, q.Metadata) {
+		return false
+	}
+	if q.MetadataAny.Active() && !q.MetadataAny.Matches(b) {
 		return false
 	}
 	if !q.CreatedBefore.IsZero() && !b.CreatedAt.Before(q.CreatedBefore) {

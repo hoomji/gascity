@@ -3154,6 +3154,10 @@ func (s *BdStore) listViaBDListScoped(query ListQuery, scope bdListScope) ([]Bea
 			args = append(args, "--metadata-field", k+"="+serverQuery.Metadata[k])
 		}
 	}
+	if serverQuery.MetadataAny.Active() {
+		// Presence is all bd can filter on; applyListQuery cuts the values.
+		args = append(args, "--has-metadata-key", serverQuery.MetadataAny.Key)
+	}
 	if query.SkipLabels && serverQuery.Label == "" && s.listSkipLabelsEnabled {
 		args = append(args, "--skip-labels")
 	}
@@ -3199,7 +3203,8 @@ func bdListRequiresClientLimit(query, serverQuery ListQuery, clientFilteredAssig
 	if serverQuery.Sort == SortCreatedAsc || clientFilteredAssignees {
 		return true
 	}
-	if len(serverQuery.Metadata) > 0 || !serverQuery.CreatedBefore.IsZero() || !serverQuery.UpdatedBefore.IsZero() {
+	if len(serverQuery.Metadata) > 0 || serverQuery.MetadataAny.Active() ||
+		!serverQuery.CreatedBefore.IsZero() || !serverQuery.UpdatedBefore.IsZero() {
 		return true
 	}
 	// bd list exposes no compound (created_at, id) seek flag; the boundary is
@@ -3439,6 +3444,7 @@ func canApplyWispsServerLimit(query ListQuery) bool {
 		query.CreatedBefore.IsZero() &&
 		query.UpdatedBefore.IsZero() &&
 		len(query.Metadata) == 0 &&
+		!query.MetadataAny.Active() &&
 		query.SeekAfter == nil
 }
 
@@ -3570,6 +3576,14 @@ func (s *BdStore) ListByMetadata(filters map[string]string, limit int, opts ...Q
 		Sort:          SortCreatedDesc,
 		TierMode:      TierModeFromOpts(opts),
 	})
+}
+
+// ListByMetadataAny returns beads whose metadata[key] is any of values, in one
+// listing. One bd list carries the whole batch: bd can filter on key presence but not
+// on a value set, so the read is the superset of every bead holding the key and
+// the value cut happens in this process.
+func (s *BdStore) ListByMetadataAny(key string, values []string, limit int, opts ...QueryOpt) ([]Bead, error) {
+	return s.List(ListByMetadataAnyQuery(key, values, limit, opts...))
 }
 
 // Children returns beads whose ParentID matches the given ID. Pass

@@ -783,6 +783,25 @@ func (s *emittingClassStore) DepListBatch(ids []string) (map[string][]beads.Dep,
 	return batch.DepListBatch(ids)
 }
 
+// ListByMetadataAny forwards the batched metadata read. It emits nothing
+// because it writes nothing, and it must exist because the embedded Store does
+// not promote an optional capability: without it the sweeps that discover it by
+// type assertion would silently pay one listing per value.
+func (s *emittingClassStore) ListByMetadataAny(key string, values []string, limit int, opts ...beads.QueryOpt) ([]beads.Bead, error) {
+	if lister, ok := s.Store.(beads.MetadataAnyLister); ok {
+		return lister.ListByMetadataAny(key, values, limit, opts...)
+	}
+	query := beads.ListByMetadataAnyQuery(key, values, limit, opts...)
+	rows, err := s.Store.List(query)
+	exact := rows[:0]
+	for _, row := range rows {
+		if query.MetadataAny.Matches(row) {
+			exact = append(exact, row)
+		}
+	}
+	return exact, err
+}
+
 func (s *emittingClassStore) ApplyGraphPlan(ctx context.Context, plan *beads.GraphApplyPlan) (*beads.GraphApplyResult, error) {
 	applier, ok := beads.GraphApplyFor(s.Store)
 	if !ok {

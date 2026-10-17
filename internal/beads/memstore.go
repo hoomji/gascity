@@ -601,6 +601,12 @@ func (m *MemStore) ListByMetadata(filters map[string]string, limit int, opts ...
 	})
 }
 
+// ListByMetadataAny returns beads whose metadata[key] is any of values, in one
+// listing. It is exact: the value cut is ListQuery.Matches.
+func (m *MemStore) ListByMetadataAny(key string, values []string, limit int, opts ...QueryOpt) ([]Bead, error) {
+	return m.List(ListByMetadataAnyQuery(key, values, limit, opts...))
+}
+
 // SetMetadata sets a key-value metadata pair on a bead. Returns a wrapped
 // ErrNotFound if the bead does not exist.
 func (m *MemStore) SetMetadata(id, key, value string) error {

@@ -703,6 +703,11 @@ func nativeListRequestFromListQuery(query ListQuery, pushableTypes map[string]bo
 	if len(query.Metadata) > 0 {
 		req.MetadataFields = query.Metadata
 	}
+	if query.MetadataAny.Active() {
+		// The request spells key presence, not a value set: the backing
+		// answers the superset and ApplyListQuery cuts the values.
+		req.HasMetadataKey = query.MetadataAny.Key
+	}
 	if !query.CreatedBefore.IsZero() {
 		req.CreatedBefore = zeroTimePtr(query.CreatedBefore)
 	}
@@ -748,7 +753,7 @@ func nativeListLimitPushdown(query ListQuery) int {
 	}
 	// SeekAfter, UpdatedBefore and plural Assignees are Go-side too
 	// (ListQuery.Matches), and each is a residual filter for the same reason.
-	if query.SeekAfter != nil || !query.UpdatedBefore.IsZero() || len(query.Assignees) > 0 {
+	if query.SeekAfter != nil || !query.UpdatedBefore.IsZero() || len(query.Assignees) > 0 || query.MetadataAny.Active() {
 		return 0
 	}
 	switch query.Sort {

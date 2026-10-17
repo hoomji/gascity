@@ -656,6 +656,19 @@ func (s *ProxiedStore) ListByMetadata(filters map[string]string, limit int, opts
 	return beads, s.classifyReadError(err)
 }
 
+// ListByMetadataAny reads beads whose metadata[key] is any of values in one
+// listing. A read leaf without the capability answers through its own List,
+// which cuts the same exact set.
+func (s *ProxiedStore) ListByMetadataAny(key string, values []string, limit int, opts ...QueryOpt) ([]Bead, error) {
+	leaf := s.readLeaf()
+	if lister, ok := leaf.(MetadataAnyLister); ok {
+		beads, err := lister.ListByMetadataAny(key, values, limit, opts...)
+		return beads, s.classifyReadError(err)
+	}
+	beads, err := leaf.List(ListByMetadataAnyQuery(key, values, limit, opts...))
+	return beads, s.classifyReadError(err)
+}
+
 // DepList reads one bead's dependency edges. Id-scoped, so H5's guard applies.
 func (s *ProxiedStore) DepList(id, direction string) ([]Dep, error) {
 	if native := s.nativeLeaf(); native != nil {

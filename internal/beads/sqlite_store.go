@@ -1438,7 +1438,7 @@ func sqliteListSQL(q ListQuery, projection string) (string, []any) {
 	// the index. It is a value no-op on these TEXT columns compared to TEXT
 	// values. parent_id and id lists stay indexable: they are selective too.
 	residual := func(column string) string {
-		if len(q.Metadata) > 0 {
+		if len(q.Metadata) > 0 || q.MetadataAny.Active() {
 			return "+" + column
 		}
 		return column
@@ -1507,6 +1507,18 @@ func sqliteListSQL(q ListQuery, projection string) (string, []any) {
 		// cost as the store grew.
 		where = append(where, "b.id IN (SELECT m.bead_id FROM metadata m WHERE m.meta_key=? AND m.meta_value=?)")
 		args = append(args, k, v)
+	}
+	if q.MetadataAny.Active() {
+		placeholders := make([]string, len(q.MetadataAny.Values))
+		args = append(args, q.MetadataAny.Key)
+		for i, v := range q.MetadataAny.Values {
+			placeholders[i] = "?"
+			args = append(args, v)
+		}
+		// Same idx_metadata_key_value driven lookup as the equality above; an
+		// empty value set renders IN (), which SQLite accepts and which
+		// matches nothing, as Matches does.
+		where = append(where, "b.id IN (SELECT m.bead_id FROM metadata m WHERE m.meta_key=? AND m.meta_value IN ("+strings.Join(placeholders, ",")+"))")
 	}
 	sqlText := "SELECT " + projection + " FROM beads b"
 	if len(where) > 0 {
@@ -1746,6 +1758,12 @@ func (s *SQLiteStore) ListByMetadata(filters map[string]string, limit int, opts 
 		Sort:          SortCreatedDesc,
 		TierMode:      TierModeFromOpts(opts),
 	})
+}
+
+// ListByMetadataAny returns beads whose metadata[key] is any of values, in one
+// listing. It is exact: the value cut is ListQuery.Matches.
+func (s *SQLiteStore) ListByMetadataAny(key string, values []string, limit int, opts ...QueryOpt) ([]Bead, error) {
+	return s.List(ListByMetadataAnyQuery(key, values, limit, opts...))
 }
 
 // SetMetadata sets a key-value metadata pair on a bead.
