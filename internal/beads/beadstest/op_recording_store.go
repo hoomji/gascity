@@ -122,6 +122,7 @@ func (r *OpRecordingStore) record(op RecordedOp) {
 		op.Query.Assignees = cloneStrings(op.Query.Assignees)
 		op.Query.IDs = cloneStrings(op.Query.IDs)
 		op.Query.ParentIDs = cloneStrings(op.Query.ParentIDs)
+		op.Query.MetadataAny.Values = cloneStrings(op.Query.MetadataAny.Values)
 	}
 	op.Caller = callerChain()
 	r.mu.Lock()
@@ -271,6 +272,22 @@ func (r *OpRecordingStore) ListByAssignee(assignee, status string, limit int) ([
 func (r *OpRecordingStore) ListByMetadata(filters map[string]string, limit int, opts ...beads.QueryOpt) ([]beads.Bead, error) {
 	out, err := r.delegate.ListByMetadata(filters, limit, opts...)
 	r.recordList("ListByMetadata", beads.ListByMetadataQuery(filters, limit, opts...), err)
+	return out, err
+}
+
+// ListByMetadataAny forwards the batched metadata read and records it as one
+// list op, which is what lets a test count the listings a sweep issued.
+func (r *OpRecordingStore) ListByMetadataAny(key string, values []string, limit int, opts ...beads.QueryOpt) ([]beads.Bead, error) {
+	var (
+		out []beads.Bead
+		err error
+	)
+	if lister, ok := r.delegate.(beads.MetadataAnyLister); ok {
+		out, err = lister.ListByMetadataAny(key, values, limit, opts...)
+	} else {
+		out, err = r.delegate.List(beads.ListByMetadataAnyQuery(key, values, limit, opts...))
+	}
+	r.recordList("ListByMetadataAny", beads.ListByMetadataAnyQuery(key, values, limit, opts...), err)
 	return out, err
 }
 
