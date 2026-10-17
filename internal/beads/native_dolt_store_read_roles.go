@@ -339,9 +339,11 @@ func (s *NativeDoltStore) readyPage(ctx context.Context, storage beadslib.Storag
 		seen[bead.ID] = true
 		beads = append(beads, bead)
 	}
-	beads, err = s.filterReadyByWorkOutcome(ctx, storage, beads)
-	if err != nil {
-		return nil, false, err
+	if !q.SkipWorkOutcomeVeto {
+		beads, err = s.filterReadyByWorkOutcome(ctx, storage, beads)
+		if err != nil {
+			return nil, false, err
+		}
 	}
 	return beads, page.HasMore, nil
 }
