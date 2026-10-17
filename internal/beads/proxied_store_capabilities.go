@@ -44,6 +44,7 @@ var (
 	_ DepMetadataReader                = (*ProxiedStore)(nil)
 	_ ExactBatchGetter                 = (*ProxiedStore)(nil)
 	_ ForeignIDCreator                 = (*ProxiedStore)(nil)
+	_ MetadataAnyLister                = (*ProxiedStore)(nil)
 	_ GraphApplyHandleProvider         = (*ProxiedStore)(nil)
 	_ ParentProjectionWaiter           = (*ProxiedStore)(nil)
 	_ RowWitness                       = (*ProxiedStore)(nil)

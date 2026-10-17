@@ -226,6 +226,7 @@ func NativeListRequestKeyed(req issueops.ListRequest) bool {
 		req.Assignee != "" ||
 		len(req.Labels) > 0 ||
 		len(req.MetadataFields) > 0 ||
+		req.HasMetadataKey != "" ||
 		req.CreatedBefore != nil ||
 		req.Status != "" ||
 		req.IssueType != ""
