@@ -315,9 +315,11 @@ func (s *NativeDoltStore) Ready(queries ...ReadyQuery) ([]Bead, error) {
 		// and truncating first would under-fill the result instead of
 		// backfilling from the candidates behind it (mirrors BdStore.Ready's
 		// candidates-then-filter-then-limit order).
-		beads, err = s.filterReadyByWorkOutcome(ctx, storage, beads)
-		if err != nil {
-			return err
+		if !q.SkipWorkOutcomeVeto {
+			beads, err = s.filterReadyByWorkOutcome(ctx, storage, beads)
+			if err != nil {
+				return err
+			}
 		}
 		if q.Limit > 0 && len(beads) > q.Limit {
 			beads = beads[:q.Limit]

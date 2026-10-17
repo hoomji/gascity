@@ -2707,8 +2707,9 @@ func (s *BdStore) Ping() error {
 // Whitespace is trimmed; an empty or whitespace-only value is treated as
 // absent and no --reason flag is added, preserving backward compatibility
 // for callers that don't pre-stamp a reason. The same map is also written
-// via SetMetadataBatch on each bead before close, so the reason is persisted
-// in the bead's metadata as well as forwarded to bd. If batch close falls
+// via SetMetadataBatch on each bead before close, except close_reason itself
+// when it is forwarded: bd's close_reason column holds it, so it is not also
+// written as metadata. If batch close falls
 // back to per-id closes, the same shared reason is forwarded to every
 // fallback close.
 func (s *BdStore) CloseAll(ids []string, metadata map[string]string) (int, error) {
@@ -2721,14 +2722,18 @@ func (s *BdStore) CloseAll(ids []string, metadata map[string]string) (int, error
 
 	// Set metadata on all beads first (before closing, since some stores
 	// prevent metadata writes on closed beads).
-	if len(metadata) > 0 {
-		if err := s.setMetadataBatchAll(ids, metadata); err != nil {
+	//
+	// close_reason is not one of them when it is forwarded as --reason: bd
+	// records it in its own column, which is what Bead.CloseReason reads back, so
+	// a separate metadata write would only repeat it at the cost of a bd call.
+	reason := strings.TrimSpace(metadata["close_reason"])
+	if toStamp := metadataWithoutForwardedCloseReason(metadata, reason); len(toStamp) > 0 {
+		if err := s.setMetadataBatchAll(ids, toStamp); err != nil {
 			return 0, err
 		}
 	}
 
 	// Batch close: bd close [--reason "..."] id1 id2 id3 ...
-	reason := strings.TrimSpace(metadata["close_reason"])
 	args := bdCloseArgs(reason, ids...)
 	err := s.runBDTransientWrite(args...)
 	if err != nil {
@@ -2748,6 +2753,25 @@ func (s *BdStore) CloseAll(ids []string, metadata map[string]string) (int, error
 		return closed, nil
 	}
 	return len(ids), nil
+}
+
+// metadataWithoutForwardedCloseReason returns the metadata CloseAll still has to
+// stamp once reason is on its way to bd close --reason. It returns metadata
+// itself when nothing is dropped.
+func metadataWithoutForwardedCloseReason(metadata map[string]string, reason string) map[string]string {
+	if reason == "" {
+		return metadata
+	}
+	if _, ok := metadata[closeReasonMetadataKey]; !ok {
+		return metadata
+	}
+	rest := make(map[string]string, len(metadata)-1)
+	for k, v := range metadata {
+		if k != closeReasonMetadataKey {
+			rest[k] = v
+		}
+	}
+	return rest
 }
 
 func (s *BdStore) setMetadataBatchAll(ids []string, kvs map[string]string) error {
@@ -3616,11 +3640,14 @@ func (s *BdStore) Ready(query ...ReadyQuery) ([]Bead, error) {
 		}
 		candidates = append(candidates, bead)
 	}
-	filtered, filterErr := s.filterReadyByWorkOutcome(candidates)
-	if filterErr != nil {
-		return nil, fmt.Errorf("bd ready: %w", filterErr)
+	result := candidates
+	if !q.SkipWorkOutcomeVeto {
+		filtered, filterErr := s.filterReadyByWorkOutcome(candidates)
+		if filterErr != nil {
+			return nil, fmt.Errorf("bd ready: %w", filterErr)
+		}
+		result = filtered
 	}
-	result := filtered
 	if q.Limit > 0 && len(result) > q.Limit {
 		result = result[:q.Limit]
 	}

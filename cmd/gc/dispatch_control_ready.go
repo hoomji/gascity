@@ -300,7 +300,7 @@ func beadsToHookBeads(items []beads.Bead) []hookBead {
 // array that reads as "no work".
 func controlReadyFallbackReady(dir, cityPath string, env map[string]string, includeEphemeral bool) ([]beads.Bead, error) {
 	if binding, relocated := controlGraphBinding(cityPath, dir); relocated {
-		return controlReadyLegReady(dir, binding, includeEphemeral)
+		return controlReadyLegReady(dir, binding, includeEphemeral, false)
 	}
 	scoped, err := controlReadyScopeShellReady(dir, env, includeEphemeral)
 	if err != nil {
@@ -310,7 +310,7 @@ func controlReadyFallbackReady(dir, cityPath string, env map[string]string, incl
 	if !federated {
 		return scoped, nil
 	}
-	graphRows, err := controlReadyLegReady(dir, binding, includeEphemeral)
+	graphRows, err := controlReadyLegReady(dir, binding, includeEphemeral, false)
 	if err != nil {
 		return nil, err
 	}
@@ -378,12 +378,12 @@ func controlReadyScopeShellReady(dir string, env map[string]string, includeEphem
 // applies, --exclude-type is applied in Go because ReadyQuery carries no type
 // selector, and the limit is taken after that exclusion so the batched cap means
 // the same thing on both arms.
-func controlReadyLegReady(dir string, binding beads.Store, includeEphemeral bool) ([]beads.Bead, error) {
+func controlReadyLegReady(dir string, binding beads.Store, includeEphemeral, skipVeto bool) ([]beads.Bead, error) {
 	tier := beads.TierIssues
 	if includeEphemeral {
 		tier = beads.TierBoth
 	}
-	ready, err := binding.Ready(beads.ReadyQuery{TierMode: tier})
+	ready, err := binding.Ready(beads.ReadyQuery{TierMode: tier, SkipWorkOutcomeVeto: skipVeto})
 	if err != nil {
 		return nil, fmt.Errorf("control-ready fallback: reading the graph binding for %s: %w", dir, err)
 	}
@@ -436,6 +436,13 @@ func controlReadyLegReady(dir string, binding beads.Store, includeEphemeral bool
 // the dispatch CREATES (fanout fragments, retry attempts, drain units) would
 // land in a ledger the scan never reads, stalling the workflow at its first hop.
 func controlReadyLegsReady(dir, cityPath string, cfg *config.City) (ready []beads.Bead, ok bool, err error) {
+	return controlReadyLegsReadyOpt(dir, cityPath, cfg, false)
+}
+
+// controlReadyLegsReadyOpt is controlReadyLegsReady with the choice of leaving
+// out the work-outcome veto, for a caller that re-reads before acting
+// (beads.ReadyQuery.SkipWorkOutcomeVeto).
+func controlReadyLegsReadyOpt(dir, cityPath string, cfg *config.City, skipVeto bool) (ready []beads.Bead, ok bool, err error) {
 	sources, owned, err := controlReadyLegSourcesFn(dir, cityPath, cfg)
 	if err != nil {
 		return nil, false, nil
@@ -455,7 +462,7 @@ func controlReadyLegsReady(dir, cityPath string, cfg *config.City) (ready []bead
 	for _, source := range sources {
 		// Read the engine, not the one-shot emitter around a binding leg: the
 		// scan never writes, so the emitter adds nothing.
-		leg, err := controlReadyLegReady(dir, bindingEngine(source), true)
+		leg, err := controlReadyLegReady(dir, bindingEngine(source), true, skipVeto)
 		if err != nil {
 			return nil, true, err
 		}
@@ -529,19 +536,35 @@ func tryControlReadyScan(workQuery, dir string, env map[string]string) (queue []
 	envList := mergeRuntimeEnv(os.Environ(), env)
 
 	start := time.Now()
-	ready, opened, err := controlReadyLegsReady(dir, cityPath, cfg)
+	// The first read leaves out the gc.work_outcome veto, whose blocker reads
+	// cost two more bd calls than the ready read itself. The veto only removes
+	// rows, so an empty answer without it is the answer with it, and that is
+	// nearly every scan. A non-empty one is read again with the veto before
+	// anything is dispatched.
+	ready, opened, err := controlReadyLegsReadyOpt(dir, cityPath, cfg, true)
 	if err != nil {
 		return nil, true, err
 	}
 	source := "ready"
-	if !opened {
+	var evaluated []beads.Bead
+	if opened {
+		evaluated = evaluateControlReady(ready, parsed, envList)
+		if len(evaluated) > 0 {
+			ready, _, err = controlReadyLegsReadyOpt(dir, cityPath, cfg, false)
+			if err != nil {
+				return nil, true, err
+			}
+			evaluated = evaluateControlReady(ready, parsed, envList)
+		}
+	} else {
 		source = "shell"
 		ready, err = controlReadyFallbackReady(dir, cityPath, env, parsed.includeEphemeral)
 		if err != nil {
 			return nil, true, err
 		}
+		evaluated = evaluateControlReady(ready, parsed, envList)
 	}
-	queue = beadsToHookBeads(evaluateControlReady(ready, parsed, envList))
+	queue = beadsToHookBeads(evaluated)
 	workflowTracef("control-ready scan source=%s ready=%d queue=%d dur=%s", source, len(ready), len(queue), time.Since(start))
 	return queue, true, nil
 }
