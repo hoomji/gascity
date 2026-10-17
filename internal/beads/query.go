@@ -227,13 +227,22 @@ type ReadyQuery struct {
 	// equality semantics on every backend (a value that is a JSON literal, a
 	// key outside bd's key grammar) must not push it.
 	MetadataEquals map[string]string
+
+	// SkipWorkOutcomeVeto asks a store that applies the gc.work_outcome=blocked
+	// veto itself (BdStore, NativeDoltStore) to leave it out, which saves the
+	// blocker reads that veto costs on every call. The answer may then include a
+	// bead whose blocking dependency closed as blocked, so a caller must read
+	// again without this flag before acting on any row. A store that cannot skip
+	// the veto ignores the flag and answers with it applied, which is only
+	// stricter.
+	SkipWorkOutcomeVeto bool
 }
 
 // IsZero reports whether q selects nothing beyond Ready's historical default:
 // every open, unblocked, main-tier bead.
 func (q ReadyQuery) IsZero() bool {
 	return q.Assignee == "" && q.Limit == 0 && q.TierMode == TierIssues &&
-		!q.Unassigned && len(q.MetadataEquals) == 0
+		!q.Unassigned && len(q.MetadataEquals) == 0 && !q.SkipWorkOutcomeVeto
 }
 
 func readyQueryFromArgs(queries []ReadyQuery) ReadyQuery {

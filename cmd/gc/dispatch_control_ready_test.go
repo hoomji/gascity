@@ -366,9 +366,11 @@ func TestTryControlReadyScanReturnsUnhandledForNonControlQuery(t *testing.T) {
 }
 
 // TestTryControlReadyScanMakesOneBDCallPerBdLeg pins the scan's cost on a
-// bd-backed scope (ga-vnycm2.19): the whole tick is one `bd ready` call -- not
-// the shell script's N per-candidate/route calls, and not the four-list prime
-// plus ready projection the snapshot it replaced paid on every scan.
+// bd-backed scope (ga-vnycm2.19): a tick that finds work is two `bd ready`
+// calls, one without the work-outcome veto and the re-read with it -- not the
+// shell script's N per-candidate/route calls, and not the four-list prime
+// plus ready projection the snapshot it replaced paid on every scan. An idle
+// tick is the first call alone (TestControlReadyScanWithNoControlWorkReadsOnceWithoutTheVeto).
 func TestTryControlReadyScanMakesOneBDCallPerBdLeg(t *testing.T) {
 	configureIsolatedRuntimeEnv(t)
 	cityDir := t.TempDir()
@@ -417,8 +419,13 @@ esac
 		t.Fatalf("read bd log: %v", err)
 	}
 	calls := strings.Split(strings.TrimSpace(string(logData)), "\n")
-	if len(calls) != 1 || !strings.HasPrefix(calls[0], "ready ") || !strings.Contains(calls[0], "--include-ephemeral") {
-		t.Fatalf("bd calls = %q, want exactly one `bd ready --include-ephemeral` call per scan", calls)
+	if len(calls) != 2 {
+		t.Fatalf("bd calls = %q, want exactly two `bd ready --include-ephemeral` calls for a scan that finds work", calls)
+	}
+	for _, call := range calls {
+		if !strings.HasPrefix(call, "ready ") || !strings.Contains(call, "--include-ephemeral") {
+			t.Fatalf("bd calls = %q, want only `bd ready --include-ephemeral`", calls)
+		}
 	}
 }
 
