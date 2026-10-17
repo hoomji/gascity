@@ -4552,8 +4552,9 @@ func TestGcBeadsBdProxiedExternalTranslatesExactRCFlags(t *testing.T) {
 	}
 	scriptPath := filepath.Join(repoRootForLint(t), "examples", "bd", "assets", "scripts", "gc-beads-bd.sh")
 	cmd := exec.Command(scriptPath, "init", cityDir, "gc", "hq")
-	cmd.Env = append(os.Environ(),
-		"HOME="+t.TempDir(),
+	// op_init runs ensure_beads_role, which needs a writable global git
+	// config; HOME alone loses to an inherited GIT_CONFIG_GLOBAL.
+	cmd.Env = append(append(os.Environ(), gcBeadsBdTestHomeEnv(t)...),
 		"GC_CITY_PATH="+cityDir,
 		"GC_BIN="+gcPath,
 		"BD_BIN="+bdPath,
