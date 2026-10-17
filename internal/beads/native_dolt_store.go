@@ -2601,6 +2601,12 @@ func (s *NativeDoltStore) ListByMetadata(filters map[string]string, limit int, o
 	return s.List(ListByMetadataQuery(filters, limit, opts...))
 }
 
+// ListByMetadataAny returns beads whose metadata[key] is any of values, in one
+// listing. It is exact: the value cut is ListQuery.Matches.
+func (s *NativeDoltStore) ListByMetadataAny(key string, values []string, limit int, opts ...QueryOpt) ([]Bead, error) {
+	return s.List(ListByMetadataAnyQuery(key, values, limit, opts...))
+}
+
 // SetMetadata sets a single metadata key on a bead.
 func (s *NativeDoltStore) SetMetadata(id, key, value string) error {
 	return s.SetMetadataBatch(id, map[string]string{key: value})

@@ -769,3 +769,44 @@ func TestBeadPolicyStoreReportsNoEvidenceWithoutInnerWitness(t *testing.T) {
 		t.Fatal("SawRows() = true over a store that cannot witness itself")
 	}
 }
+
+// TestBeadPolicyStoreForwardsMetadataAnyAndCutsExactly: the controller reads its
+// city store through this wrapper, and a sweep discovers the batched metadata
+// read by type assertion, so a wrapper that hid it would silently put every
+// sweep back on one listing per value. The answer must stay exact even when the
+// inner store ignores the value set and returns every holder of the key.
+func TestBeadPolicyStoreForwardsMetadataAnyAndCutsExactly(t *testing.T) {
+	inner := beads.NewMemStore()
+	for _, root := range []string{"root-a", "root-b", "root-c"} {
+		if _, err := inner.Create(beads.Bead{Title: root, Metadata: map[string]string{"gc.root_bead_id": root}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := wrapStoreWithBeadPolicies(&supersetListStore{Store: inner}, &config.City{})
+
+	lister, ok := store.(beads.MetadataAnyLister)
+	if !ok {
+		t.Fatal("policy store does not implement beads.MetadataAnyLister; sweeps would fall back to one listing per value")
+	}
+	got, err := lister.ListByMetadataAny("gc.root_bead_id", []string{"root-a", "root-c"}, 0, beads.IncludeClosed, beads.WithBothTiers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var titles []string
+	for _, row := range got {
+		titles = append(titles, row.Title)
+	}
+	if len(titles) != 2 || !(titles[0] == "root-a" && titles[1] == "root-c" || titles[0] == "root-c" && titles[1] == "root-a") {
+		t.Fatalf("rows = %v, want exactly root-a and root-c", titles)
+	}
+}
+
+// supersetListStore answers a MetadataAny query the way a backend that can push
+// key presence only does: every holder of the key, value set ignored.
+type supersetListStore struct{ beads.Store }
+
+func (s *supersetListStore) List(query beads.ListQuery) ([]beads.Bead, error) {
+	query.MetadataAny.Values = nil
+	query.MetadataAny.Key = ""
+	return s.Store.List(query)
+}

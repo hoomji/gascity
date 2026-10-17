@@ -162,6 +162,7 @@ go_test(
         "membership_vocabulary_test.go",
         "memstore_honor_ids_test.go",
         "memstore_test.go",
+        "metadata_any_internal_test.go",
         "metadata_cas_operation_test.go",
         "metadata_empty_clear_conformance_test.go",
         "namespace_census_test.go",

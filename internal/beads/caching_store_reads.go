@@ -1126,6 +1126,12 @@ func (c *CachingStore) ListByMetadata(filters map[string]string, limit int, opts
 	})
 }
 
+// ListByMetadataAny returns beads whose metadata[key] is any of values, in one
+// listing. It is exact: the value cut is ListQuery.Matches.
+func (c *CachingStore) ListByMetadataAny(key string, values []string, limit int, opts ...QueryOpt) ([]Bead, error) {
+	return c.List(ListByMetadataAnyQuery(key, values, limit, opts...))
+}
+
 func matchesMetadata(b Bead, filters map[string]string) bool {
 	for k, v := range filters {
 		if b.Metadata[k] != v {

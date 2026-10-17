@@ -342,6 +342,23 @@ func (s *beadPolicyStore) ListByMetadata(filters map[string]string, limit int, o
 	})
 }
 
+// ListByMetadataAny keeps the batched metadata read: embedding Store alone
+// would hide it, and the sweeps that discover it by type assertion would fall
+// back to one listing per value.
+func (s *beadPolicyStore) ListByMetadataAny(key string, values []string, limit int, opts ...beads.QueryOpt) ([]beads.Bead, error) {
+	query := beads.ListByMetadataAnyQuery(key, values, limit, opts...)
+	query.TierMode = policyTierFromOpts(opts)
+	rows, err := s.List(query)
+	// An inner store that cannot push the value set answers a superset.
+	exact := rows[:0]
+	for _, row := range rows {
+		if query.MetadataAny.Matches(row) {
+			exact = append(exact, row)
+		}
+	}
+	return exact, err
+}
+
 func (s *beadPolicyStore) ListOpen(status ...string) ([]beads.Bead, error) {
 	wantStatus := "open"
 	if len(status) > 0 && strings.TrimSpace(status[0]) != "" {
