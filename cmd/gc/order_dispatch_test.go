@@ -10979,7 +10979,7 @@ func TestOrderDispatchExecRunWritesTwiceOnSuccess(t *testing.T) {
 	}
 	all := trackingBeads(t, store, "order-run:tick-exec")
 	if len(all) != 1 || !slicesContain(all[0].Labels, "exec") || all[0].Status != "closed" {
-		t.Fatalf("tracking beads = %+v, want one closed bead labelled exec", all)
+		t.Fatalf("tracking beads = %+v, want one closed bead labeled exec", all)
 	}
 }
 
@@ -10996,7 +10996,7 @@ func TestOrderDispatchExecRunFailureStillStampsFailure(t *testing.T) {
 
 	all := trackingBeads(t, store, "order-run:bad-exec")
 	if len(all) != 1 || !slicesContain(all[0].Labels, "exec-failed") {
-		t.Fatalf("tracking beads = %+v, want one bead labelled exec-failed", all)
+		t.Fatalf("tracking beads = %+v, want one bead labeled exec-failed", all)
 	}
 	run, ok := orders.RunFromTrackingBead(all[0])
 	if !ok || run.Outcome != orders.RunOutcomeExecFailed {
