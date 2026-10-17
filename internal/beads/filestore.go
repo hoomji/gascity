@@ -648,6 +648,17 @@ func (fs *FileStore) ListByMetadata(filters map[string]string, limit int, opts .
 	return fs.MemStore.ListByMetadata(filters, limit, opts...)
 }
 
+// ListByMetadataAny reloads the on-disk store before listing beads by a
+// metadata value set.
+func (fs *FileStore) ListByMetadataAny(key string, values []string, limit int, opts ...QueryOpt) ([]Bead, error) {
+	fs.fmu.Lock()
+	defer fs.fmu.Unlock()
+	if err := fs.refreshReadStateLocked(); err != nil {
+		return nil, err
+	}
+	return fs.MemStore.ListByMetadataAny(key, values, limit, opts...)
+}
+
 // Ping checks that the store file is accessible.
 func (fs *FileStore) Ping() error {
 	if err := fs.MemStore.Ping(); err != nil {

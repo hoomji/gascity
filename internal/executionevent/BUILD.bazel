@@ -23,6 +23,7 @@ go_test(
         "completion_sweep_path_test.go",
         "lifecycle_test.go",
         "projector_test.go",
+        "reconcile_batched_steps_test.go",
         "reconcile_budget_test.go",
         "testenv_import_test.go",
     ],
@@ -30,6 +31,7 @@ go_test(
     deps = [
         "//internal/beadmeta",
         "//internal/beads",
+        "//internal/beads/beadstest",
         "//internal/events",
         "//internal/testenv",
     ],

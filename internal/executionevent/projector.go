@@ -355,6 +355,13 @@ func currentStepRows(store beads.GraphStore, rootID string) ([]stepRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing workflow steps for root %q: %w", rootID, err)
 	}
+	return stepRowsOf(rootID, rows), nil
+}
+
+// stepRowsOf decides which of a root's listed rows are projected steps. It is
+// the one filter both the per-root listing and the batched chunk listing feed,
+// so the two paths cannot disagree about what a step is.
+func stepRowsOf(rootID string, rows []beads.Bead) []stepRow {
 	byID := make(map[string]beads.Bead, len(rows))
 	for _, row := range rows {
 		byID[row.ID] = row
@@ -385,7 +392,38 @@ func currentStepRows(store beads.GraphStore, rootID string) ([]stepRow, error) {
 			bead: row,
 		})
 	}
-	return steps, nil
+	return steps
+}
+
+// chunkStepRows reads the step rows of every root in one listing when the store
+// offers it, grouped by the root each row names. It answers nil, false when the
+// store cannot or the read fails, and the caller then lists per root, which
+// reaches the same rows one query at a time.
+//
+// The read is the batched form of currentStepRows' ListByMetadata, with the
+// same closed rows and both tiers, so a row lands in a root's group exactly
+// when the per-root listing would have returned it.
+func chunkStepRows(store beads.GraphStore, rootIDs []string) (map[string][]beads.Bead, bool) {
+	lister, ok := store.Store.(beads.MetadataAnyLister)
+	if !ok || len(rootIDs) == 0 {
+		return nil, false
+	}
+	rows, err := lister.ListByMetadataAny(
+		beadmeta.RootBeadIDMetadataKey,
+		rootIDs,
+		0,
+		beads.IncludeClosed,
+		beads.WithBothTiers,
+	)
+	if err != nil {
+		return nil, false
+	}
+	grouped := make(map[string][]beads.Bead, len(rootIDs))
+	for _, row := range rows {
+		rootID := row.Metadata[beadmeta.RootBeadIDMetadataKey]
+		grouped[rootID] = append(grouped[rootID], row)
+	}
+	return grouped, true
 }
 
 func canonicalTopology(raw, stepID string) *[]string {
@@ -1121,14 +1159,27 @@ func storeFanSignature(graphStores []beads.GraphStore) string {
 // stamp is written or cleared from the signals its step pass gathered.
 func reconcileRoots(recorder events.Recorder, graphStore beads.GraphStore, roots []beads.Bead, completed *CompletedFactIndex, actor string) int {
 	emitted := 0
+	workflowRoots := make([]beads.Bead, 0, len(roots))
+	rootIDs := make([]string, 0, len(roots))
 	for _, root := range roots {
 		if root.Metadata[beadmeta.KindMetadataKey] != beadmeta.KindWorkflow ||
 			root.Metadata[beadmeta.FormulaContractMetadataKey] != beadmeta.FormulaContractGraphV2 {
 			continue
 		}
-		rows, err := currentStepRows(graphStore, root.ID)
-		if err != nil {
-			continue
+		workflowRoots = append(workflowRoots, root)
+		rootIDs = append(rootIDs, root.ID)
+	}
+	grouped, batched := chunkStepRows(graphStore, rootIDs)
+	for _, root := range workflowRoots {
+		var rows []stepRow
+		if batched {
+			rows = stepRowsOf(root.ID, grouped[root.ID])
+		} else {
+			var err error
+			rows, err = currentStepRows(graphStore, root.ID)
+			if err != nil {
+				continue
+			}
 		}
 		emittedForRoot, unconfirmedForRoot, everyStepClosed := reconcileRootSteps(recorder, root, rows, completed, actor)
 		emitted += emittedForRoot
