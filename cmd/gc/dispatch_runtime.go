@@ -20,6 +20,7 @@ import (
 	"github.com/gastownhall/gascity/internal/events"
 	"github.com/gastownhall/gascity/internal/formula"
 	"github.com/gastownhall/gascity/internal/graphroute"
+	"github.com/gastownhall/gascity/internal/session"
 	"github.com/gastownhall/gascity/internal/shellquote"
 )
 
@@ -755,10 +756,24 @@ func coalesceWorkflowWakeBurst(eventCh <-chan workflowWatchResult) (int, error) 
 func workflowEventRelevant(evt events.Event) bool {
 	switch evt.Type {
 	case events.BeadCreated, events.BeadClosed, events.BeadUpdated:
-		return true
+		return !workflowEventSubjectNeverControlWork(evt)
 	default:
 		return false
 	}
+}
+
+// workflowEventSubjectNeverControlWork reports a bead event whose bead is one
+// no workflow ever waits on: a session bead or an order-tracking bead. Their
+// writes are the bulk of the event stream (every lease and heartbeat), and each
+// wake costs a full ready scan. An event whose payload does not decode to a bead
+// is relevant, since nothing says what it touched.
+func workflowEventSubjectNeverControlWork(evt events.Event) bool {
+	bead, ok := beads.DecodeBeadEventPayload(evt.Payload)
+	if !ok {
+		return false
+	}
+	return beadLabelsContain(bead.Labels, session.LabelSession) ||
+		beadLabelsContain(bead.Labels, labelOrderTracking)
 }
 
 func workflowServeQuery(workQuery string) string {

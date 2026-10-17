@@ -203,6 +203,14 @@ type ReadyQuery struct {
 	// default Ready reads to TierBoth so no-history and ephemeral policy rows
 	// remain reachable under bd 1.0.4.
 	TierMode TierMode
+	// SkipWorkOutcomeVeto asks a store that applies the gc.work_outcome=blocked
+	// veto itself (BdStore, NativeDoltStore) to leave it out, which saves the
+	// blocker reads that veto costs on every call. The answer may then include a
+	// bead whose blocking dependency closed as blocked, so a caller must read
+	// again without this flag before acting on any row. A store that cannot skip
+	// the veto ignores the flag and answers with it applied, which is only
+	// stricter.
+	SkipWorkOutcomeVeto bool
 }
 
 func readyQueryFromArgs(queries []ReadyQuery) ReadyQuery {
