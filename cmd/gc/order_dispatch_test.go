@@ -188,7 +188,7 @@ func (s selectiveUpdateFailStore) Update(id string, opts beads.UpdateOpts) error
 
 func (s execLabelUpdateFailStore) Update(id string, opts beads.UpdateOpts) error {
 	for _, label := range opts.Labels {
-		if label == "exec" {
+		if label == "exec-failed" {
 			return fmt.Errorf("exec label failed")
 		}
 	}
@@ -826,7 +826,7 @@ func TestOrderDispatchEventExecLabelFailureRecordsOrderFailure(t *testing.T) {
 	var calls int
 	execRun := func(context.Context, string, string, []string) ([]byte, error) {
 		calls++
-		return []byte("ok"), nil
+		return []byte("boom"), errors.New("exit status 1")
 	}
 	var rec memRecorder
 	var stderr bytes.Buffer
@@ -10947,5 +10947,59 @@ func TestHasOpenWorkStrictIgnoresAForgedOrderRunLabel(t *testing.T) {
 	}
 	if summary := entries["digest"]; summary.openWorkTracking || len(summary.openRoots) != 0 {
 		t.Fatalf("index summary %+v, want no run of digest", summary)
+	}
+}
+
+// An exec run costs two store writes: the create, which already carries the exec
+// label, and the close. A failed run still gets its failure label.
+func TestOrderDispatchExecRunWritesTwiceOnSuccess(t *testing.T) {
+	store := &opRecordingStore{Store: beads.NewMemStore()}
+	execRun := func(context.Context, string, string, []string) ([]byte, error) { return nil, nil }
+	ad := buildOrderDispatcherFromListExec([]orders.Order{{
+		Name: "tick-exec", Trigger: "cooldown", Interval: "1m", Exec: "scripts/tick.sh",
+	}}, store, events.NewFailFake(), execRun, events.Discard)
+	mad := ad.(*memoryOrderDispatcher)
+
+	mad.dispatch(context.Background(), t.TempDir(), time.Now())
+	mad.drain(context.Background())
+
+	var writes []string
+	for _, op := range store.recorded() {
+		for _, w := range []string{"Create ", "Update ", "SetMetadata", "Close "} {
+			if strings.HasPrefix(op, w) {
+				writes = append(writes, op)
+			}
+		}
+		if strings.HasPrefix(op, "CloseAll ") {
+			writes = append(writes, op)
+		}
+	}
+	if len(writes) != 2 {
+		t.Fatalf("store writes = %v, want the create and the close only", writes)
+	}
+	all := trackingBeads(t, store, "order-run:tick-exec")
+	if len(all) != 1 || !slicesContain(all[0].Labels, "exec") || all[0].Status != "closed" {
+		t.Fatalf("tracking beads = %+v, want one closed bead labelled exec", all)
+	}
+}
+
+func TestOrderDispatchExecRunFailureStillStampsFailure(t *testing.T) {
+	store := beads.NewMemStore()
+	execRun := func(context.Context, string, string, []string) ([]byte, error) { return nil, errors.New("boom") }
+	ad := buildOrderDispatcherFromListExec([]orders.Order{{
+		Name: "bad-exec", Trigger: "cooldown", Interval: "1m", Exec: "scripts/bad.sh",
+	}}, store, events.NewFailFake(), execRun, events.Discard)
+	mad := ad.(*memoryOrderDispatcher)
+
+	mad.dispatch(context.Background(), t.TempDir(), time.Now())
+	mad.drain(context.Background())
+
+	all := trackingBeads(t, store, "order-run:bad-exec")
+	if len(all) != 1 || !slicesContain(all[0].Labels, "exec-failed") {
+		t.Fatalf("tracking beads = %+v, want one bead labelled exec-failed", all)
+	}
+	run, ok := orders.RunFromTrackingBead(all[0])
+	if !ok || run.Outcome != orders.RunOutcomeExecFailed {
+		t.Fatalf("decoded outcome = %v ok=%t, want ExecFailed", run.Outcome, ok)
 	}
 }

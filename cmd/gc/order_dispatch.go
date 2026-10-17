@@ -333,9 +333,13 @@ type memoryOrderDispatcher struct {
 	dispatchCtx    context.Context
 	dispatchCancel context.CancelFunc
 
-	inflightMu   sync.Mutex
-	inflightN    int
-	inflightDone chan struct{} // closed when inflightN returns to 0; nil when idle
+	// execPrelabeled holds tracking bead ids created already carrying the exec
+	// outcome label, so dispatchExec stamps only a different outcome. A bead
+	// absent from it (a caller that created its own) is stamped as before.
+	execPrelabeled sync.Map
+	inflightMu     sync.Mutex
+	inflightN      int
+	inflightDone   chan struct{} // closed when inflightN returns to 0; nil when idle
 }
 
 type orderDispatchTrackingIndex struct {
@@ -1095,9 +1099,20 @@ func (m *memoryOrderDispatcher) runDispatchGuarded(ctx context.Context, store be
 // A caller tracking its own WaitGroup must register it before calling and
 // release it in onDone (and, on a returned error, itself — nothing launched).
 func (m *memoryOrderDispatcher) launchResolvedDispatch(ctx context.Context, store beads.Store, target execStoreTarget, a orders.Order, cityPath string, vars, execEnv map[string]string, onDone func()) (orders.OrderRun, error) {
-	trackingRun, err := m.orderFrontDoorFor(store).CreateRun(a.ScopedName(), orders.RunOpts{})
+	// An exec run almost always succeeds, so its bead is created with the exec
+	// label instead of paying a second write to add it afterwards. A failure adds
+	// its own label, which outcomeFromLabels ranks above exec, and an open bead
+	// reads as active whatever its outcome label says.
+	opts := orders.RunOpts{}
+	if a.IsExec() {
+		opts.Outcome = orders.RunOutcomeExec
+	}
+	trackingRun, err := m.orderFrontDoorFor(store).CreateRun(a.ScopedName(), opts)
 	if err != nil {
 		return orders.OrderRun{}, err
+	}
+	if opts.Outcome == orders.RunOutcomeExec {
+		m.execPrelabeled.Store(trackingRun.ID, struct{}{})
 	}
 	m.addInflight()
 	m.launchDispatchOne(ctx, store, target, a, cityPath, trackingRun.ID, vars, execEnv, onDone)
@@ -1858,9 +1873,19 @@ func openOrderTrackingIDs(store beads.Store, ids []string) ([]string, error) {
 	return openIDs, nil
 }
 
+// stampExecOutcome labels the tracking bead with outcome, skipping the write
+// when the bead was created with that very label.
+func (m *memoryOrderDispatcher) stampExecOutcome(front *orders.Store, trackingID string, outcome orders.RunOutcome, prelabeled bool) error {
+	if prelabeled && outcome == orders.RunOutcomeExec {
+		return nil
+	}
+	return front.SetOutcome(trackingID, outcome)
+}
+
 // dispatchExec runs an exec order's shell command.
 func (m *memoryOrderDispatcher) dispatchExec(ctx context.Context, front *orders.Store, target execStoreTarget, a orders.Order, cityPath, trackingID string, vars map[string]string) {
 	scoped := a.ScopedName()
+	defer m.execPrelabeled.Delete(trackingID)
 	outcome := orders.RunOutcomeExec
 	var headSeq uint64
 	var hasEventCursor bool
@@ -1946,8 +1971,10 @@ func (m *memoryOrderDispatcher) dispatchExec(ctx context.Context, front *orders.
 	}
 
 	// Label tracking bead with outcome via store (not CLI). For event execs,
-	// cursor labels were already persisted before the command ran.
-	if err := front.SetOutcome(trackingID, outcome); err != nil {
+	// cursor labels were already persisted before the command ran. A success on
+	// a bead created with the exec label has nothing left to stamp.
+	_, prelabeled := m.execPrelabeled.Load(trackingID)
+	if err := m.stampExecOutcome(front, trackingID, outcome, prelabeled); err != nil {
 		logDispatchError(m.stderr, "gc: order %s: failed to label exec tracking bead %s: %v", scoped, trackingID, err)
 		msg := fmt.Sprintf("exec tracking bead %s label failed: %v", trackingID, err)
 		if hasEventCursor {
