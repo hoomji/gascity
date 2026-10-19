@@ -71,12 +71,62 @@ class GCEnrichmentRun:
         }
 
 
+def _provider_families(config_path: str | os.PathLike[str] | None) -> dict[str, str]:
+    """Resolve explicit provider inheritance/launcher configuration, never names.
+
+    Fully custom launchers are accepted only for known collector adapters.
+    Unknown wrappers, missing configs and cycles cannot manufacture a family.
+    """
+    families = {name: name for name in _SUPPORTED_PROVIDERS}
+    if config_path is None:
+        return families
+    import shlex
+    import tomllib
+
+    try:
+        with open(config_path, "rb") as handle:
+            providers = tomllib.load(handle).get("providers", {})
+    except (OSError, ValueError) as exc:
+        raise ObservatoryError("cannot read GC provider configuration") from exc
+    if not isinstance(providers, dict):
+        raise ObservatoryError("GC providers configuration must be a table")
+
+    def resolve(name: str, visiting: set[str]) -> str | None:
+        if name in visiting:
+            return None
+        spec = providers.get(name)
+        if not isinstance(spec, dict):
+            return families.get(name)
+        base = spec.get("base")
+        if isinstance(base, str):
+            if base.startswith("builtin:"):
+                family = base.removeprefix("builtin:")
+                return family if family in _SUPPORTED_PROVIDERS else None
+            return resolve(base.removeprefix("provider:"), visiting | {name})
+        command = spec.get("command")
+        if isinstance(command, str):
+            try:
+                words = shlex.split(command)
+            except ValueError:
+                return None
+            if words:
+                return {"dsh": "dsh", "dsh-minimal": "dsh", "claude": "claude",
+                        "codex": "codex"}.get(Path(words[0]).name)
+        return families.get(name)
+
+    resolved = {name: resolve(name, set()) for name in providers}
+    families.update({name: family for name, family in resolved.items() if family})
+    return families
+
+
 def enrich_gc_sessions(
     store: Any,
     source_path: str | os.PathLike[str],
     *,
     city_id: str,
     host_id: str,
+    include_transcript_repositories: bool = False,
+    city_config: str | os.PathLike[str] | None = None,
 ) -> GCEnrichmentRun:
     """Import exact GC session-key/template bindings from an explicit JSON export.
 
@@ -111,6 +161,7 @@ def enrich_gc_sessions(
             "GC session metadata must be an array or an object with a sessions array"
         )
 
+    provider_families = _provider_families(city_config)
     result = GCEnrichmentRun(rows_read=len(rows))
     remote_cache: dict[str, str | None] = {}
     bindings: dict[tuple[str, str], _SessionBinding] = {}
@@ -121,7 +172,8 @@ def enrich_gc_sessions(
         if not isinstance(raw, dict):
             result.metadata_skipped += 1
             continue
-        provider = _nonempty_string(raw.get("provider"))
+        configured_provider = _nonempty_string(raw.get("provider"))
+        provider = provider_families.get(configured_provider) if configured_provider else None
         session_id = _nonempty_string(raw.get("session_key")) or _nonempty_string(
             raw.get("provider_session_id")
         )
@@ -280,7 +332,8 @@ def enrich_gc_sessions(
                 )
                 result.role_bindings_written += 1
 
-        _enrich_historical_sessions(store, city_id, host_id, remote_cache, result)
+        if include_transcript_repositories:
+            _enrich_historical_sessions(store, city_id, host_id, remote_cache, result)
         store.conn.execute("COMMIT")
     except BaseException:
         if store.conn.in_transaction:
