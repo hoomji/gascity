@@ -52,7 +52,7 @@ from .collapse import (
     kappa_summary,
     label_rows,
 )
-from .errors import SilverError
+from agent_observatory.errors import SilverError
 from .silver import (
     DEFAULT_JUDGE_TEXT_BYTES,
     KAPPA_TRUST_FLOOR,

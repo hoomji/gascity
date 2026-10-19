@@ -14,7 +14,7 @@ try:
 except ImportError:  # pragma: no cover
     import support
 
-from agent_observatory.collapse import (
+from panel.collapse import (
     DEFAULT_MAJORITY,
     PRIMARY_INTENT_COLLAPSE_V1,
     AgreementReference,
@@ -64,10 +64,10 @@ def _fixture_jev():
 
 def run_cli(args, cwd=PACKAGE_ROOT):
     env = dict(os.environ)
-    env["PYTHONPATH"] = PACKAGE_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.path.join(PACKAGE_ROOT, "archive") + os.pathsep + PACKAGE_ROOT + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return subprocess.run(
-        [sys.executable, "-m", "agent_observatory", *args],
+        [sys.executable, "-m", "panel", *args],
         cwd=cwd,
         env=env,
         capture_output=True,

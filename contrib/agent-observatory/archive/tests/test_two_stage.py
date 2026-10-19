@@ -18,11 +18,11 @@ try:
 except ImportError:  # pragma: no cover
     import support
 
-from agent_observatory.collapse import PRIMARY_INTENT_COLLAPSE_V1, load_judge_checkpoint
+from panel.collapse import PRIMARY_INTENT_COLLAPSE_V1, load_judge_checkpoint
 from agent_observatory.errors import SilverError
-from agent_observatory.silver import JudgeSpec
+from panel.silver import JudgeSpec
 from agent_observatory.taxonomy import load_taxonomy
-from agent_observatory.two_stage import (
+from panel.two_stage import (
     EVIDENCE_GATE_PROMPT_VERSION,
     EVIDENCE_KNOWN,
     EVIDENCE_UNKNOWN,
@@ -378,10 +378,10 @@ class ReportWriterTests(unittest.TestCase):
 
 def run_cli(args, cwd=PACKAGE_ROOT):
     env = dict(os.environ)
-    env["PYTHONPATH"] = PACKAGE_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.path.join(PACKAGE_ROOT, "archive") + os.pathsep + PACKAGE_ROOT + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return subprocess.run(
-        [sys.executable, "-m", "agent_observatory", *args],
+        [sys.executable, "-m", "panel", *args],
         cwd=cwd,
         env=env,
         capture_output=True,
