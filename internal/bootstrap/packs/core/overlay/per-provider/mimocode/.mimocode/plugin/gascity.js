@@ -5,6 +5,7 @@
 // plugin API:
 //   - event() is side-effect-only (no prompt injection)
 //   - experimental.chat.system.transform mutates output.system
+//   - chat.message mutates the newest user message and its parts
 //   - experimental.session.compacting → inject context before compaction
 //
 // Gas City uses:
@@ -12,8 +13,15 @@
 //     as session-id persistence and poller bootstrap)
 //   - experimental.session.compacting → gc handoff --auto "context cycle"
 //     and inject the handoff confirmation into the compaction context
-//   - experimental.chat.system.transform → inject gc prime --hook, queued
-//     nudges, and unread mail into the system prompt for each turn
+//   - experimental.chat.system.transform → inject only the session-cached
+//     gc prime --hook context into the system prompt. These bytes must stay
+//     identical from turn to turn: the provider prefix cache keys on the
+//     request head, so one per-turn line here evicts the whole cached
+//     conversation prefix.
+//   - chat.message → append the per-turn volatile injections (the current-time
+//     line and queued nudges from gc nudge drain --inject, plus unread mail
+//     from gc mail check --inject) to the tail of the newest user message.
+//     History keeps its bytes, so only the new tail is a cache miss.
 
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
@@ -22,7 +30,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const GC_MIMOCODE_HOOK_VERSION = 2;
+const GC_MIMOCODE_HOOK_VERSION = 4;
 const GC_BIN = process.env.GC_BIN || "gc";
 // GC_BIN is the explicit override. The fallback order matches Pi hooks so
 // sibling providers resolve the same installed gc before developer-local bins.
@@ -31,7 +39,13 @@ const PATH_PREFIX =
 
 async function runCommand(directory, args, warnOnFailure, extraEnv = {}) {
   try {
-    const { stdout, stderr } = await execFileAsync(GC_BIN, args, {
+    // execFile always gives the child a stdin pipe and never closes it, so a
+    // gc subcommand that reads hook stdin waits for an EOF that never arrives
+    // and is killed when the timeout expires. Close it immediately: these
+    // calls send nothing on stdin. (`stdio` is not an execFile option — it is
+    // honored by spawn and execFileSync, which is why the pi hook can pass
+    // stdio: ["ignore", ...] instead.)
+    const pending = execFileAsync(GC_BIN, args, {
       cwd: directory,
       encoding: "utf-8",
       timeout: 30000,
@@ -41,6 +55,8 @@ async function runCommand(directory, args, warnOnFailure, extraEnv = {}) {
         PATH: PATH_PREFIX + (process.env.PATH || ""),
       },
     });
+    pending.child.stdin?.end();
+    const { stdout, stderr } = await pending;
     logRunStderr(stderr);
     return stdout.trim();
   } catch (err) {
@@ -158,6 +174,7 @@ async function mirrorTranscript(directory, client, sessionID) {
 
 export default async function gascityPlugin({ directory, client }) {
   let cachedPrime = null;
+  let injectedPartSeq = 0;
 
   async function readPrime(force = false, extraEnv = {}) {
     if (force || cachedPrime === null) {
@@ -170,11 +187,43 @@ export default async function gascityPlugin({ directory, client }) {
     return existing ? prefix + "\n\n" + existing : prefix;
   }
 
-  async function buildPrefix() {
-    const prime = await readPrime();
+  // buildSystemContext returns only the session-cached gc prime --hook text.
+  // Its bytes must not change from turn to turn: the provider's prefix cache
+  // keys on the request head, so injecting volatile content here (such as the
+  // current-time line that gc nudge drain --inject emits) would evict the
+  // entire cached conversation prefix on every request.
+  async function buildSystemContext() {
+    return await readPrime();
+  }
+
+  // buildVolatileInjection returns the per-turn content that must stay out of
+  // the cached prefix: the clock line plus queued nudges from
+  // gc nudge drain --inject, and unread mail from gc mail check --inject.
+  async function buildVolatileInjection() {
     const nudges = await run(directory, "nudge", "drain", "--inject");
     const mail = await run(directory, "mail", "check", "--inject");
-    return [prime, nudges, mail].filter(Boolean).join("\n\n");
+    return [nudges, mail].filter(Boolean).join("\n\n");
+  }
+
+  // appendVolatileInjection appends the per-turn content to the newest user
+  // message, after the stable system prompt and all prior history. Only the
+  // new tail bytes are uncached, instead of the whole conversation.
+  function appendVolatileInjection(input, output, text) {
+    if (!text || !output || !Array.isArray(output.parts)) {
+      return;
+    }
+    const message = output.message || {};
+    const sessionID = input?.sessionID || message.sessionID || "";
+    const messageID = message.id || input?.messageID || "";
+    injectedPartSeq += 1;
+    output.parts.push({
+      id: `gascity-inject-${Date.now()}-${injectedPartSeq}`,
+      sessionID,
+      messageID,
+      type: "text",
+      text,
+      synthetic: true,
+    });
   }
 
   return {
@@ -197,20 +246,22 @@ export default async function gascityPlugin({ directory, client }) {
       }
     },
 
-    "chat.message": async (_input, output) => {
-      const prefix = await buildPrefix();
-      if (prefix) {
-        output.message.system = prependText(output.message.system, prefix);
+    "chat.message": async (input, output) => {
+      const stable = await buildSystemContext();
+      if (stable) {
+        output.message.system = prependText(output.message.system, stable);
       }
+      const volatile = await buildVolatileInjection();
+      appendVolatileInjection(input, output, volatile);
     },
 
     "experimental.chat.system.transform": async (_input, output) => {
-      const prefix = await buildPrefix();
-      if (prefix) {
+      const stable = await buildSystemContext();
+      if (stable) {
         if (output.system[0]) {
-          output.system[0] = prependText(output.system[0], prefix);
+          output.system[0] = prependText(output.system[0], stable);
         } else {
-          output.system.unshift(prefix);
+          output.system.unshift(stable);
         }
       }
     },
