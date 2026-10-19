@@ -513,7 +513,13 @@ func newMailCheckCmd(stdout, stderr io.Writer) *cobra.Command {
 Without --inject: prints the count and exits 0 if mail exists, 1 if
 empty. With --inject: outputs a <system-reminder> block suitable for
 hook injection (always exits 0). The recipient defaults to $GC_SESSION_ID,
-$GC_ALIAS, $GC_AGENT, or "human".`,
+$GC_ALIAS, $GC_AGENT, or "human".
+
+With --inject the unread block is emitted once per change: when the set of
+unread message ids differs from the last block this session received, or the
+agent's context was reset since (a session start, or a new provider session id
+in the hook payload), and nothing otherwise. New unread mail always appears in
+full. Set GC_INJECT_ALWAYS=1 to emit the block on every run.`,
 		Example: `  gc mail check
   gc mail check --inject
   gc mail check mayor`,
@@ -637,9 +643,7 @@ func routeMailCheck(_ string, args []string, inject bool, hookFormat string, c *
 func renderMailCheckFromAPI(cr api.CachedRead[api.MailListView], recipient string, inject bool, hookFormat string, stdout io.Writer) int {
 	messages := cr.Body.Items
 	if inject {
-		if len(messages) > 0 {
-			_ = writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", formatInjectOutput(messages))
-		}
+		_ = writeMailInjectOnce(stdout, hookFormat, recipient, messages)
 		return 0
 	}
 	if len(messages) == 0 {
@@ -743,11 +747,13 @@ func doMailCheckTargetWithFormat(mp mail.Provider, target resolvedMailTarget, in
 	}
 
 	if inject {
+		// Called for an empty inbox too: that is how the memory of an earlier
+		// block is cleared.
+		if err := writeMailInjectOnce(stdout, hookFormat, target.display, messages); err != nil {
+			fmt.Fprintf(stderr, "gc mail check: writing hook output: %v\n", err) //nolint:errcheck // best-effort stderr
+			return 0
+		}
 		if len(messages) > 0 {
-			if err := writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", formatInjectOutput(messages)); err != nil {
-				fmt.Fprintf(stderr, "gc mail check: writing hook output: %v\n", err) //nolint:errcheck // best-effort stderr
-				return 0
-			}
 			// Archive the SAME messages that were injected: priority-sort
 			// before the clamp so the archived set matches formatInjectOutput's
 			// displayed set (a priority:1 handoff that floats into the window is
@@ -808,6 +814,30 @@ func sortMailByPriority(messages []mail.Message) []mail.Message {
 		return sorted[i].Priority > sorted[j].Priority // higher priority first; ties keep arrival order
 	})
 	return sorted
+}
+
+// writeMailInjectOnce writes the unread-mail block for the hook, unless this
+// session already received a block for exactly this set of unread message ids,
+// in which case it writes nothing and returns nil. Any change to the set, new
+// mail or mail since read, emits the full block again; an empty inbox writes
+// nothing and clears the memory. GC_INJECT_ALWAYS=1 writes every time.
+//
+// The set is recorded only after a successful write.
+func writeMailInjectOnce(stdout io.Writer, hookFormat, recipient string, messages []mail.Message) error {
+	seen := openInjectSeen(injectSeenCityPath(), injectSeenKindMail, hookContextEpoch(readHookStdin()))
+	if len(messages) == 0 {
+		seen.Forget()
+		return nil
+	}
+	digest := mailUnreadDigest(recipient, messages)
+	if seen.Unchanged(digest) {
+		return nil
+	}
+	if err := writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", formatInjectOutput(messages)); err != nil {
+		return err
+	}
+	seen.Record(digest)
+	return nil
 }
 
 // formatInjectOutput formats messages as a <system-reminder> block for

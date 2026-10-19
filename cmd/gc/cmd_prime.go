@@ -300,6 +300,13 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 			writePrimePromptWithFormat(stdout, "", "", "", hookMode, hookFormat, false, "", nil)
 			return 0, nil
 		}
+		// SessionStart covers startup, resume, clear and compaction: in each the
+		// agent's context holds none of what the per-prompt hooks delivered
+		// earlier, though the session identity that keys their memory is
+		// unchanged. A --json preview is not a session start.
+		if consumeHandoff && primeHookSessionStart(hookContext) {
+			forgetInjectSeen(injectSeenCityPath())
+		}
 	}
 	// In non-strict mode, hook side effects fire eagerly (existing behavior).
 	// In strict mode, we defer them until after strict checks pass so that a

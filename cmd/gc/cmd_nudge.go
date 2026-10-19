@@ -295,9 +295,16 @@ func newNudgeDrainCmd(stdout, stderr io.Writer) *cobra.Command {
 	var inject bool
 	var hookFormat string
 	cmd := &cobra.Command{
-		Use:    "drain [session]",
-		Short:  "Deliver queued nudges for a session",
-		Long:   "Deliver queued nudges for a session. Used by runtime hooks.",
+		Use:   "drain [session]",
+		Short: "Deliver queued nudges for a session",
+		Long: `Deliver queued nudges for a session. Used by runtime hooks.
+
+With --inject, the active formula step is injected once per change: the full
+step block when it is new or its title or description changed since this
+session last received it, otherwise the line "Active work unchanged: <title>
+(<id>)". A context reset (a session start, or a new provider session id in the
+hook payload) starts over with the full block. Set
+GC_INJECT_ALWAYS=1 to inject the full block on every run.`,
 		Args:   cobra.MaximumNArgs(1),
 		Hidden: true,
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -469,6 +476,7 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 	// (codex/gemini) stay one valid document rather than two concatenated objects.
 	// See clock_inject.go and wisp_step_inject.go.
 	var wispExtra string // set after target resolution; captured by defer closure
+	wispDelivered := func() {}
 	emittedHookContext := false
 	var injectPrefix string
 	var contextHookInput []byte
@@ -483,7 +491,9 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 			if !emittedHookContext {
 				line := injectPrefix + wispExtra
 				if line != "" {
-					_ = writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", line)
+					if err := writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", line); err == nil {
+						wispDelivered()
+					}
 				}
 			}
 		}()
@@ -515,7 +525,7 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 	}
 	if inject {
 		injectPrefix += contextInjectLineForAdvisory(contextHookInput, target.cfg.AgentDefaults.ContextAdvisory, target.agent.ContextAdvisory)
-		wispExtra = wispStepInjectionContent(target.cityPath)
+		wispExtra, wispDelivered = wispStepInjectionContentOnce(target.cityPath, hookContextEpoch(contextHookInput))
 	}
 
 	now := time.Now()
@@ -596,6 +606,9 @@ func cmdNudgeDrainWithFormat(args []string, inject bool, hookFormat string, stdo
 		// combined context is written.
 		emittedHookContext = true
 		writeErr = writeProviderHookContextForEvent(stdout, hookFormat, "UserPromptSubmit", injectPrefix+out+wispExtra)
+		if writeErr == nil {
+			wispDelivered()
+		}
 	} else {
 		_, writeErr = io.WriteString(stdout, out)
 	}

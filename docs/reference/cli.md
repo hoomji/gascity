@@ -2426,6 +2426,12 @@ empty. With --inject: outputs a &lt;system-reminder&gt; block suitable for
 hook injection (always exits 0). The recipient defaults to $GC_SESSION_ID,
 $GC_ALIAS, $GC_AGENT, or "human".
 
+With --inject the unread block is emitted once per change: when the set of
+unread message ids differs from the last block this session received, or the
+agent's context was reset since (a session start, or a new provider session id
+in the hook payload), and nothing otherwise. New unread mail always appears in
+full. Set GC_INJECT_ALWAYS=1 to emit the block on every run.
+
 ```
 gc mail check [session] [flags]
 ```
