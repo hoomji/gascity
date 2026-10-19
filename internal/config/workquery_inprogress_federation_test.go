@@ -15,7 +15,7 @@ import (
 func TestAssignedInProgressTierFederatesOnSplitTopology(t *testing.T) {
 	for _, shellVar := range []string{"id", "cand"} {
 		got := assignedInProgressTierCommand(shellVar, QueryTopology{FederatedReady: true})
-		want := `r=$(gc ready --status in_progress --assignee="$` + shellVar + `" --json --limit=1) || exit $?; `
+		want := `r=$(gc ready --status in_progress --assignee="$` + shellVar + `" --exclude-type=message --json --limit=1) || exit $?; `
 		if got != want {
 			t.Errorf("federated tier-0 for $%s =\n  %q\nwant\n  %q", shellVar, got, want)
 		}
@@ -47,7 +47,7 @@ func TestAssignedInProgressTierFederatesOnSplitTopology(t *testing.T) {
 func TestAssignedInProgressTierIsByteIdenticalOnSingleStore(t *testing.T) {
 	for _, shellVar := range []string{"id", "cand"} {
 		got := assignedInProgressTierCommand(shellVar, QueryTopology{})
-		want := `r=$(bd list --status in_progress --assignee="$` + shellVar + `" --json --limit=1 2>/dev/null); `
+		want := `r=$(bd list --status in_progress --assignee="$` + shellVar + `" --exclude-type=message --json --limit=1 2>/dev/null); `
 		if got != want {
 			t.Errorf("single-store tier-0 for $%s =\n  %q\nwant the pre-swap bytes\n  %q", shellVar, got, want)
 		}
