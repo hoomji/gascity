@@ -680,6 +680,44 @@ func TestCatalogBindsExecCompositionToSeamBackedContract(t *testing.T) {
 	}
 }
 
+func TestCatalogBindsTmuxWaiverToThisDispatch(t *testing.T) {
+	var tmuxWaiver *Waiver
+	for _, entry := range Catalog() {
+		if entry.ID != "runtime.builtin.tmux" {
+			continue
+		}
+		for _, claim := range entry.Claims {
+			if claim.Constructor != repoSymbol("internal/runtime/tmux", "NewSeamBackedWithConfig") {
+				continue
+			}
+			if claim.Disposition != DispositionWaived {
+				t.Fatalf("tmux disposition = %q, want %q", claim.Disposition, DispositionWaived)
+			}
+			tmuxWaiver = claim.Waiver
+		}
+	}
+	if tmuxWaiver == nil {
+		t.Fatal("tmux provider waiver is missing")
+	}
+	if tmuxWaiver.Owner != runtimeContractWaiverOwner {
+		t.Errorf("tmux waiver owner = %q, want %q", tmuxWaiver.Owner, runtimeContractWaiverOwner)
+	}
+	if got, want := tmuxWaiver.Expires, time.Date(2026, time.November, 19, 0, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("tmux waiver expiry = %s, want %s", got.Format(time.DateOnly), want.Format(time.DateOnly))
+	}
+	for _, want := range []string{
+		"2026-10-07",
+		"gld-runaf8f20a04cb8990180f1",
+		"TestTmuxConformance",
+		"t.Skip",
+		"ValidateProofRefs",
+	} {
+		if !strings.Contains(tmuxWaiver.Reason, want) {
+			t.Errorf("tmux waiver reason %q does not include %q", tmuxWaiver.Reason, want)
+		}
+	}
+}
+
 func TestCatalogBindsAutoCompositionToConformantFakes(t *testing.T) {
 	var proof *ProofRef
 

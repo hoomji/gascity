@@ -271,8 +271,8 @@ func Catalog() []Entry {
 			"tmux", "exact:tmux", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/tmux", "NewSeamBackedWithConfig"),
-				time.Date(2026, time.September, 17, 0, 0, 0, 0, time.UTC),
-				"the existing full conformance run skips when the tmux executable is absent",
+				time.Date(2026, time.November, 19, 0, 0, 0, 0, time.UTC),
+				"renewed 2026-10-07 by gld-runaf8f20a04cb8990180f1: TestTmuxConformance (internal/runtime/tmux/adapter_test.go) calls t.Skip when tmux is absent, so ValidateProofRefs rejects it as proof; remove this waiver once the default test lane guarantees tmux or the conformance test no longer skips",
 			),
 		),
 		{
