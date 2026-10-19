@@ -53,7 +53,7 @@ type NudgeShadow struct {
 	// the raw bead Status.
 	Open bool
 	// State is the lifecycle state stamped on the bead ("queued" or a terminal
-	// state like "injected"/"failed"/"expired"/"superseded").
+	// state like "injected"/"injected_unobserved"/"failed"/"expired"/"superseded").
 	State string
 	// TerminalReason is the controller-stamped reason set at terminalization.
 	TerminalReason string
@@ -478,7 +478,7 @@ func CanonicalCloseReason(stateCode string) string { return canonicalCloseReason
 
 func isTerminalNudgeState(state string) bool {
 	switch state {
-	case "accepted_for_injection", "injected", "expired", "failed", "superseded":
+	case "accepted_for_injection", "injected", "injected_unobserved", "expired", "failed", "superseded":
 		return true
 	default:
 		return false
