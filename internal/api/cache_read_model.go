@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/session"
 )
@@ -20,7 +22,14 @@ import (
 // rows; the cache holds no closed rows, so such a request reads the store. The
 // default and every other filter read open rows only, cache-first.
 func sessionReadModelListings(sessFront *session.Store, stateFilter string) ([]session.ListedSession, []string, error) {
-	rows, err := sessFront.ListAllWithResponses(session.ListAllOptions{
+	return sessionReadModelListingsContext(context.Background(), sessFront, stateFilter)
+}
+
+// sessionReadModelListingsContext is sessionReadModelListings with
+// cancellation, for request-scoped reads: a disconnected caller stops the
+// backing store reads instead of abandoning them.
+func sessionReadModelListingsContext(ctx context.Context, sessFront *session.Store, stateFilter string) ([]session.ListedSession, []string, error) {
+	rows, err := sessFront.ListAllWithResponsesContext(ctx, session.ListAllOptions{
 		IncludeClosed: session.StateFilterIncludesClosed(stateFilter),
 		Sort:          beads.SortCreatedDesc,
 		CacheFirst:    true,
@@ -56,7 +65,14 @@ func filterEnrichReadModel(mgr *session.Manager, listings []session.ListedSessio
 // status snapshot and the city-pending aggregate filter and probe by Info alone).
 // Same cache-first tier and partial-result envelope.
 func sessionReadModelInfos(sessFront *session.Store) ([]session.Info, []string, error) {
-	rows, err := sessFront.ListAll(session.ListAllOptions{
+	return sessionReadModelInfosContext(context.Background(), sessFront)
+}
+
+// sessionReadModelInfosContext is sessionReadModelInfos with cancellation,
+// for request-scoped reads: a disconnected caller stops the backing store
+// reads instead of abandoning them.
+func sessionReadModelInfosContext(ctx context.Context, sessFront *session.Store) ([]session.Info, []string, error) {
+	rows, err := sessFront.ListAllContext(ctx, session.ListAllOptions{
 		Sort:       beads.SortCreatedDesc,
 		CacheFirst: true,
 	})
