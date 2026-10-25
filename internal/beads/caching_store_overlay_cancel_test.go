@@ -11,30 +11,36 @@ import (
 
 // cancelGateStore plays a backing whose per-ID read is a slow subprocess.
 // GetContext blocks until ctx dies (the child the cancellable overlay kills
-// on disconnect); the context-blind Get instead sleeps a fixed delay and
-// answers anyway (the uncancellable bd show the old overlay rode to
-// completion). Call counts prove no further backing read starts after cancel.
+// on disconnect); the context-blind Get instead parks until the test
+// releases it (the uncancellable bd show the old overlay rode to
+// completion, which no cancel can cut short). Call counts prove no further
+// backing read starts after cancel.
 type cancelGateStore struct {
 	Store
 	entered   chan struct{}
 	enterOnce sync.Once
+	// getEntered closes when the context-blind Get parks, so the test can
+	// fire the disconnect even on code that never reaches GetContext.
+	getEntered   chan struct{}
+	getEnterOnce sync.Once
+	// released unparks every context-blind Get. Closed by test cleanup; the
+	// fixed overlay never calls Get, so this releases only code that
+	// ignored the context-aware path, after the test already failed it.
+	released  chan struct{}
 	mu        sync.Mutex
 	getIDs    []string
 	getCtxIDs []string
 	depIDs    []string
 	depCtxIDs []string
 	sawCancel atomic.Bool
-	// uncancellableDelay is the fixed cost of one context-blind Get. It runs
-	// only on code that ignores the context-aware path; the fixed overlay
-	// never calls Get.
-	uncancellableDelay time.Duration
 }
 
 func (s *cancelGateStore) Get(id string) (Bead, error) {
 	s.mu.Lock()
 	s.getIDs = append(s.getIDs, id)
 	s.mu.Unlock()
-	time.Sleep(s.uncancellableDelay)
+	s.getEnterOnce.Do(func() { close(s.getEntered) })
+	<-s.released
 	return s.Store.Get(id)
 }
 
@@ -83,12 +89,16 @@ func (s *cancelGateStore) resetCallCounts() {
 // than cached rows.
 func TestOverlayListContextCancelStopsDirtyRefresh(t *testing.T) {
 	t.Parallel()
-	const stuckRead = 1500 * time.Millisecond
 	backing := &cancelGateStore{
-		Store:              NewMemStore(),
-		entered:            make(chan struct{}),
-		uncancellableDelay: stuckRead,
+		Store:      NewMemStore(),
+		entered:    make(chan struct{}),
+		getEntered: make(chan struct{}),
+		released:   make(chan struct{}),
 	}
+	// Unpark any context-blind Get the code under test issued: on the fixed
+	// overlay there is none, and on the old overlay this frees the parked
+	// read after the timeout below already failed the test.
+	t.Cleanup(func() { close(backing.released) })
 	var ids []string
 	for i := 0; i < 3; i++ {
 		created, err := backing.Create(Bead{Title: "bead", Status: "open"})
@@ -111,6 +121,8 @@ func TestOverlayListContextCancelStopsDirtyRefresh(t *testing.T) {
 	go func() {
 		select {
 		case <-backing.entered:
+			cancel()
+		case <-backing.getEntered:
 			cancel()
 		case <-done:
 		}
@@ -135,8 +147,8 @@ func TestOverlayListContextCancelStopsDirtyRefresh(t *testing.T) {
 		if len(res.rows) != 0 {
 			t.Fatalf("ListContext after disconnect returned %d cached rows; want none", len(res.rows))
 		}
-		if elapsed >= stuckRead {
-			t.Fatalf("ListContext held its slot %s after disconnect; want release before one stuck read (%s)", elapsed, stuckRead)
+		if elapsed > 10*time.Second {
+			t.Fatalf("ListContext held its slot %s after disconnect; want prompt release", elapsed)
 		}
 		backing.mu.Lock()
 		defer backing.mu.Unlock()
