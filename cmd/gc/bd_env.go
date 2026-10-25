@@ -45,39 +45,54 @@ func bdCommandRunnerForCity(cityPath string) beads.CommandRunner {
 	})
 }
 
+// bdCancellableCommandRunnerForCity is the ContextCommandRunner twin of
+// bdCommandRunnerForCity: same binding selection and managed transport retry,
+// but every invocation binds to the ctx it is called with so a canceled
+// caller kills the bd child. Wired into city stores via
+// beads.WithBdStoreContextRunner for the request-scoped ListContext path.
+func bdCancellableCommandRunnerForCity(cityPath string) beads.ContextCommandRunner {
+	completeBinding, err := scopeHasCompleteStorageBinding(scopeMetadataJSONPath(cityPath))
+	if err != nil {
+		return func(_ context.Context, _, _ string, _ ...string) ([]byte, error) { return nil, err }
+	}
+	if completeBinding {
+		return bdCancellableCommandRunnerForCompleteBinding(cityPath)
+	}
+	return bdCancellableCommandRunnerWithManagedRetryErr(cityPath, func(ctx context.Context, dir string) (map[string]string, error) {
+		env, err := bdRuntimeEnvWithErrorRecoveryContext(ctx, cityPath, true)
+		env["BEADS_DIR"] = filepath.Join(dir, ".beads")
+		return env, err
+	})
+}
+
+// bdCancellableCommandRunnerForCompleteBinding is the cancellable twin of
+// bdContextCommandRunnerForCity for complete external storage bindings.
+func bdCancellableCommandRunnerForCompleteBinding(cityPath string) beads.ContextCommandRunner {
+	return func(ctx context.Context, dir, name string, args ...string) ([]byte, error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		env, err := completeBindingEnvForCity(cityPath, dir)
+		if err != nil {
+			return nil, err
+		}
+		runner, err := beadsContextCommandRunnerForHostedCity(cityPath, env)
+		if err != nil {
+			return nil, err
+		}
+		return runner(ctx, dir, name, args...)
+	}
+}
+
 // bdContextCommandRunnerForCity delegates complete external bindings to the
 // workspace-pinned bd without projecting or recovering a managed backend.
 func bdContextCommandRunnerForCity(cityPath string) beads.CommandRunner {
 	return func(dir, name string, args ...string) ([]byte, error) {
-		env := cityRuntimeEnvMapForCity(cityPath)
-		if err := pinBdGCEnvironment(env); err != nil {
-			return nil, err
-		}
-		bdBin, err := workspacePinnedBdBinary(cityPath)
+		env, err := completeBindingEnvForCity(cityPath, dir)
 		if err != nil {
-			return nil, err
-		}
-		env["BD_BIN"] = bdBin
-		env["BEADS_DIR"] = filepath.Join(dir, ".beads")
-		env["GC_RIG"] = ""
-		env["GC_RIG_ROOT"] = ""
-		// Direct-path guard only; inert on bd's proxied path (see
-		// applyProxiedDoltEnv and beads cmd/bd/main.go:1758).
-		env["BEADS_DOLT_AUTO_START"] = "0"
-		env["BD_EXPORT_AUTO"] = "false"
-		hosted, err := citySelectsHostedBeadsCredentialProvider(cityPath)
-		if err != nil {
-			return nil, err
-		}
-		credentialsFile := strings.TrimSpace(env["BEADS_CREDENTIALS_FILE"])
-		if credentialsFile == "" && !hosted {
-			credentialsFile = strings.TrimSpace(ambientNativeDoltOpenEnv("BEADS_CREDENTIALS_FILE"))
-		}
-		setExecProjectedBackendEnvEmpty(env)
-		if credentialsFile != "" {
-			env["BEADS_CREDENTIALS_FILE"] = credentialsFile
-		}
-		if err := applyHostedBeadsCredentialEnv(env, cityPath); err != nil {
 			return nil, err
 		}
 		runner, err := beadsCommandRunnerForHostedCity(cityPath, env)
@@ -86,6 +101,44 @@ func bdContextCommandRunnerForCity(cityPath string) beads.CommandRunner {
 		}
 		return runner(dir, name, args...)
 	}
+}
+
+// completeBindingEnvForCity assembles the per-invocation environment for a
+// complete external storage binding, shared by the fixed-context and the
+// cancellable runners.
+func completeBindingEnvForCity(cityPath, dir string) (map[string]string, error) {
+	env := cityRuntimeEnvMapForCity(cityPath)
+	if err := pinBdGCEnvironment(env); err != nil {
+		return nil, err
+	}
+	bdBin, err := workspacePinnedBdBinary(cityPath)
+	if err != nil {
+		return nil, err
+	}
+	env["BD_BIN"] = bdBin
+	env["BEADS_DIR"] = filepath.Join(dir, ".beads")
+	env["GC_RIG"] = ""
+	env["GC_RIG_ROOT"] = ""
+	// Direct-path guard only; inert on bd's proxied path (see
+	// applyProxiedDoltEnv and beads cmd/bd/main.go:1758).
+	env["BEADS_DOLT_AUTO_START"] = "0"
+	env["BD_EXPORT_AUTO"] = "false"
+	hosted, err := citySelectsHostedBeadsCredentialProvider(cityPath)
+	if err != nil {
+		return nil, err
+	}
+	credentialsFile := strings.TrimSpace(env["BEADS_CREDENTIALS_FILE"])
+	if credentialsFile == "" && !hosted {
+		credentialsFile = strings.TrimSpace(ambientNativeDoltOpenEnv("BEADS_CREDENTIALS_FILE"))
+	}
+	setExecProjectedBackendEnvEmpty(env)
+	if credentialsFile != "" {
+		env["BEADS_CREDENTIALS_FILE"] = credentialsFile
+	}
+	if err := applyHostedBeadsCredentialEnv(env, cityPath); err != nil {
+		return nil, err
+	}
+	return env, nil
 }
 
 // workspacePinnedBdBinary resolves the pinned bd executable in the order
@@ -312,11 +365,13 @@ func bdStoreForCityWithConfig(dir, cityPath string, cfg *config.City) *beads.BdS
 		}
 	}
 	reapStaleBdExportJSONL(dir)
+	opts := append(bdStoreOptionsForConfig(cfg),
+		beads.WithBdStoreContextRunner(bdCancellableCommandRunnerForCity(cityPath)))
 	return beads.NewBdStoreWithPrefix(
 		dir,
 		withBdReadMemo(cityPath, bdCommandRunnerForCity(cityPath)),
 		issuePrefixForScope(dir, cityPath, cfg),
-		bdStoreOptionsForConfig(cfg)...,
+		opts...,
 	)
 }
 
@@ -334,11 +389,13 @@ func bdStoreForRig(rigDir, cityPath string, cfg *config.City, knownPrefix ...str
 		}
 	}
 	reapStaleBdExportJSONL(rigDir)
+	opts := append(bdStoreOptionsForConfig(cfg),
+		beads.WithBdStoreContextRunner(bdCancellableCommandRunnerForRig(cityPath, cfg, rigDir)))
 	return beads.NewBdStoreWithPrefix(
 		rigDir,
 		withBdReadMemo(cityPath, bdCommandRunnerForRig(cityPath, cfg, rigDir)),
 		prefix,
-		bdStoreOptionsForConfig(cfg)...,
+		opts...,
 	)
 }
 
@@ -540,6 +597,15 @@ func bdCommandRunnerForRig(cityPath string, cfg *config.City, rigDir string) bea
 	})
 }
 
+// bdCancellableCommandRunnerForRig is the ContextCommandRunner twin of
+// bdCommandRunnerForRig. Wired into rig stores via
+// beads.WithBdStoreContextRunner for the request-scoped ListContext path.
+func bdCancellableCommandRunnerForRig(cityPath string, cfg *config.City, rigDir string) beads.ContextCommandRunner {
+	return bdCancellableCommandRunnerWithManagedRetryErr(cityPath, func(ctx context.Context, _ string) (map[string]string, error) {
+		return bdRuntimeEnvForRigWithErrorRecoveryContext(ctx, cityPath, cfg, rigDir, true)
+	})
+}
+
 func canonicalScopeDoltTarget(cityPath, scopeRoot string) (contract.DoltConnectionTarget, bool, error) {
 	resolved, err := contract.ResolveScopeConfigState(fsys.OSFS{}, cityPath, scopeRoot, "")
 	if err != nil {
@@ -726,6 +792,21 @@ func beadsCommandRunnerForHostedCity(cityPath string, env map[string]string) (be
 		return beadsExecCommandRunnerWithEnvWithoutAmbientBeads(env), nil
 	}
 	return beadsExecCommandRunnerWithEnv(env), nil
+}
+
+// beadsContextCommandRunnerForHostedCity is the ContextCommandRunner twin of
+// beadsCommandRunnerForHostedCity: same credential-provider selection, but
+// every invocation binds to the ctx it is called with so a canceled caller
+// kills the child.
+func beadsContextCommandRunnerForHostedCity(cityPath string, env map[string]string) (beads.ContextCommandRunner, error) {
+	selected, err := citySelectsHostedBeadsCredentialProvider(cityPath)
+	if err != nil {
+		return nil, err
+	}
+	if selected {
+		return beadsExecContextCommandRunnerWithEnvWithoutAmbientBeads(env), nil
+	}
+	return beadsExecContextCommandRunnerWithEnv(env), nil
 }
 
 // withholdAmbientHostedBeadsEnv pins every ambient BEADS_* key absent from an
@@ -1193,10 +1274,12 @@ func appendBdContributorRoutingOptOutEnvKeys(keys []string) []string {
 }
 
 var (
-	beadsExecCommandRunnerWithEnv                    = beads.ExecCommandRunnerWithEnv
-	beadsExecCommandRunnerWithEnvWithoutAmbientBeads = beads.ExecCommandRunnerWithEnvWithoutAmbientBeads
-	processEnvSnapshotExcludingNativeDoltOpen        = beads.ProcessEnvSnapshotExcludingNativeDoltOpen
-	ambientNativeDoltOpenEnv                         = beads.AmbientNativeDoltOpenEnv
+	beadsExecCommandRunnerWithEnv                           = beads.ExecCommandRunnerWithEnv
+	beadsExecCommandRunnerWithEnvWithoutAmbientBeads        = beads.ExecCommandRunnerWithEnvWithoutAmbientBeads
+	beadsExecContextCommandRunnerWithEnv                    = beads.ExecContextCommandRunnerWithEnv
+	beadsExecContextCommandRunnerWithEnvWithoutAmbientBeads = beads.ExecContextCommandRunnerWithEnvWithoutAmbientBeads
+	processEnvSnapshotExcludingNativeDoltOpen               = beads.ProcessEnvSnapshotExcludingNativeDoltOpen
+	ambientNativeDoltOpenEnv                                = beads.AmbientNativeDoltOpenEnv
 )
 
 var recoverManagedBDCommand = func(cityPath string) error {
@@ -1740,6 +1823,70 @@ func bdCommandRunnerWithManagedRetryErr(cityPath string, envFn func(dir string) 
 			return nil, runnerErr
 		}
 		return retryRunner(dir, name, args...)
+	}
+}
+
+// bdCancellableCommandRunnerWithManagedRetryErr is the ContextCommandRunner
+// twin of bdCommandRunnerWithManagedRetryErr: same managed transport retry,
+// but every attempt runs bound to the caller's ctx and a dead context aborts
+// the retry instead of sleeping into it. The retry sleep still routes through
+// the bdCommandRetrySleep seam (checked on both sides), so tests keep
+// stubbing one variable.
+func bdCancellableCommandRunnerWithManagedRetryErr(cityPath string, envFn func(ctx context.Context, dir string) (map[string]string, error)) beads.ContextCommandRunner {
+	return func(ctx context.Context, dir, name string, args ...string) ([]byte, error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		env, envErr := envFn(ctx, dir)
+		if envErr != nil {
+			return nil, envErr
+		}
+		if env == nil {
+			env = map[string]string{}
+		}
+		// Legacy managed path: best effort. See pinBdGCEnvironmentBestEffort.
+		pinBdGCEnvironmentBestEffort(env)
+		ensureProjectedDoltEnvExplicit(env)
+		runner, runnerErr := beadsContextCommandRunnerForHostedCity(cityPath, env)
+		if runnerErr != nil {
+			return nil, runnerErr
+		}
+		out, err := runner(ctx, dir, name, args...)
+		if name != "bd" {
+			return out, err
+		}
+		if !bdTransportRetryableError(cityPath, dir, env, err) {
+			return out, err
+		}
+		if bdTransportRecoverableError(cityPath, dir, env, err) {
+			if recErr := recoverManagedBDCommand(cityPath); recErr != nil {
+				return out, err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		bdCommandRetrySleep(bdCommandRetryBaseDelay)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		retryEnv, retryEnvErr := envFn(ctx, dir)
+		if retryEnvErr != nil {
+			return nil, retryEnvErr
+		}
+		if retryEnv == nil {
+			retryEnv = map[string]string{}
+		}
+		pinBdGCEnvironmentBestEffort(retryEnv)
+		ensureProjectedDoltEnvExplicit(retryEnv)
+		retryRunner, runnerErr := beadsContextCommandRunnerForHostedCity(cityPath, retryEnv)
+		if runnerErr != nil {
+			return nil, runnerErr
+		}
+		return retryRunner(ctx, dir, name, args...)
 	}
 }
 

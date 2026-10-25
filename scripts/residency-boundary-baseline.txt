@@ -137,6 +137,12 @@
 # and the namespace gate this guard exists to count, and both are pinned here
 # rather than annotated because the review that matters is whether the
 # short-circuit should be probing at all, not whether it called correctly.
+#
+# internal/api/huma_handlers_beads.go's a:BeadStores row is attributed to
+# beadListUncached and not to humaHandleBeadList because the coalescing
+# slice lifted the list body out of the handler into a named helper. The hit
+# did not move file, pattern or count — the same single BeadStores call is
+# pinned, under the function that now opens it.
 cmd/gc/api_state.go	BeadStores	a:BeadStores	1
 cmd/gc/api_state.go	BeadStores	ast:returns-store-list	1
 cmd/gc/api_state.go	beadEventConfiguredStoreLocked	ast:uncounted-call-spelling	1
@@ -226,7 +232,7 @@ internal/api/handler_convoy_dispatch.go	workflowStores	a:BeadStores	1
 internal/api/handler_convoys.go	isGraphConvoyID	a:BeadStores	1
 internal/api/handler_sling.go	sourceWorkflowStores	a:BeadStores	2
 internal/api/handler_status.go	statusWorkCounts	a:BeadStores	1
-internal/api/huma_handlers_beads.go	humaHandleBeadList	a:BeadStores	1
+internal/api/huma_handlers_beads.go	beadListUncached	a:BeadStores	1
 internal/api/huma_handlers_beads.go	humaHandleBeadReady	a:BeadStores	1
 internal/api/huma_handlers_convoys.go	humaHandleConvoyAdd	a:BeadStores	1
 internal/api/huma_handlers_convoys.go	humaHandleConvoyCheck	a:BeadStores	1

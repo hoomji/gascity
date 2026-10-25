@@ -5,6 +5,7 @@ go_library(
     name = "api",
     srcs = [
         "agent_resolution.go",
+        "bd_read_guard.go",
         "beads_graph_federation.go",
         "blocking.go",
         "body_decode.go",
@@ -261,6 +262,7 @@ go_test(
         "agent_resolution_test.go",
         "apierr_guard_test.go",
         "apierr_roundtrip_test.go",
+        "bd_read_guard_test.go",
         "bead_close_event_test.go",
         "bead_close_reason_test.go",
         "bead_reopen_lease_test.go",

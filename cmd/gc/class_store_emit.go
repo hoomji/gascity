@@ -831,6 +831,16 @@ func (s *emittingClassStore) ReadOnly() bool {
 	return ok && reporter.ReadOnly()
 }
 
+// ListContext preserves the cancellable list read through the emitting
+// wrapper, forwarding through beads.ListWithContext. Like List it emits
+// nothing — reads are not journaled. Unlike Count it does not refuse when
+// the inner store has no ListContext: a ctx-blind List is still a correct
+// answer, just not a killable one, so the fallback keeps the read
+// available.
+func (s *emittingClassStore) ListContext(ctx context.Context, query beads.ListQuery) ([]beads.Bead, error) {
+	return beads.ListWithContext(ctx, s.Store, query)
+}
+
 func (s *emittingClassStore) WaitForParentProjection(ctx context.Context, parentID, childID, scope string) error {
 	waiter, ok := s.Store.(beads.ParentProjectionWaiter)
 	if !ok {

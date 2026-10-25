@@ -134,6 +134,15 @@ func (s *beadPolicyStore) Ready(query ...beads.ReadyQuery) ([]beads.Bead, error)
 	return s.Store.Ready(expandPolicyReadyQuery(query...))
 }
 
+// ListContext preserves the policy-expanded read tier for deadline-sensitive
+// list reads, forwarding through beads.ListWithContext. Unlike ReadyContext it
+// does not refuse when the inner store has no ListContext: a ctx-blind List is
+// still a correct answer, just not a killable one, so the fallback keeps the
+// read available.
+func (s *beadPolicyStore) ListContext(ctx context.Context, query beads.ListQuery) ([]beads.Bead, error) {
+	return beads.ListWithContext(ctx, s.Store, expandPolicyReadTier(query))
+}
+
 // ReadyContext preserves the policy-expanded read tier for deadline-sensitive
 // Ready projections. Optional capabilities are hidden by the embedded Store
 // interface, so forward explicitly just like Count.

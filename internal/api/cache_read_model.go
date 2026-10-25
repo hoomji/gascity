@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/session"
 )
@@ -23,7 +25,14 @@ type cachedListStore interface {
 // Store.ListAll: a warm cachedListStore serves the whole list with zero
 // store.List calls (pinned by TestSessionReadModelListingsWarmCacheZeroStoreList).
 func sessionReadModelListings(sessFront *session.Store) ([]session.ListedSession, []string, error) {
-	rows, err := sessFront.ListAllWithResponses(session.ListAllOptions{
+	return sessionReadModelListingsContext(context.Background(), sessFront)
+}
+
+// sessionReadModelListingsContext is sessionReadModelListings with
+// cancellation, for request-scoped reads: a disconnected caller stops the
+// backing store reads instead of abandoning them.
+func sessionReadModelListingsContext(ctx context.Context, sessFront *session.Store) ([]session.ListedSession, []string, error) {
+	rows, err := sessFront.ListAllWithResponsesContext(ctx, session.ListAllOptions{
 		Sort:       beads.SortCreatedDesc,
 		CacheFirst: true,
 	})
@@ -58,7 +67,14 @@ func filterEnrichReadModel(mgr *session.Manager, listings []session.ListedSessio
 // status snapshot and the city-pending aggregate filter and probe by Info alone).
 // Same cache-first tier and partial-result envelope.
 func sessionReadModelInfos(sessFront *session.Store) ([]session.Info, []string, error) {
-	rows, err := sessFront.ListAll(session.ListAllOptions{
+	return sessionReadModelInfosContext(context.Background(), sessFront)
+}
+
+// sessionReadModelInfosContext is sessionReadModelInfos with cancellation,
+// for request-scoped reads: a disconnected caller stops the backing store
+// reads instead of abandoning them.
+func sessionReadModelInfosContext(ctx context.Context, sessFront *session.Store) ([]session.Info, []string, error) {
+	rows, err := sessFront.ListAllContext(ctx, session.ListAllOptions{
 		Sort:       beads.SortCreatedDesc,
 		CacheFirst: true,
 	})
