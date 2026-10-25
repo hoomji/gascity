@@ -109,62 +109,71 @@ func ExecCommandRunnerWithExactEnvContext(ctx context.Context, env map[string]st
 
 func execCommandRunner(parent context.Context, env map[string]string, withoutAmbientBeads bool, baseEnvFn func() []string) CommandRunner {
 	return func(dir, name string, args ...string) ([]byte, error) {
-		baseEnv := baseEnvFn()
-		execName := name
-		if name == "bd" {
-			pinned, _ := effectiveEnvValue(baseEnv, env, "BD_BIN")
-			if pinned = strings.TrimSpace(pinned); filepath.IsAbs(pinned) {
-				execName = pinned
-			}
-		}
-		start := time.Now()
-		trace := newBDExecTrace(start, dir, name, args)
-		trace("start", nil)
-
-		timeout := bdCommandTimeoutFor(name, args)
-		ctx, cancel := context.WithTimeout(parent, timeout)
-		defer cancel()
-
-		if name == "bd" {
-			bdArgs := append([]string(nil), args...)
-			agentID := bdTelemetryAgentID(env)
-			slowTimer := time.AfterFunc(bdSlowTelemetryThreshold, func() {
-				telemetry.RecordBDSlow(ctx, bdArgs, dir, agentID)
-			})
-			defer slowTimer.Stop()
-		}
-
-		cmd := exec.CommandContext(ctx, execName, args...)
-		cmd.WaitDelay = 2 * time.Second
-		prepareCommandForTimeout(cmd)
-		cmd.Dir = dir
-		cmd.Cancel = func() error {
-			return killCommandTree(cmd)
-		}
-		overrides := env
-		if withoutAmbientBeads {
-			baseEnv = envWithoutPrefix(baseEnv, beadsEnvPrefix)
-			overrides = maps.Clone(env)
-			for key, value := range overrides {
-				if strings.HasPrefix(key, beadsEnvPrefix) && value == "" {
-					delete(overrides, key)
-				}
-			}
-		}
-		cmd.Env = execEnvFor(name, baseEnv, overrides, func() bool {
-			return bdReadsStandardOTELEnv(ctx, execName)
-		})
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		out, err := cmd.Output()
-
-		recordBDExecTelemetry(name, dir, args, start, out, stderr.String(), err)
-
-		status, traceErr, resultErr := classifyBDExecResult(
-			parent, ctx, name, timeout, start, out, stderr.String(), err)
-		trace(status, traceErr)
-		return out, resultErr
+		return runExecCommand(parent, dir, name, args, env, withoutAmbientBeads, baseEnvFn)
 	}
+}
+
+// runExecCommand is the single invocation body behind CommandRunner and
+// ContextCommandRunner: parent is the fixed construction-time context for
+// the former and the per-call request context for the latter. Either way a
+// dead parent kills the child via cmd.Cancel instead of leaking it, and a
+// live parent is bounded by the per-command bd timeout.
+func runExecCommand(parent context.Context, dir, name string, args []string, env map[string]string, withoutAmbientBeads bool, baseEnvFn func() []string) ([]byte, error) {
+	baseEnv := baseEnvFn()
+	execName := name
+	if name == "bd" {
+		pinned, _ := effectiveEnvValue(baseEnv, env, "BD_BIN")
+		if pinned = strings.TrimSpace(pinned); filepath.IsAbs(pinned) {
+			execName = pinned
+		}
+	}
+	start := time.Now()
+	trace := newBDExecTrace(start, dir, name, args)
+	trace("start", nil)
+
+	timeout := bdCommandTimeoutFor(name, args)
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+
+	if name == "bd" {
+		bdArgs := append([]string(nil), args...)
+		agentID := bdTelemetryAgentID(env)
+		slowTimer := time.AfterFunc(bdSlowTelemetryThreshold, func() {
+			telemetry.RecordBDSlow(ctx, bdArgs, dir, agentID)
+		})
+		defer slowTimer.Stop()
+	}
+
+	cmd := exec.CommandContext(ctx, execName, args...)
+	cmd.WaitDelay = 2 * time.Second
+	prepareCommandForTimeout(cmd)
+	cmd.Dir = dir
+	cmd.Cancel = func() error {
+		return killCommandTree(cmd)
+	}
+	overrides := env
+	if withoutAmbientBeads {
+		baseEnv = envWithoutPrefix(baseEnv, beadsEnvPrefix)
+		overrides = maps.Clone(env)
+		for key, value := range overrides {
+			if strings.HasPrefix(key, beadsEnvPrefix) && value == "" {
+				delete(overrides, key)
+			}
+		}
+	}
+	cmd.Env = execEnvFor(name, baseEnv, overrides, func() bool {
+		return bdReadsStandardOTELEnv(ctx, execName)
+	})
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+
+	recordBDExecTelemetry(name, dir, args, start, out, stderr.String(), err)
+
+	status, traceErr, resultErr := classifyBDExecResult(
+		parent, ctx, name, timeout, start, out, stderr.String(), err)
+	trace(status, traceErr)
+	return out, resultErr
 }
 
 // effectiveEnvValue returns the value a child process receives after explicit
@@ -424,7 +433,12 @@ type BdStore struct {
 	dir         string          // city root directory (where .beads/ lives)
 	runner      CommandRunner   // injectable for testing
 	purgeRunner PurgeRunnerFunc // injectable for testing; nil uses exec default
-	idPrefix    string          // bead ID prefix owned by this store, without trailing "-"
+	// ctxRunner executes bd reads bound to the caller's context for
+	// ListContext; nil keeps the legacy fixed-context runner. Set via
+	// WithBdStoreContextRunner (production city/rig stores wire the
+	// managed-retry context runner there).
+	ctxRunner ContextCommandRunner
+	idPrefix  string // bead ID prefix owned by this store, without trailing "-"
 
 	listSkipLabelsEnabled bool // whether bd list may receive --skip-labels
 
@@ -519,6 +533,17 @@ type BdStoreOption func(*BdStore)
 func WithBdStoreListSkipLabels(enabled bool) BdStoreOption {
 	return func(s *BdStore) {
 		s.listSkipLabelsEnabled = enabled
+	}
+}
+
+// WithBdStoreContextRunner installs the per-call-context executor ListContext
+// runs bd reads through, so a canceled caller kills the in-flight child
+// instead of riding it to the subprocess timeout. Without it ListContext
+// honors only the pre-read cancellation check and otherwise reads exactly
+// like List.
+func WithBdStoreContextRunner(runner ContextCommandRunner) BdStoreOption {
+	return func(s *BdStore) {
+		s.ctxRunner = runner
 	}
 }
 
@@ -2515,6 +2540,48 @@ func (s *BdStore) runBDTransientRead(args ...string) ([]byte, error) {
 	return out, err
 }
 
+// runBDTransientReadContext is runBDTransientRead bound to ctx: each attempt
+// runs through the context runner when one is configured (so the child dies
+// with the caller), a dead context aborts the retry loop instead of sleeping
+// into the next attempt, and any failure on a dead context surfaces as
+// ctx.Err() rather than the kill-signal exec error.
+func (s *BdStore) runBDTransientReadContext(ctx context.Context, args ...string) ([]byte, error) {
+	var (
+		out []byte
+		err error
+	)
+	for attempt := 1; attempt <= bdTransientReadAttempts; attempt++ {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		out, err = s.runReadAttemptContext(ctx, args...)
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return out, ctxErr
+			}
+		}
+		if err == nil || !isBdAmbiguousWriteError(err) || attempt == bdTransientReadAttempts {
+			return out, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(attempt) * 50 * time.Millisecond):
+		}
+	}
+	return out, err
+}
+
+// runReadAttemptContext runs one bd read attempt. With a configured context
+// runner the child is bound to ctx and dies on cancellation; without one the
+// fixed legacy runner is used and only the pre-attempt check applies.
+func (s *BdStore) runReadAttemptContext(ctx context.Context, args ...string) ([]byte, error) {
+	if s.ctxRunner != nil {
+		return s.ctxRunner(ctx, s.dir, "bd", args...)
+	}
+	return s.runner(s.dir, "bd", args...)
+}
+
 func (s *BdStore) bdTransientWriteArgs(args []string) []string {
 	if !s.isDoltliteBackend() {
 		return args
@@ -2862,11 +2929,47 @@ func (s *BdStore) DeleteBatch(ids []string) error {
 
 // List returns beads matching the query via bd list and bd query.
 func (s *BdStore) List(query ListQuery) ([]Bead, error) {
+	return s.listRouted(query, s.runBDTransientRead)
+}
+
+// ListContext is the ContextLister implementation: List with cancellation.
+// Each bd subprocess runs bound to ctx (through the WithBdStoreContextRunner
+// executor when one is configured), so a disconnected client kills the child
+// instead of abandoning it past its own budget. A failed read on a dead
+// context surfaces as ctx.Err(), never as a kill-signal exec error, so
+// callers can tell cancellation from a broken store. Without a configured
+// context runner only the pre-read check applies and the read otherwise
+// behaves exactly like List.
+func (s *BdStore) ListContext(ctx context.Context, query ListQuery) ([]Bead, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	found, err := s.listRouted(query, func(args ...string) ([]byte, error) {
+		return s.runBDTransientReadContext(ctx, args...)
+	})
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return found, ctxErr
+		}
+	}
+	return found, err
+}
+
+// bdReadFunc runs one bd read invocation; List passes the legacy
+// fixed-context transient reader and ListContext the ctx-bound one, so both
+// share the tier fan-out below instead of forking it.
+type bdReadFunc func(args ...string) ([]byte, error)
+
+// listRouted is the shared List/ListContext body.
+func (s *BdStore) listRouted(query ListQuery, run bdReadFunc) ([]Bead, error) {
 	if !query.HasFilter() && !query.AllowScan {
 		return nil, fmt.Errorf("bd list: %w", ErrQueryRequiresScan)
 	}
 
-	found, err := s.listByTier(query)
+	found, err := s.listByTier(query, run)
 	// An unfiltered scan that came back empty is the one List shape whose
 	// emptiness is a claim about the STORE rather than about a predicate, so it
 	// is the only one that can reach the unread-store notice. The result is
@@ -2880,14 +2983,14 @@ func (s *BdStore) List(query ListQuery) ([]Bead, error) {
 
 // listByTier runs the query against bd. It is the body List wraps, so the
 // empty-result notice has exactly one place to sit across all three tier modes.
-func (s *BdStore) listByTier(query ListQuery) ([]Bead, error) {
+func (s *BdStore) listByTier(query ListQuery, run bdReadFunc) ([]Bead, error) {
 	switch query.TierMode {
 	case TierWisps:
-		return s.listWispsTier(query)
+		return s.listWispsTier(query, run)
 	case TierBoth:
-		return s.listBothTiers(query)
+		return s.listBothTiers(query, run)
 	}
-	return s.listViaBDList(query)
+	return s.listViaBDList(query, run)
 }
 
 // bdListFanoutChunk caps how many ids ride one `bd list --id` argument or one
@@ -2959,7 +3062,7 @@ func chunkStrings(items []string, size int) [][]string {
 // listViaBDList runs the bd list leg. IDs and ParentIDs are pushed to bd
 // (--id chunks, one --parent per parent) so a lookup of known beads never
 // dumps the whole store; applyListQuery still re-checks every row.
-func (s *BdStore) listViaBDList(query ListQuery) ([]Bead, error) {
+func (s *BdStore) listViaBDList(query ListQuery, run bdReadFunc) ([]Bead, error) {
 	// Two or more Assignees has no single bd-list flag to carry it (--assignee
 	// takes one value): bdServerQueryForAssignees falls back to an unpredicated
 	// scan of every row of the type for bdListRequiresClientLimit to force
@@ -2978,7 +3081,7 @@ func (s *BdStore) listViaBDList(query ListQuery) ([]Bead, error) {
 	// its bd list leg could fan out the same way.
 	if query.TierMode != TierWisps && len(query.Assignees) >= 2 {
 		if assignees := nativeListFanOutAssignees(query); assignees != nil {
-			return s.listViaBDListFannedOutByAssignee(query, assignees)
+			return s.listViaBDListFannedOutByAssignee(query, assignees, run)
 		}
 	}
 	var scopes []bdListScope
@@ -2994,10 +3097,10 @@ func (s *BdStore) listViaBDList(query ListQuery) ([]Bead, error) {
 		}
 	}
 	if len(scopes) == 0 {
-		return s.listViaBDListScoped(query, bdListScope{})
+		return s.listViaBDListScoped(query, bdListScope{}, run)
 	}
 	if len(scopes) == 1 {
-		return s.listViaBDListScoped(query, scopes[0])
+		return s.listViaBDListScoped(query, scopes[0], run)
 	}
 	// Several calls: sort and limit only make sense over the merged rows.
 	inner := query
@@ -3008,7 +3111,7 @@ func (s *BdStore) listViaBDList(query ListQuery) ([]Bead, error) {
 		partial error
 	)
 	for _, scope := range scopes {
-		part, err := s.listViaBDListScoped(inner, scope)
+		part, err := s.listViaBDListScoped(inner, scope, run)
 		if err != nil {
 			var pe *PartialResultError
 			if !errors.As(err, &pe) {
@@ -3033,8 +3136,8 @@ func (s *BdStore) listViaBDList(query ListQuery) ([]Bead, error) {
 
 // listViaBDListScoped runs one scoped bd list read and applies the client-side
 // filter, surfacing a partial parse as upstream listViaBDList does.
-func (s *BdStore) listViaBDListScoped(query ListQuery, scope bdListScope) ([]Bead, error) {
-	result, partialErr, err := s.fetchViaBDList(query, scope)
+func (s *BdStore) listViaBDListScoped(query ListQuery, scope bdListScope, run bdReadFunc) ([]Bead, error) {
+	result, partialErr, err := s.fetchViaBDList(query, scope, run)
 	if err != nil {
 		return nil, err
 	}
@@ -3083,7 +3186,7 @@ func (s *BdStore) listViaBDListScoped(query ListQuery, scope bdListScope) ([]Bea
 // A hard error from any one read fails the whole List and discards the rows
 // the earlier reads returned, as a hard error fails the single scan and
 // NativeDoltStore's fan-out.
-func (s *BdStore) listViaBDListFannedOutByAssignee(query ListQuery, assignees []string) ([]Bead, error) {
+func (s *BdStore) listViaBDListFannedOutByAssignee(query ListQuery, assignees []string, run bdReadFunc) ([]Bead, error) {
 	var (
 		merged  []Bead
 		partial *PartialResultError
@@ -3094,7 +3197,7 @@ func (s *BdStore) listViaBDListFannedOutByAssignee(query ListQuery, assignees []
 		single.Assignees = nil
 		single.Assignee = assignee
 		single.Limit = 0
-		rows, perCallPartial, err := s.fetchViaBDList(single, bdListScope{})
+		rows, perCallPartial, err := s.fetchViaBDList(single, bdListScope{}, run)
 		if err != nil {
 			return nil, err
 		}
@@ -3128,7 +3231,7 @@ func (s *BdStore) listViaBDListFannedOutByAssignee(query ListQuery, assignees []
 // assignee fan-out above can combine several independently-predicated reads'
 // raw rows before a single applyListQuery pass runs over all of them,
 // instead of each read sorting and limiting on its own.
-func (s *BdStore) fetchViaBDList(query ListQuery, scope bdListScope) ([]Bead, *PartialResultError, error) {
+func (s *BdStore) fetchViaBDList(query ListQuery, scope bdListScope, run bdReadFunc) ([]Bead, *PartialResultError, error) {
 	serverQuery, clientFilteredAssignees := bdServerQueryForAssignees(query)
 	limit := serverQuery.Limit
 	if bdListRequiresClientLimit(query, serverQuery, clientFilteredAssignees) {
@@ -3182,7 +3285,7 @@ func (s *BdStore) fetchViaBDList(query ListQuery, scope bdListScope) ([]Bead, *P
 		args = append(args, "--skip-labels")
 	}
 
-	out, err := s.runBDTransientRead(args...)
+	out, err := run(args...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("bd list: %w", err)
 	}
@@ -3256,12 +3359,12 @@ func bdServerQueryForAssignees(query ListQuery) (ListQuery, bool) {
 	}
 }
 
-func (s *BdStore) listWispsTier(query ListQuery) ([]Bead, error) {
+func (s *BdStore) listWispsTier(query ListQuery, run bdReadFunc) ([]Bead, error) {
 	listQ := query
 	listQ.TierMode = TierWisps
 	ephemeralQ := query
 	ephemeralQ.TierMode = TierWisps
-	pair := s.listTierPair(listQ, ephemeralQ)
+	pair := s.listTierPair(listQ, ephemeralQ, run)
 	return mergeListTierResults(query, "bd list wisps tier", pair.list, pair.listErr, pair.ephemeral, pair.ephemeralErr)
 }
 
@@ -3278,14 +3381,14 @@ type tierPairResult struct {
 // own bd subprocess, so read one after the other a two-tier List costs every
 // caller two bd round trips in series instead of one (ga-3js1ayv). Both halves
 // call the store's CommandRunner, so the two reads can run it concurrently.
-func (s *BdStore) listTierPair(listQ, ephemeralQ ListQuery) tierPairResult {
+func (s *BdStore) listTierPair(listQ, ephemeralQ ListQuery, run bdReadFunc) tierPairResult {
 	var r tierPairResult
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		r.ephemeral, r.ephemeralErr = s.listEphemeral(ephemeralQ)
+		r.ephemeral, r.ephemeralErr = s.listEphemeral(ephemeralQ, run)
 	}()
-	r.list, r.listErr = s.listViaBDList(listQ)
+	r.list, r.listErr = s.listViaBDList(listQ, run)
 	<-done
 	return r
 }
@@ -3293,7 +3396,7 @@ func (s *BdStore) listTierPair(listQ, ephemeralQ ListQuery) tierPairResult {
 // listEphemeral reads only ephemeral rows using `bd query "ephemeral=true AND
 // <filters>"`. The installed bd list surface does not expose ephemeral rows, so
 // TierWisps and TierBoth must union this path with bd list results.
-func (s *BdStore) listEphemeral(query ListQuery) ([]Bead, error) {
+func (s *BdStore) listEphemeral(query ListQuery, run bdReadFunc) ([]Bead, error) {
 	// IDs and ParentIDs ride bd as OR groups, chunked like the bd list leg.
 	var groups []string
 	if ids := bdPushdownIDs(query); ids != nil {
@@ -3312,7 +3415,7 @@ func (s *BdStore) listEphemeral(query ListQuery) ([]Bead, error) {
 		if len(groups) == 1 {
 			group = groups[0]
 		}
-		return s.listEphemeralScoped(query, group)
+		return s.listEphemeralScoped(query, group, run)
 	}
 	inner := query
 	inner.Limit = 0
@@ -3322,7 +3425,7 @@ func (s *BdStore) listEphemeral(query ListQuery) ([]Bead, error) {
 		partial error
 	)
 	for _, group := range groups {
-		part, err := s.listEphemeralScoped(inner, group)
+		part, err := s.listEphemeralScoped(inner, group, run)
 		if err != nil {
 			var pe *PartialResultError
 			if !errors.As(err, &pe) {
@@ -3353,7 +3456,7 @@ func bdOrGroup(field string, values []string) string {
 	return "(" + strings.Join(terms, " OR ") + ")"
 }
 
-func (s *BdStore) listEphemeralScoped(query ListQuery, group string) ([]Bead, error) {
+func (s *BdStore) listEphemeralScoped(query ListQuery, group string, run bdReadFunc) ([]Bead, error) {
 	serverQuery, clientFilteredAssignees := bdServerQueryForAssignees(query)
 	clauses := []string{"ephemeral=true"}
 	serverFilteredOnly := !clientFilteredAssignees
@@ -3383,7 +3486,7 @@ func (s *BdStore) listEphemeralScoped(query ListQuery, group string) ([]Bead, er
 	// transient-read path (as listViaBDList already does) so BOTH subprocesses
 	// inside listWispsTier are bounded — a bare s.runner call here would be the
 	// one unretried read on the hot tier-merge path.
-	out, err := s.runBDTransientRead(args...)
+	out, err := run(args...)
 	if err != nil {
 		if isBdQueryUnsupported(err) {
 			return nil, nil
@@ -3559,12 +3662,12 @@ func isBareBdQueryValue(value string) bool {
 	return true
 }
 
-func (s *BdStore) listBothTiers(query ListQuery) ([]Bead, error) {
+func (s *BdStore) listBothTiers(query ListQuery, run bdReadFunc) ([]Bead, error) {
 	listQ := query
 	listQ.TierMode = TierBoth
 	ephemeralQ := query
 	ephemeralQ.TierMode = TierWisps
-	pair := s.listTierPair(listQ, ephemeralQ)
+	pair := s.listTierPair(listQ, ephemeralQ, run)
 	return mergeListTierResults(query, "bd list both tiers", pair.list, pair.listErr, pair.ephemeral, pair.ephemeralErr)
 }
 
