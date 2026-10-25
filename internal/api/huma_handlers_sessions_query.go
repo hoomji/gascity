@@ -20,7 +20,30 @@ import (
 // agent-get). Split out of huma_handlers_sessions.go to isolate read-side
 // logic from mutations and streaming.
 
-func (s *Server) humaHandleSessionList(_ context.Context, input *SessionListInput) (*ListOutput[sessionResponse], error) {
+func (s *Server) humaHandleSessionList(ctx context.Context, input *SessionListInput) (*ListOutput[sessionResponse], error) {
+	v, err := s.coalesceList(ctx, sessionListFlightKey(input.CityName, input), func(runCtx context.Context) (any, error) {
+		release, err := s.acquireBDRead(runCtx)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		return s.sessionListUncached(runCtx, input)
+	})
+	if err != nil {
+		return nil, err
+	}
+	out, ok := v.(*ListOutput[sessionResponse])
+	if !ok || out == nil {
+		return nil, apierr.Internal.Msg("session list coalescing returned an unexpected result")
+	}
+	return out, nil
+}
+
+// sessionListUncached is the unshared GET /sessions read behind the
+// coalescing flight. The request context reaches the read-model store
+// listing, so a disconnected client stops the backing bd reads instead of
+// abandoning them past its own budget.
+func (s *Server) sessionListUncached(ctx context.Context, input *SessionListInput) (*ListOutput[sessionResponse], error) {
 	store := s.state.SessionsBeadStore()
 	if store.Store == nil {
 		return nil, apierr.ServiceUnavailable.Msg("no bead store configured")
@@ -35,8 +58,11 @@ func (s *Server) humaHandleSessionList(_ context.Context, input *SessionListInpu
 	mgr := s.sessionManager(store.Store)
 	cfg := s.state.Config()
 
-	listings, partialErrors, err := sessionReadModelListings(session.NewStore(store))
+	listings, partialErrors, err := sessionReadModelListingsContext(ctx, session.NewStore(store))
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, apierr.Internal.Msg(err.Error())
 	}
 	sessions, responseByID := filterEnrichReadModel(mgr, listings, input.State, input.Template)
@@ -82,6 +108,9 @@ func (s *Server) humaHandleSessionList(_ context.Context, input *SessionListInpu
 	keyedTranscriptPaths := session.ResolveKeyedTranscriptPaths(sessionTranscriptLookupCandidates(pageSessions), s.sessionLogPaths(), sessionTranscriptProviderFallback(cfg))
 	page := make([]sessionResponse, len(pageSessions))
 	for j, sess := range pageSessions {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		page[j] = sessionResponseWithReason(sess, responseByID[sess.ID], cfg, s.state.SessionProvider(), hasDeferredQueue)
 		s.enrichSessionResponseWithKeyedPaths(&page[j], sess, cfg, s.runtimeSessionResponseHandle(sess), wantPeek, false, false, 0, keyedTranscriptPaths)
 	}

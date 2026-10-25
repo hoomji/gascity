@@ -154,6 +154,13 @@ type Server struct {
 	// per-city Server (the supervisor caches one Server per city).
 	webhookDedup *webhookDedupCache
 
+	// bdRead is the supervisor-wide backstop for the /sessions and /beads
+	// list paths (semaphore + coalescing flight). newServer installs a
+	// private guard; the supervisor replaces it with the shared one in
+	// getCityServer so the bound holds process-wide, not per city. A nil
+	// guard (zero-value Servers) skips the bound.
+	bdRead *bdReadGuard
+
 	// webhookLimiter is the E8 per-webhook token-bucket rate limiter.
 	webhookLimiter *webhookRateLimiter
 
@@ -272,6 +279,7 @@ func newServer(state State, readOnly bool) *Server {
 		webhookDedup:   newWebhookDedupCache(defaultWebhookDedupTTL),
 		webhookLimiter: newWebhookRateLimiter(),
 		activityMemo:   worker.NewDerivedActivityMemo(),
+		bdRead:         newBDReadGuard(defaultBDReadMaxConcurrent),
 	}
 	// Latch the rollout snapshot once: prefer the State's boot latch (the
 	// production controllerState); fall back to resolving from Config() for

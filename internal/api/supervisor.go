@@ -140,6 +140,11 @@ type SupervisorMux struct {
 	// create endpoints (POST /v0/city). Per-city creates use the per-city
 	// Server's own cache instead.
 	idem *idempotencyCache
+
+	// bdRead is the process-wide list-read guard shared by every per-city
+	// Server (see bdReadGuard). getCityServer installs it on each cached
+	// Server so the semaphore and coalescing hold supervisor-wide.
+	bdRead *bdReadGuard
 }
 
 // NewSupervisorMux creates a SupervisorMux that routes requests to cities
@@ -163,6 +168,7 @@ func NewSupervisorMux(resolver CityResolver, initializer cityInitializer, readOn
 		humaAPI:     newSupervisorHumaAPI(humaMux, readOnly),
 		cache:       make(map[string]cachedCityServer),
 		idem:        newIdempotencyCache(30 * time.Minute),
+		bdRead:      newBDReadGuard(defaultBDReadMaxConcurrent),
 	}
 	sm.registerSupervisorRoutes()
 	sm.registerCityRoutes()
@@ -478,6 +484,7 @@ func (sm *SupervisorMux) getCityServer(name string, state State) *Server {
 	// cached server observes the final provider.
 	srv.dashboardBase = sm.dashboardBase
 	srv.runCensusSource = sm.runCensusSource
+	srv.bdRead = sm.sharedBDReadGuard()
 
 	sm.cacheMu.Lock()
 	defer sm.cacheMu.Unlock()
@@ -489,6 +496,23 @@ func (sm *SupervisorMux) getCityServer(name string, state State) *Server {
 	}
 	sm.cache[name] = cachedCityServer{state: state, srv: srv}
 	return srv
+}
+
+// sharedBDReadGuard returns the process-wide list-read guard, lazily creating
+// it for zero-value SupervisorMuxes (tests) under the cache lock.
+func (sm *SupervisorMux) sharedBDReadGuard() *bdReadGuard {
+	sm.cacheMu.RLock()
+	g := sm.bdRead
+	sm.cacheMu.RUnlock()
+	if g != nil {
+		return g
+	}
+	sm.cacheMu.Lock()
+	defer sm.cacheMu.Unlock()
+	if sm.bdRead == nil {
+		sm.bdRead = newBDReadGuard(defaultBDReadMaxConcurrent)
+	}
+	return sm.bdRead
 }
 
 // buildMultiplexer creates a Multiplexer from all running cities'

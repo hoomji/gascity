@@ -19,9 +19,38 @@ func (s *Server) humaHandleBeadList(ctx context.Context, input *BeadListInput) (
 	bp := input.toBlockingParams()
 	blocking := bp.isBlocking()
 	if blocking {
+		// The event wait is per caller (each has its own timeout/cursor) and
+		// touches no bead store, so it stays outside the coalescing flight:
+		// only the store fan-out below is shared.
 		waitForChange(ctx, s.state.EventProvider(), bp)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
+	v, err := s.coalesceList(ctx, beadListFlightKey(input.CityName, input, blocking), func(runCtx context.Context) (any, error) {
+		release, err := s.acquireBDRead(runCtx)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		return s.beadListUncached(runCtx, input, blocking)
+	})
+	if err != nil {
+		return nil, err
+	}
+	out, ok := v.(*ListOutput[beads.Bead])
+	if !ok || out == nil {
+		return nil, apierr.Internal.Msg("bead list coalescing returned an unexpected result")
+	}
+	return out, nil
+}
+
+// beadListUncached is the unshared GET /beads read behind the coalescing
+// flight. Every leg lists through beads.ListWithContext, so a disconnected
+// client stops the backing bd reads instead of abandoning them past its own
+// budget.
+func (s *Server) beadListUncached(ctx context.Context, input *BeadListInput, blocking bool) (*ListOutput[beads.Bead], error) {
 	cityStore := s.state.CityBeadStore()
 	if err := cacheLiveOr503(cityStore); err != nil {
 		return nil, err
@@ -47,11 +76,12 @@ func (s *Server) humaHandleBeadList(ctx context.Context, input *BeadListInput) (
 	// the backing store) and are O(full history) per rig — seconds on a
 	// large city. Key their response cache on a time bucket so polls within
 	// a TTL window reuse the first completed rebuild instead of each
-	// rebuilding (#3208, same lever as /status in gascity#3186; there is no
-	// single-flight, so simultaneous misses on a cold bucket still rebuild
-	// independently). Open-only reads are served from the in-memory cache
-	// and stay uncached here; blocking callers bypass so the body reflects
-	// the event they waited for.
+	// rebuilding (#3208, same lever as /status in gascity#3186).
+	// Simultaneous misses on a cold bucket coalesce in the shared list
+	// flight (see humaHandleBeadList) instead of rebuilding independently.
+	// Open-only reads are served from the in-memory cache and stay uncached
+	// here; blocking callers bypass so the body reflects the event they
+	// waited for.
 	cacheKey := ""
 	var bucket uint64
 	if input.All && !blocking {
@@ -106,6 +136,9 @@ func (s *Server) humaHandleBeadList(ctx context.Context, input *BeadListInput) (
 		boundedFetch = limit + 1
 		boundedMode, boundedCounts, hydrateLegs = beadListBounding(ctx, legs, assigneeTerms[0], input)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// Bead ids are globally unique, so an id is one bead no matter how many legs
 	// hold a row for it. A migrated split city really does hold both: `gc storage
@@ -155,8 +188,13 @@ func (s *Server) humaHandleBeadList(ctx context.Context, input *BeadListInput) (
 				query.SeekAfter = seek
 			}
 			pa.attempt()
-			list, err := leg.store.List(query)
+			list, err := beads.ListWithContext(ctx, leg.store, query)
 			if err != nil {
+				// Our own cancellation aborts the request; it must never be
+				// recorded as a degraded leg and served as a partial 200.
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, ctxErr
+				}
 				if leg.graph {
 					// The graph leg is the execution DAG, not a rig: any degraded
 					// read there — hard failure or partial — leaves an unnamed hole
