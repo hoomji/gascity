@@ -65,3 +65,50 @@ func ListWithContext(ctx context.Context, store Store, query ListQuery) ([]Bead,
 	}
 	return store.List(query)
 }
+
+// ContextGetter is an optional Store capability: Get with cancellation.
+// Stores that shell out (BdStore) kill the in-flight child on cancellation;
+// in-process stores honor at least the pre-read check. Callers must use
+// GetWithContext rather than asserting this directly so stores without the
+// capability still get the pre-read check.
+type ContextGetter interface {
+	GetContext(ctx context.Context, id string) (Bead, error)
+}
+
+// GetWithContext reads one bead through the context-aware path when the
+// store implements it, else honors a dead context and falls back to Get. A
+// nil ctx behaves like context.Background.
+func GetWithContext(ctx context.Context, store Store, id string) (Bead, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if getter, ok := store.(ContextGetter); ok {
+		return getter.GetContext(ctx, id)
+	}
+	if err := ctx.Err(); err != nil {
+		return Bead{}, err
+	}
+	return store.Get(id)
+}
+
+// ContextDepLister is an optional Store capability: DepList with
+// cancellation, with the same contract as ContextGetter.
+type ContextDepLister interface {
+	DepListContext(ctx context.Context, id, direction string) ([]Dep, error)
+}
+
+// DepListWithContext reads one dependency row through the context-aware path
+// when the store implements it, else honors a dead context and falls back to
+// DepList. A nil ctx behaves like context.Background.
+func DepListWithContext(ctx context.Context, store Store, id, direction string) ([]Dep, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if lister, ok := store.(ContextDepLister); ok {
+		return lister.DepListContext(ctx, id, direction)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return store.DepList(id, direction)
+}

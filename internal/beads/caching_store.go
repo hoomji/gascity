@@ -1357,6 +1357,164 @@ func (c *CachingStore) fetchDirtyOverlay(todo []string, suppressed map[string]st
 	return fetched, nil
 }
 
+// readCacheWithOverlayContext is the cancellable form of
+// readCacheWithOverlay: the dirty-row refresh runs through the context-aware
+// backing path, no further backing read starts once ctx dies, and a
+// cancellation surfaces as ctx.Err() rather than cached rows. A nil ctx
+// behaves like context.Background. Callers must return a ctx.Err() result to
+// their caller instead of taking the fallback path: the fallback re-reads a
+// backing store the caller already abandoned. The plain form stays for the
+// remaining context-blind read path (Ready), which keeps its exact backing
+// traffic; List routes through this form with Background on its plain path,
+// which is identical because both runners share one invocation body.
+func (c *CachingStore) readCacheWithOverlayContext(ctx context.Context, gate func() bool, collect func(suppressed map[string]struct{})) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Deferred so it runs after every unlock below: a dirty-row refresh can be
+	// the first reader to see a close made by another process.
+	defer c.announceUnannouncedCloses()
+	suppressed := make(map[string]struct{})
+	for pass := 0; pass < 2; pass++ {
+		c.mu.RLock()
+		if !gate() {
+			c.mu.RUnlock()
+			return errDirtyOverlayFallback
+		}
+		if err := ctx.Err(); err != nil {
+			c.mu.RUnlock()
+			return err
+		}
+		startSeq, startScan := c.mutationSeq, c.scanGen
+		todo := c.dirtyToRefreshLocked(suppressed)
+		if len(todo) == 0 {
+			// Cache is clean, or every remaining dirty row is a confirmed
+			// absence: serve from cache under this same lock hold — but only
+			// after re-verifying no suppressed row was resurrected (see below).
+			if c.retrySuppressedChurnLocked(suppressed, startSeq) {
+				c.mu.RUnlock()
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				c.mu.RUnlock()
+				return err
+			}
+			collect(suppressed)
+			c.mu.RUnlock()
+			return nil
+		}
+		if len(c.dirty) > dirtyOverlayMaxGets {
+			c.mu.RUnlock()
+			return errDirtyOverlayFallback
+		}
+		c.mu.RUnlock()
+
+		fetched, err := c.fetchDirtyOverlayContext(ctx, todo, suppressed)
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			return errDirtyOverlayFallback
+		}
+
+		c.mu.Lock()
+		if !gate() {
+			c.mu.Unlock()
+			return errDirtyOverlayFallback
+		}
+		if err := ctx.Err(); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+		now := c.clockNow()
+		absorbed := 0
+		for _, f := range fetched {
+			// Fence discipline (I3): never overwrite a mutation that landed
+			// after the snapshot. A skipped-but-still-dirty row is caught by
+			// the re-check below and handled by the retry-or-fallback, as is
+			// one a scan merge left disagreeing with the fetch.
+			if c.refetchFencedLocked(f.id, startSeq) || c.scanRacedLocked(f.id, startScan, f.bead, true) {
+				continue
+			}
+			opts := absorbOpts{
+				depsMode:   depsFromFields,
+				seqMode:    seqClearBeadSeqOnly,
+				clearDirty: true,
+			}
+			// R1: rows whose backing.Get carried no dependency fields had their
+			// authoritative deps fetched separately; install them verbatim so the
+			// overlay never clobbers a blocked bead's deps to nil.
+			if f.depsFromBacking {
+				opts.depsMode = depsExplicit
+				opts.deps = f.deps
+			}
+			c.absorbFreshLocked(f.id, f.bead, now, opts)
+			absorbed++
+		}
+		if absorbed > 0 {
+			c.markFreshLocked(now)
+			c.updateStatsLocked()
+		}
+		if len(c.dirtyToRefreshLocked(suppressed)) == 0 {
+			if c.retrySuppressedChurnLocked(suppressed, startSeq) {
+				c.mu.Unlock()
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				c.mu.Unlock()
+				return err
+			}
+			collect(suppressed)
+			c.mu.Unlock()
+			return nil
+		}
+		c.mu.Unlock()
+	}
+	return errDirtyOverlayFallback
+}
+
+// fetchDirtyOverlayContext is the cancellable form of fetchDirtyOverlay: each
+// dirty ID refreshes through GetWithContext/DepListWithContext with no lock
+// held (I7), and no further backing read starts once ctx dies, so a canceled
+// list releases its concurrency slot instead of riding every remaining dirty
+// row to the subprocess timeout. Successful Gets queue for absorb;
+// ErrNotFound IDs join suppressed; any other error returns non-nil so the
+// caller falls back. The plain form stays for the context-blind Ready path,
+// whose fetch semantics this mirrors exactly.
+func (c *CachingStore) fetchDirtyOverlayContext(ctx context.Context, todo []string, suppressed map[string]struct{}) ([]overlayFetched, error) {
+	fetched := make([]overlayFetched, 0, len(todo))
+	for _, id := range todo {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		fresh, err := GetWithContext(ctx, c.backing, id)
+		switch {
+		case err == nil:
+			row := overlayFetched{id: id, bead: fresh}
+			if !beadCarriesDependencyFields(fresh) {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				deps, depErr := DepListWithContext(ctx, c.backing, id, "down")
+				if depErr != nil {
+					return nil, depErr
+				}
+				row.deps = deps
+				row.depsFromBacking = true
+			}
+			fetched = append(fetched, row)
+		case errors.Is(err, ErrNotFound):
+			suppressed[id] = struct{}{}
+		default:
+			return nil, err
+		}
+	}
+	return fetched, nil
+}
+
 // PrimeActive loads the common active bead statuses (open + in_progress) across
 // both persistent issues and ephemeral wisps into the cache. These are fast indexed
 // queries that populate enough data for

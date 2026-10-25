@@ -139,6 +139,7 @@ go_test(
         "lifecycle_transition_test.go",
         "lifecycle_vocabulary_test.go",
         "list_all_characterization_test.go",
+        "list_all_context_test.go",
         "list_all_test.go",
         "list_from_infos_test.go",
         "mailbox_address_test.go",

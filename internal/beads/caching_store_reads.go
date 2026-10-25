@@ -30,7 +30,7 @@ func (c *CachingStore) ListContext(ctx context.Context, query ListQuery) ([]Bead
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return c.listRouted(query, func(store Store, q ListQuery) ([]Bead, error) {
+	return c.listRoutedContext(ctx, query, func(store Store, q ListQuery) ([]Bead, error) {
 		return ListWithContext(ctx, store, q)
 	})
 }
@@ -39,6 +39,18 @@ func (c *CachingStore) ListContext(ctx context.Context, query ListQuery) ([]Bead
 // Store.List method expression and ListContext the ctx-delegating one, so the
 // cache-first routing stays identical on both paths.
 func (c *CachingStore) listRouted(query ListQuery, backingList func(Store, ListQuery) ([]Bead, error)) ([]Bead, error) {
+	return c.listRoutedContext(context.Background(), query, backingList)
+}
+
+// listRoutedContext is listRouted with cancellation: the dirty-row overlay
+// refresh runs through the context-aware backing path, and a dead context
+// surfaces as ctx.Err() instead of cached rows or a fallback re-read of a
+// backing store the caller already abandoned. A nil ctx behaves like
+// context.Background.
+func (c *CachingStore) listRoutedContext(ctx context.Context, query ListQuery, backingList func(Store, ListQuery) ([]Bead, error)) ([]Bead, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if !query.HasFilter() && !query.AllowScan {
 		return nil, fmt.Errorf("listing beads: %w", ErrQueryRequiresScan)
 	}
@@ -62,7 +74,7 @@ func (c *CachingStore) listRouted(query ListQuery, backingList func(Store, ListQ
 	// broader nonclosed queries require cacheLive. On overlay error the read
 	// takes the old full-scan fallback.
 	var cached []Bead
-	if err := c.readCacheWithOverlay(func() bool {
+	if err := c.readCacheWithOverlayContext(ctx, func() bool {
 		return c.cacheServableForListQueryLocked(query)
 	}, func(suppressed map[string]struct{}) {
 		cached = make([]Bead, 0, len(c.beads))
@@ -85,6 +97,11 @@ func (c *CachingStore) listRouted(query ListQuery, backingList func(Store, ListQ
 		}
 
 		if !query.IncludesClosed() {
+			// The overlay may have finished just as the caller gave up;
+			// cached rows that arrive after cancellation are not a success.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			return finish(cached, nil)
 		}
 
@@ -116,7 +133,12 @@ func (c *CachingStore) listRouted(query ListQuery, backingList func(Store, ListQ
 			cached = append(cached, b)
 			seen[b.ID] = true
 		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return finish(cached, err)
+	} else if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 	return backingList(c.backing, liveListQuery(query))
 }
@@ -185,10 +207,10 @@ func (c *CachingStore) SawRows() bool {
 	return ok && witness.SawRows()
 }
 
-// cachedCountContext serves only a clean active snapshot. Dirty overlays use
-// context-blind Store.Get calls, so a deadline-sensitive Count delegates those
-// cases to the backing Counter instead. Lock acquisition and the scan both
-// observe ctx, ensuring a cache writer cannot strand the caller's goroutine.
+// cachedCountContext serves only a clean active snapshot. Dirty rows are left
+// to the backing Counter instead, so a deadline-sensitive Count never waits
+// on a per-ID refresh. Lock acquisition and the scan both observe ctx,
+// ensuring a cache writer cannot strand the caller's goroutine.
 func (c *CachingStore) cachedCountContext(ctx context.Context, query ListQuery, excludeTypes []string) (int, bool, error) {
 	if ctx == nil {
 		ctx = context.Background()

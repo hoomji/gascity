@@ -1512,13 +1512,46 @@ func (s *BdStore) readsBySubprocess() bool { return true }
 
 // Get retrieves a bead by ID via bd show.
 func (s *BdStore) Get(id string) (Bead, error) {
+	return s.getRouted(id, s.runBDTransientRead)
+}
+
+// GetContext is the ContextGetter implementation: Get with cancellation.
+// Each bd subprocess runs bound to ctx (through the WithBdStoreContextRunner
+// executor when one is configured), so a disconnected client kills the child
+// instead of abandoning it past its own budget. A failed read on a dead
+// context surfaces as ctx.Err(), never as a kill-signal exec error, so
+// callers can tell cancellation from a broken store. Without a configured
+// context runner only the pre-read check applies and the read otherwise
+// behaves exactly like Get.
+func (s *BdStore) GetContext(ctx context.Context, id string) (Bead, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Bead{}, err
+	}
+	bead, err := s.getRouted(id, func(args ...string) ([]byte, error) {
+		return s.runBDTransientReadContext(ctx, args...)
+	})
+	// Unconditional: a verdict reached on a dead context — rows, a miss, or
+	// an empty dep row — answers a caller that already left.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Bead{}, ctxErr
+	}
+	return bead, err
+}
+
+// getRouted is the shared Get/GetContext body. Get passes the legacy
+// fixed-context transient reader and GetContext the ctx-bound one, so both
+// share the wisp fallback and miss confirmation below instead of forking it.
+func (s *BdStore) getRouted(id string, run bdReadFunc) (Bead, error) {
 	// Read via the transient-retry wrapper so a Get that races a managed-Dolt
 	// restart (SIGKILL + port rebind) recovers instead of surfacing a one-shot
 	// "invalid connection"/"i/o timeout" transport error. The runner performs a
 	// single recover-and-retry per call; the wrapper's outer attempts give the
 	// rebind enough total time to complete under CI load, matching every other
 	// BdStore read/write path (ga-gellq1).
-	out, err := s.runBDTransientRead("show", "--json", id)
+	out, err := run("show", "--json", id)
 	if err != nil {
 		// Only a bead-level miss may become ErrNotFound. Callers treat
 		// ErrNotFound as "confirmed absent" (the process-table orphan sweep
@@ -1537,7 +1570,7 @@ func (s *BdStore) Get(id string) (Bead, error) {
 		// non-bead names (e.g. slash-qualified session recipients), which
 		// must not leak into a supplemental wisp query.
 		if isWispQueryableID(id) {
-			wisps, queryErr := s.getEphemeralByID(id)
+			wisps, queryErr := s.getEphemeralByID(id, run)
 			for _, b := range wisps {
 				if b.ID == id {
 					return b, nil
@@ -1550,7 +1583,7 @@ func (s *BdStore) Get(id string) (Bead, error) {
 				return Bead{}, fmt.Errorf("getting bead %q: querying wisp tier: %w", id, queryErr)
 			}
 		}
-		return Bead{}, s.bdShowMissError(id, err)
+		return Bead{}, s.bdShowMissError(id, err, run)
 	}
 	var issues []bdIssue
 	if err := json.Unmarshal(extractJSON(out), &issues); err != nil {
@@ -1585,7 +1618,7 @@ func (s *BdStore) Get(id string) (Bead, error) {
 // wisp fallback has had its chance at the bead. Any other outcome (an ID the
 // query cannot carry, a query error, a row, unparseable output) leaves
 // absence unproven and returns the bd show error.
-func (s *BdStore) bdShowMissError(id string, showErr error) error {
+func (s *BdStore) bdShowMissError(id string, showErr error, run bdReadFunc) error {
 	if isBdBeadNotFound(showErr) {
 		return fmt.Errorf("getting bead %q: %w", id, ErrNotFound)
 	}
@@ -1595,7 +1628,7 @@ func (s *BdStore) bdShowMissError(id string, showErr error) error {
 	}
 	// isExactIDQueryable admits only printable ASCII without '"' or '\',
 	// which strconv.Quote leaves unescaped, so this is exactly id="<id>".
-	out, err := s.runBDTransientRead("query", "--json", "id="+strconv.Quote(id), "--all", "--limit", "1")
+	out, err := run("query", "--json", "id="+strconv.Quote(id), "--all", "--limit", "1")
 	if err != nil {
 		return fmt.Errorf("%w (confirming absence: bd query: %w)", unproven, err)
 	}
@@ -3495,12 +3528,12 @@ func isWispQueryableID(id string) bool {
 	return true
 }
 
-func (s *BdStore) getEphemeralByID(id string) ([]Bead, error) {
+func (s *BdStore) getEphemeralByID(id string, run bdReadFunc) ([]Bead, error) {
 	clause := "ephemeral=true AND id=" + id
 	args := []string{"query", "--json", clause, "--all", "--limit", "1"}
 	// Get surfaces this query's errors, so retry transient connection
 	// failures like the bd show that precedes it.
-	out, err := s.runBDTransientRead(args...)
+	out, err := run(args...)
 	if err != nil {
 		// bd answering "no issue found" is a definitive miss. Match it only
 		// here, on the command's own failure: a parse error below embeds raw
@@ -3913,11 +3946,36 @@ type bdDepIssue struct {
 
 // DepList returns dependencies via bd dep list --json.
 func (s *BdStore) DepList(id, direction string) ([]Dep, error) {
+	return s.depListRouted(id, direction, s.runBDTransientRead)
+}
+
+// DepListContext is the ContextDepLister implementation: DepList with
+// cancellation, with the same child-killing and ctx.Err surfacing contract
+// as ListContext and GetContext.
+func (s *BdStore) DepListContext(ctx context.Context, id, direction string) ([]Dep, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	deps, err := s.depListRouted(id, direction, func(args ...string) ([]byte, error) {
+		return s.runBDTransientReadContext(ctx, args...)
+	})
+	// Unconditional: see GetContext.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return deps, err
+}
+
+// depListRouted is the shared DepList/DepListContext body.
+func (s *BdStore) depListRouted(id, direction string, run bdReadFunc) ([]Dep, error) {
 	args := []string{"dep", "list", id, "--json"}
 	if direction == "up" {
 		args = append(args, "--direction=up")
 	}
-	out, err := s.runBDTransientRead(args...)
+	out, err := run(args...)
 	if err != nil {
 		// Empty dep list may return error on some bd versions.
 		if isBdNotFound(err) {
