@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -36,6 +37,28 @@ import (
 // error is wrapped with context naming which leg failed so logs are
 // diagnosable.
 func ListAllSessionBeads(store beads.Store, base beads.ListQuery) ([]beads.Bead, error) {
+	return listAllSessionBeadsRouted(store, base, beads.Store.List)
+}
+
+// ListAllSessionBeadsContext is ListAllSessionBeads with cancellation: both
+// union legs list through beads.ListWithContext, so a disconnected caller
+// kills the backing bd children instead of abandoning them. A dead context
+// surfaces as ctx.Err().
+func ListAllSessionBeadsContext(ctx context.Context, store beads.Store, base beads.ListQuery) ([]beads.Bead, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return listAllSessionBeadsRouted(store, base, func(s beads.Store, q beads.ListQuery) ([]beads.Bead, error) {
+		return beads.ListWithContext(ctx, s, q)
+	})
+}
+
+// listAllSessionBeadsRouted is the shared union body behind
+// ListAllSessionBeads and ListAllSessionBeadsContext.
+func listAllSessionBeadsRouted(store beads.Store, base beads.ListQuery, legList func(beads.Store, beads.ListQuery) ([]beads.Bead, error)) ([]beads.Bead, error) {
 	if store == nil {
 		return nil, nil
 	}
@@ -48,7 +71,7 @@ func ListAllSessionBeads(store beads.Store, base beads.ListQuery) ([]beads.Bead,
 	byTypeQuery.Type = BeadType
 	byTypeQuery.Label = ""
 	byTypeQuery.Limit = 0
-	byType, typeErr := store.List(byTypeQuery)
+	byType, typeErr := legList(store, byTypeQuery)
 	if typeErr != nil && !beads.IsPartialResult(typeErr) {
 		return nil, fmt.Errorf("listing session beads by type: %w", typeErr)
 	}
@@ -57,7 +80,7 @@ func ListAllSessionBeads(store beads.Store, base beads.ListQuery) ([]beads.Bead,
 	byLabelQuery.Type = ""
 	byLabelQuery.Label = LabelSession
 	byLabelQuery.Limit = 0
-	byLabel, labelErr := store.List(byLabelQuery)
+	byLabel, labelErr := legList(store, byLabelQuery)
 	if labelErr != nil && !beads.IsPartialResult(labelErr) {
 		return nil, fmt.Errorf("listing session beads by label: %w", labelErr)
 	}
@@ -179,6 +202,21 @@ type cachedListStore interface {
 // result the projected partial rows are returned alongside the PartialResultError.
 func (s *Store) ListAll(opts ListAllOptions) ([]Info, error) {
 	rows, err := s.listAllBeads(opts)
+	if rows == nil {
+		return nil, err
+	}
+	out := make([]Info, 0, len(rows))
+	for _, b := range rows {
+		out = append(out, infoFromPersistedBead(b))
+	}
+	return out, err
+}
+
+// ListAllContext is ListAll with cancellation, for request-scoped reads: a
+// disconnected caller stops the backing store reads instead of abandoning
+// them. CacheFirst hits answer from memory as usual.
+func (s *Store) ListAllContext(ctx context.Context, opts ListAllOptions) ([]Info, error) {
+	rows, err := s.listAllBeadsContext(ctx, opts)
 	if rows == nil {
 		return nil, err
 	}
@@ -329,6 +367,24 @@ func (s *Store) ListAllWithResponses(opts ListAllOptions) ([]ListedSession, erro
 	return out, err
 }
 
+// ListAllWithResponsesContext is ListAllWithResponses with cancellation, for
+// request-scoped reads: a disconnected caller stops the backing store reads
+// instead of abandoning them. CacheFirst hits answer from memory as usual.
+func (s *Store) ListAllWithResponsesContext(ctx context.Context, opts ListAllOptions) ([]ListedSession, error) {
+	rows, err := s.listAllBeadsContext(ctx, opts)
+	if rows == nil {
+		return nil, err
+	}
+	out := make([]ListedSession, 0, len(rows))
+	for _, b := range rows {
+		out = append(out, ListedSession{
+			Info:     infoFromPersistedBead(b),
+			Response: PersistedResponseFromBead(b),
+		})
+	}
+	return out, err
+}
+
 // listAllBeads is the shared union body behind ListAll / ListAllWithResponses:
 // the CacheFirst peek tier when eligible, else the direct ListAllSessionBeads
 // union. It returns the raw beads so the two public methods can pick their
@@ -337,6 +393,44 @@ func (s *Store) listAllBeads(opts ListAllOptions) ([]beads.Bead, error) {
 	if s == nil || s.store.Store == nil {
 		return nil, nil
 	}
+	base := listAllBaseQuery(opts)
+	// CacheFirst peek — skipped when Live is set (Live wins; the caller demands
+	// a store read, not a cache peek).
+	if opts.CacheFirst && !opts.Live {
+		if merged, ok := s.cachedListUnion(opts); ok {
+			return merged, nil
+		}
+	}
+	return ListAllSessionBeads(s.store.Store, base)
+}
+
+// listAllBeadsContext is listAllBeads with cancellation. The CacheFirst peek
+// is in-memory; only the store union legs can block, and they run through
+// ListAllSessionBeadsContext.
+func (s *Store) listAllBeadsContext(ctx context.Context, opts ListAllOptions) ([]beads.Bead, error) {
+	if s == nil || s.store.Store == nil {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	base := listAllBaseQuery(opts)
+	// CacheFirst peek — skipped when Live is set (Live wins; the caller demands
+	// a store read, not a cache peek).
+	if opts.CacheFirst && !opts.Live {
+		if merged, ok := s.cachedListUnion(opts); ok {
+			return merged, nil
+		}
+	}
+	return ListAllSessionBeadsContext(ctx, s.store.Store, base)
+}
+
+// listAllBaseQuery builds the union base query shared by listAllBeads and
+// listAllBeadsContext.
+func listAllBaseQuery(opts ListAllOptions) beads.ListQuery {
 	base := beads.ListQuery{
 		IncludeClosed: opts.IncludeClosed,
 		Sort:          opts.Sort,
@@ -360,14 +454,7 @@ func (s *Store) listAllBeads(opts ListAllOptions) ([]beads.Bead, error) {
 		// nothing to do with this cache fix.
 		base.Status = "open"
 	}
-	// CacheFirst peek — skipped when Live is set (Live wins; the caller demands
-	// a store read, not a cache peek).
-	if opts.CacheFirst && !opts.Live {
-		if merged, ok := s.cachedListUnion(opts); ok {
-			return merged, nil
-		}
-	}
-	return ListAllSessionBeads(s.store.Store, base)
+	return base
 }
 
 // cachedListUnion ports the internal/api/cache_read_model.go peek-union: it asks
