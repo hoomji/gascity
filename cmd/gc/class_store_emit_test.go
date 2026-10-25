@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -594,6 +595,64 @@ func TestEmittingClassStoreKeepsEveryEngineCapability(t *testing.T) {
 		if len(missing) > 0 {
 			t.Errorf("the emitting class store drops %v from %s; every one is a capability assertion that stops matching", missing, engine)
 		}
+	}
+}
+
+// emitCtxListStub is a beads.Store that records whether its ListContext ran,
+// so the wrapper's forward is observable.
+type emitCtxListStub struct {
+	beads.Store
+	listCtxCalls int
+	rows         []beads.Bead
+}
+
+func (s *emitCtxListStub) ListContext(ctx context.Context, _ beads.ListQuery) ([]beads.Bead, error) {
+	s.listCtxCalls++
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.rows, nil
+}
+
+// ListContext is a read like List: it emits nothing, reaches the inner
+// store's cancellable path when one exists, and falls back to List
+// otherwise. TestEmittingClassStoreKeepsEveryEngineCapability forces the
+// method to exist; this pins the behavior.
+func TestEmittingClassStoreListContextForwards(t *testing.T) {
+	cityPath := t.TempDir()
+	inner := &emitCtxListStub{Store: beads.NewMemStore(), rows: []beads.Bead{{ID: "e-1", Title: "e"}}}
+	wrapped := splitClassRoutes(inner).withCLIEmission(cityPath).stores[coordclass.ClassGraph]
+
+	got, err := beads.ListWithContext(context.Background(), wrapped, beads.ListQuery{AllowScan: true})
+	if err != nil {
+		t.Fatalf("ListWithContext through emitting store: %v", err)
+	}
+	if inner.listCtxCalls != 1 {
+		t.Fatalf("inner ListContext calls = %d, want 1 (the wrapper must forward, not shadow)", inner.listCtxCalls)
+	}
+	if len(got) != 1 || got[0].ID != "e-1" {
+		t.Fatalf("got %+v, want the stub rows", got)
+	}
+	if events := beadEvents(readCityJournal(t, cityPath)); len(events) != 0 {
+		t.Errorf("ListContext appended %d bead event(s); a read mutates nothing", len(events))
+	}
+}
+
+func TestEmittingClassStoreListContextFallsBackToList(t *testing.T) {
+	cityPath := t.TempDir()
+	mem := beads.NewMemStore()
+	created, err := mem.Create(beads.Bead{Title: "plain row", Type: "task"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	wrapped := splitClassRoutes(mem).withCLIEmission(cityPath).stores[coordclass.ClassGraph]
+
+	got, err := beads.ListWithContext(context.Background(), wrapped, beads.ListQuery{AllowScan: true})
+	if err != nil {
+		t.Fatalf("ListWithContext over a ctx-blind inner: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != created.ID {
+		t.Fatalf("got %+v, want the MemStore rows", got)
 	}
 }
 
