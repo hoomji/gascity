@@ -141,6 +141,147 @@ func TestBdStoreListContextKillsSlowRead(t *testing.T) {
 	}
 }
 
+// TestBdStoreGetContextKillsSlowRead proves a canceled GetContext stops
+// waiting for a stuck bd show instead of riding it to the subprocess
+// timeout, and that the miss-confirmation fallback issues no further child
+// once the context is dead.
+func TestBdStoreGetContextKillsSlowRead(t *testing.T) {
+	plainRunner := func(_ string, _ string, _ ...string) ([]byte, error) {
+		t.Error("plain runner must not run when a context runner is configured")
+		return nil, errors.New("wrong runner")
+	}
+	entered := make(chan struct{})
+	var enterOnce sync.Once
+	var runnerCalls atomic.Int32
+	ctxRunner := func(ctx context.Context, _ string, _ string, _ ...string) ([]byte, error) {
+		runnerCalls.Add(1)
+		enterOnce.Do(func() { close(entered) })
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	store := beads.NewBdStore(t.TempDir(), plainRunner, beads.WithBdStoreContextRunner(ctxRunner))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-entered
+		cancel()
+	}()
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.GetContext(ctx, "glg-abc1")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		elapsed := time.Since(start)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("GetContext on canceled read = %v, want context.Canceled", err)
+		}
+		if elapsed > 10*time.Second {
+			t.Fatalf("GetContext waited %s for a canceled read, want prompt return", elapsed)
+		}
+		if runnerCalls.Load() != 1 {
+			t.Fatalf("context runner calls = %d, want 1 (no fallback child after cancel)", runnerCalls.Load())
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("GetContext did not return after cancel; the context likely never reached the child")
+	}
+}
+
+// TestBdStoreDepListContextKillsSlowRead is the DepList twin of
+// TestBdStoreGetContextKillsSlowRead.
+func TestBdStoreDepListContextKillsSlowRead(t *testing.T) {
+	plainRunner := func(_ string, _ string, _ ...string) ([]byte, error) {
+		t.Error("plain runner must not run when a context runner is configured")
+		return nil, errors.New("wrong runner")
+	}
+	entered := make(chan struct{})
+	var enterOnce sync.Once
+	ctxRunner := func(ctx context.Context, _ string, _ string, _ ...string) ([]byte, error) {
+		enterOnce.Do(func() { close(entered) })
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	store := beads.NewBdStore(t.TempDir(), plainRunner, beads.WithBdStoreContextRunner(ctxRunner))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-entered
+		cancel()
+	}()
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.DepListContext(ctx, "glg-abc1", "down")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		elapsed := time.Since(start)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("DepListContext on canceled read = %v, want context.Canceled", err)
+		}
+		if elapsed > 10*time.Second {
+			t.Fatalf("DepListContext waited %s for a canceled read, want prompt return", elapsed)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("DepListContext did not return after cancel; the context likely never reached the child")
+	}
+}
+
+func TestBdStoreGetContextMatchesGet(t *testing.T) {
+	showJSON := `[{"id":"glg-abc1","title":"t","status":"open","issue_type":"task"}]`
+	//nolint:unparam // error return satisfies CommandRunner; the canned fixture never fails.
+	canned := func(_ string, _ string, args ...string) ([]byte, error) {
+		if len(args) > 0 && args[0] == "show" {
+			return []byte(showJSON), nil
+		}
+		return []byte("[]"), nil
+	}
+	want, err := beads.NewBdStore(t.TempDir(), canned).Get("glg-abc1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	got, err := beads.NewBdStore(t.TempDir(), canned).GetContext(context.Background(), "glg-abc1")
+	if err != nil {
+		t.Fatalf("GetContext: %v", err)
+	}
+	if got.ID != want.ID || got.Title != want.Title || got.Status != want.Status {
+		t.Fatalf("GetContext = %+v, Get = %+v", got, want)
+	}
+	ctxCanned := func(_ context.Context, dir string, name string, args ...string) ([]byte, error) {
+		return canned(dir, name, args...)
+	}
+	viaRunner, err := beads.NewBdStore(t.TempDir(), canned, beads.WithBdStoreContextRunner(ctxCanned)).GetContext(context.Background(), "glg-abc1")
+	if err != nil {
+		t.Fatalf("GetContext via context runner: %v", err)
+	}
+	if viaRunner.ID != want.ID {
+		t.Fatalf("GetContext via context runner = %+v, Get = %+v", viaRunner, want)
+	}
+}
+
+func TestBdStoreDepListContextMatchesDepList(t *testing.T) {
+	depJSON := `[{"id":"glg-dep1","title":"d","status":"open","issue_type":"task","dependency_type":"blocks"}]`
+	canned := func(_ string, _ string, _ ...string) ([]byte, error) {
+		return []byte(depJSON), nil
+	}
+	want, err := beads.NewBdStore(t.TempDir(), canned).DepList("glg-abc1", "down")
+	if err != nil {
+		t.Fatalf("DepList: %v", err)
+	}
+	got, err := beads.NewBdStore(t.TempDir(), canned).DepListContext(context.Background(), "glg-abc1", "down")
+	if err != nil {
+		t.Fatalf("DepListContext: %v", err)
+	}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("DepListContext = %+v, DepList = %+v", got, want)
+	}
+}
+
 func TestCachingStoreListContextCanceledSkipsBacking(t *testing.T) {
 	var calls atomic.Int32
 	backing := &countingListStore{Store: beads.NewMemStore(), calls: &calls}
