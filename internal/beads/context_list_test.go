@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -97,21 +98,27 @@ func TestBdStoreListContextCanceledSkipsRunner(t *testing.T) {
 
 // TestBdStoreListContextKillsSlowRead proves a canceled request stops waiting
 // for a stuck bd child instead of riding it to the 120s subprocess timeout.
-// The fake context runner plays the stuck child: it blocks until ctx dies.
+// The fake context runner plays the stuck child: it blocks until ctx dies,
+// and announces the attempt so the cancel lands deterministically mid-read
+// instead of after an elapsed wait.
 func TestBdStoreListContextKillsSlowRead(t *testing.T) {
 	plainRunner := func(_ string, _ string, _ ...string) ([]byte, error) {
 		t.Error("plain runner must not run when a context runner is configured")
 		return nil, errors.New("wrong runner")
 	}
+	entered := make(chan struct{})
+	var enterOnce sync.Once
 	ctxRunner := func(ctx context.Context, _ string, _ string, _ ...string) ([]byte, error) {
+		enterOnce.Do(func() { close(entered) })
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
 	store := beads.NewBdStore(t.TempDir(), plainRunner, beads.WithBdStoreContextRunner(ctxRunner))
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		time.Sleep(50 * time.Millisecond)
+		<-entered
 		cancel()
 	}()
 	start := time.Now()
