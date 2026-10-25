@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -77,6 +78,16 @@ func TestListSingleflightCoalescesConcurrentReads(t *testing.T) {
 	srv := New(state)
 	var runs atomic.Int32
 	const callers = 10
+	// The shared fn stays open until every caller has JOINED it: an
+	// instant fn could complete between joins and prove nothing. Join
+	// progress is observed white-box (the guarded waiter count) purely as
+	// synchronization — the assertions below stay behavioral (one run,
+	// every caller served). No wall-time wait: the flight cannot close
+	// before release, and no waiter can leave a live flight, so observing
+	// all ten joined deterministically precedes the release.
+	release := make(chan struct{})
+	started := make(chan struct{})
+	var startOnce sync.Once
 	var wg sync.WaitGroup
 	errs := make([]error, callers)
 	for i := 0; i < callers; i++ {
@@ -85,9 +96,8 @@ func TestListSingleflightCoalescesConcurrentReads(t *testing.T) {
 			defer wg.Done()
 			v, err := srv.coalesceList(context.Background(), "test:key", func(context.Context) (any, error) {
 				runs.Add(1)
-				// Hold the shared call open so every caller joins it: an
-				// instant fn would complete between joins and prove nothing.
-				time.Sleep(200 * time.Millisecond)
+				startOnce.Do(func() { close(started) })
+				<-release
 				return "shared", nil
 			})
 			if err != nil {
@@ -99,6 +109,27 @@ func TestListSingleflightCoalescesConcurrentReads(t *testing.T) {
 			}
 		}(i)
 	}
+	<-started
+	joinDeadline := time.After(10 * time.Second)
+	for {
+		srv.bdRead.mu.Lock()
+		call := srv.bdRead.calls["test:key"]
+		waiters := -1
+		if call != nil {
+			waiters = call.waiters
+		}
+		srv.bdRead.mu.Unlock()
+		if waiters == callers {
+			break
+		}
+		select {
+		case <-joinDeadline:
+			t.Fatalf("only %d of %d callers joined the flight", waiters, callers)
+		default:
+		}
+		runtime.Gosched()
+	}
+	close(release)
 	wg.Wait()
 	for i, err := range errs {
 		if err != nil {
