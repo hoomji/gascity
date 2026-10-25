@@ -1388,20 +1388,57 @@ func (s *SQLiteStore) CloseAll(ids []string, metadata map[string]string) (int, e
 
 // List returns beads matching the query.
 func (s *SQLiteStore) List(query ListQuery) ([]Bead, error) {
+	return s.listRows(context.Background(), query)
+}
+
+// ListContext is the ContextLister implementation: List with cancellation.
+// The context reaches the driver, which interrupts an in-flight statement on
+// cancellation, and the decode loop rechecks it per row, so a slow scan stops
+// instead of running to completion behind an abandoned caller. Cancellation
+// always surfaces as ctx.Err() — never as an empty result — matching
+// ReadyContext.
+func (s *SQLiteStore) ListContext(ctx context.Context, query ListQuery) ([]Bead, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.listRows(ctx, query)
+}
+
+// listRows is the single list read shared by List and ListContext, so both
+// answer identically for a live context.
+func (s *SQLiteStore) listRows(ctx context.Context, query ListQuery) ([]Bead, error) {
 	if err := s.ensureOpen(); err != nil {
 		return nil, err
 	}
 	if !query.HasFilter() && !query.AllowScan {
 		return nil, fmt.Errorf("listing beads: %w", ErrQueryRequiresScan)
 	}
+	// An uncancellable context can never fail a check; skip the per-row
+	// ctx.Err() calls entirely on the List fast path.
+	cancellable := ctx.Done() != nil
 	sqlText, args := sqliteListSQL(query, s.sqliteBeadProjection())
-	rows, err := s.readDB.QueryContext(context.Background(), sqlText, args...)
+	rows, err := s.readDB.QueryContext(ctx, sqlText, args...)
 	if err != nil {
+		// A canceled read surfaces as the driver's "interrupted" error on some
+		// paths; report the cause the caller can act on.
+		if cancellable {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+		}
 		return nil, fmt.Errorf("listing sqlite beads: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
 	var result []Bead
 	for rows.Next() {
+		if cancellable {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+		}
 		b, err := scanSQLiteBead(rows)
 		if err != nil {
 			return nil, fmt.Errorf("listing sqlite beads: %w", err)
@@ -1412,6 +1449,11 @@ func (s *SQLiteStore) List(query ListQuery) ([]Bead, error) {
 		result = append(result, b)
 	}
 	if err := rows.Err(); err != nil {
+		if cancellable {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+		}
 		return nil, fmt.Errorf("listing sqlite beads: %w", err)
 	}
 	sortBeadsForQuery(result, query.Sort)
