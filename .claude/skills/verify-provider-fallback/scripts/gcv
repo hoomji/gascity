@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+# gcv: drive provider fallback in an isolated scratch Gas City with fake providers.
+#
+#   gcv launch [--gc PATH]       new run: scratch city + private supervisor; prints RUN_ID
+#   gcv doctor                   is this run's instance worth driving?
+#   gcv hold PROVIDER [SECS] [--headroom N] [--reason TEXT]   mark PROVIDER unhealthy (until now+SECS)
+#   gcv healthy PROVIDER [--headroom N]                        write a healthy record
+#   gcv clear                    remove provider-health.json
+#   gcv sling TITLE              route one plain bead to the probe agent
+#   gcv recycle                  close the probe's sessions so the next sling creates a new one
+#   gcv wait-launch [SECS]       wait for a probe launch record; prints it
+#   gcv session                  probe session(s): id, state, provider, gc.provider_override, command
+#   gcv events                   provider.* events from the scratch city
+#   gcv proof NAME               copy launch records, session metadata, events, health file to evidence
+#   gcv gc ARGS...               run gc against the scratch city with the isolated env
+#   gcv cleanup                  stop everything this run started; keeps evidence
+#
+# The current run is ${GCV_RUN:-the id in ~/.cache/gc-verify/current}.
+# Scratch state: /var/tmp/gcv-<id> (short path: unix socket limits). Evidence: ~/.cache/gc-verify/<id>/.
+set -euo pipefail
+
+EVROOT="${GCV_EVIDENCE_ROOT:-$HOME/.cache/gc-verify}"
+mkdir -p "$EVROOT"
+
+die() { echo "gcv: $*" >&2; exit 1; }
+run_id() { local id="${GCV_RUN:-}"; [ -n "$id" ] || id="$(cat "$EVROOT/current" 2>/dev/null || true)"; [ -n "$id" ] || die "no run; gcv launch first"; echo "$id"; }
+ctx() {
+  ID="$(run_id)"; R="/var/tmp/gcv-$ID"; EV="$EVROOT/$ID"; C="$R/city"
+  [ -d "$R" ] || die "run $ID has no scratch dir $R"
+  # HOME stays real: gc's platform supervisor refuses a HOME override. GC_HOME and
+  # XDG_RUNTIME_DIR isolate the supervisor registry, socket and API port.
+  export GC_HOME="$R/gchome" XDG_RUNTIME_DIR="$R/xdg"
+  GC="$(cat "$R/gc-bin")"
+}
+g() { "$GC" --city "$C" "$@"; }
+
+health_write() { # provider status secs headroom reason
+  python3 - "$C/.gc/cache/provider-health.json" "$@" <<'PY'
+import json, os, sys, time
+path, prov, status, secs, headroom, reason = sys.argv[1:7]
+now = time.time()
+try:
+    data = json.load(open(path))
+except Exception:
+    data = {"providers": []}
+recs = [r for r in data.get("providers", []) if r.get("provider") != prov]
+rec = {"provider": prov, "status": status, "probed_at": now, "ttl_s": max(int(secs), 60), "reason": reason}
+if status == "unhealthy":
+    rec["until"] = now + int(secs)
+if headroom != "":
+    rec["headroom"] = float(headroom)
+recs.append(rec)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+tmp = path + ".tmp"
+json.dump({"providers": recs}, open(tmp, "w"))
+os.replace(tmp, path)
+print(json.dumps(rec))
+PY
+}
+
+cmd_launch() {
+  local gcbin; gcbin="$(command -v gc)"
+  while [ $# -gt 0 ]; do case "$1" in --gc) gcbin="$2"; shift 2;; *) die "launch: unknown arg $1";; esac; done
+  [ -x "$gcbin" ] || die "gc binary $gcbin not executable"
+  ID="pf$(date +%m%d%H%M%S)"; R="/var/tmp/gcv-$ID"; EV="$EVROOT/$ID"; C="$R/city"
+  mkdir -p "$R"/{gchome,xdg,bin,launches} "$EV"; chmod 700 "$R/xdg"
+  echo "$gcbin" > "$R/gc-bin"; echo "$ID" > "$EVROOT/current"
+  export GC_HOME="$R/gchome" XDG_RUNTIME_DIR="$R/xdg"; GC="$gcbin"
+  cat > "$R/bin/fake-agent" <<'SH'
+#!/bin/sh
+# Fake provider: records how gc launched it, then idles. Spends no quota.
+out="${FAKE_LAUNCH_DIR:?}/launch-${GC_SESSION_ID:-unknown}-$$.txt"
+{ echo "provider=${FAKE_PROVIDER:-?}"; echo "session=${GC_SESSION_ID:-?}"; echo "agent=${GC_AGENT:-?}"; echo "argv=$(printf '%s' "$*" | head -c 200)"; } > "$out"
+exec sleep 3600
+SH
+  chmod +x "$R/bin/fake-agent"
+  git config --global user.name >/dev/null 2>&1 || true
+  dolt config --global --get user.name >/dev/null 2>&1 || die "dolt has no global identity; run: dolt config --global --add user.name NAME; dolt config --global --add user.email EMAIL"
+  python3 - "$R" <<'PY'
+import sys
+R = sys.argv[1]
+def prov(name):
+    out = f'''
+[providers.{name}]
+command = "{R}/bin/fake-agent"
+ready_delay_ms = 0
+prompt_mode = "arg"
+process_names = ["sleep", "fake-agent"]
+option_defaults = {{ effort = "low" }}
+env = {{ FAKE_PROVIDER = "{name}", FAKE_LAUNCH_DIR = "{R}/launches" }}
+[[providers.{name}.options_schema]]
+key = "effort"
+label = "Effort"
+type = "select"
+default = "low"
+'''
+    for v in ("low", "medium", "high"):
+        out += f'''[[providers.{name}.options_schema.choices]]
+value = "{v}"
+label = "{v}"
+flag_args = ["--effort", "{v}"]
+'''
+    return out
+c = '[workspace]\nprovider = "fake-primary"\n' + prov("fake-primary") + prov("fake-fallback") + prov("fake-third")
+open(f"{R}/city-seed.toml", "w").write(c)
+PY
+  # --file seeds city.toml (fake providers only), so init never asks which coding agent to use.
+  # A cold bd proxy can time out on a loaded host ("timeout waiting for proxy to become ready"); retry once.
+  local try
+  for try in 1 2; do
+    if "$GC" init --name "scratch-$ID" --file "$R/city-seed.toml" --no-start "$C" >"$R/init.log" 2>&1 </dev/null; then break; fi
+    if [ "$try" = 2 ]; then tail -20 "$R/init.log"; die "gc init failed twice (see $R/init.log); run: gcv cleanup"; fi
+    echo "gcv: gc init failed ($(grep -m1 -oE 'timeout waiting for proxy[^;]*|Error: [^.]*' "$R/init.log" || echo see init.log)); retrying once"
+    "$GC" --city "$C" stop >/dev/null 2>&1 || true; for p in $(pgrep -f "$C/" || true); do kill "$p" 2>/dev/null || true; done
+    rm -rf "$C"; sleep 10
+  done
+  python3 - "$C/pack.toml" <<'PY'
+import re, sys
+p = sys.argv[1]; s = open(p).read()
+s = re.sub(r'\n\[\[named_session\]\]\ntemplate = "mayor"\nmode = "always"\n?', '\n', s)  # no always-on mayor
+open(p, "w").write(s)
+PY
+  mkdir -p "$C/agents/probe"
+  cat > "$C/agents/probe/agent.toml" <<'TOML'
+description = "Verification probe for provider fallback"
+provider = "fake-primary"
+fallback_providers = ["fake-fallback", "fake-third"]
+scope = "city"
+session = "tmux"
+wake_mode = "fresh"
+max_active_sessions = 1
+min_active_sessions = 0
+idle_timeout = "2m"
+
+[fallback_option_defaults.fake-fallback]
+effort = "high"
+TOML
+  echo "Probe agent for gcv. Do nothing." > "$C/agents/probe/prompt.template.md"
+  local port; port="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')"
+  printf '[supervisor]\nport = %s\n' "$port" > "$R/gchome/supervisor.toml"
+  # Private foreground supervisor, detached from this shell (setsid) so a terminal scope cannot kill it.
+  # nohup+setsid with every fd redirected: the supervisor outlives this script and holds no pipe of its caller.
+  ( cd "$R" && exec nohup setsid "$GC" supervisor run </dev/null >"$R/supervisor.log" 2>&1 ) &
+  echo $! > "$R/supervisor.pid"; disown || true
+  for _ in $(seq 1 30); do grep -q "API" "$R/supervisor.log" 2>/dev/null && break; sleep 1; done
+  "$GC" start "$C" >"$R/start.log" 2>&1 || { tail -20 "$R/start.log"; die "gc start failed (see $R/start.log, $R/supervisor.log)"; }
+  for _ in $(seq 1 60); do g status 2>/dev/null | grep -q 'Controller: supervisor-managed' && break; sleep 2; done
+  echo "RUN_ID=$ID scratch=$R evidence=$EV port=$port"
+  cmd_doctor
+}
+
+cmd_doctor() {
+  ctx
+  local ok=1 pid; pid="$(cat "$R/supervisor.pid" 2>/dev/null || echo)"
+  echo "run $ID  gc $("$GC" version 2>/dev/null) ($GC)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo "supervisor pid $pid alive"; else echo "FAIL supervisor not running"; ok=0; fi
+  if g status 2>/dev/null | grep -q "scratch-$ID"; then echo "city scratch-$ID answers"; else echo "FAIL city does not answer"; ok=0; fi
+  if g config explain 2>/dev/null | grep -A8 '^Agent: probe$' | grep -q 'fallback_providers'; then echo "probe agent has fallback_providers (binary supports the feature)"; else echo "FAIL probe agent missing fallback_providers (old gc binary?)"; ok=0; fi
+  local livepid; livepid="$(XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show -p MainPID --value gascity-supervisor 2>/dev/null || true)"
+  if [ -n "$pid" ] && [ "$pid" = "$livepid" ]; then echo "FAIL this is the LIVE supervisor (pid $livepid); refuse to drive"; ok=0; else echo "not the live supervisor (live pid ${livepid:-none})"; fi
+  [ $ok = 1 ] && echo "DOCTOR OK" || { echo "DOCTOR FAIL"; return 1; }
+}
+
+cmd_hold() {
+  ctx; local prov="${1:?provider}"; shift; local secs=600 head="" reason="gcv hold"
+  [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]] && { secs="$1"; shift; }
+  while [ $# -gt 0 ]; do case "$1" in --headroom) head="$2"; shift 2;; --reason) reason="$2"; shift 2;; *) die "hold: $1";; esac; done
+  health_write "$prov" unhealthy "$secs" "$head" "$reason"
+}
+cmd_healthy() {
+  ctx; local prov="${1:?provider}"; shift; local head=""
+  while [ $# -gt 0 ]; do case "$1" in --headroom) head="$2"; shift 2;; *) die "healthy: $1";; esac; done
+  health_write "$prov" healthy 600 "$head" "gcv healthy"
+}
+cmd_clear() { ctx; rm -f "$C/.gc/cache/provider-health.json"; echo "health file removed"; }
+cmd_sling() { ctx; printf '%s\ngcv verification bead\n' "${1:-gcv probe}" | (cd "$C" && g sling probe --stdin --no-formula --no-convoy); }
+cmd_recycle() {
+  ctx; local ids; ids="$(g session list --json 2>/dev/null | python3 -c '
+import json,sys
+d=json.load(sys.stdin); d=d.get("sessions") or d.get("items") or [] if isinstance(d,dict) else d; d=[x for x in (d or []) if isinstance(x,dict)]
+print(" ".join(s["id"] for s in d if s.get("template")=="probe" and s.get("state") not in ("closed",)))')"
+  local i n
+  for i in $ids; do
+    for n in $(seq 1 15); do   # a session still starting can refuse a close; retry, then say so
+      if g session close "$i" >"$R/close.out" 2>&1; then echo "closed $i"; break; fi
+      sleep 2; [ "$n" = 15 ] && { echo "gcv: could not close $i:"; tail -2 "$R/close.out"; }
+    done
+  done
+  rm -f "$R"/launches/launch-*; true
+}
+cmd_wait_launch() {
+  ctx; local secs="${1:-90}" f=""
+  for _ in $(seq 1 "$secs"); do f="$(grep -l '^agent=probe$' "$R"/launches/launch-* 2>/dev/null | head -1 || true)"; [ -n "$f" ] && break; sleep 1; done
+  [ -n "$f" ] || die "no probe launch within ${secs}s (check: gcv session; gcv events; $R/supervisor.log)"
+  cat "$f"
+}
+cmd_session() {
+  ctx; g session list --json 2>/dev/null | python3 -c '
+import json,sys,subprocess
+d=json.load(sys.stdin); d=d.get("sessions") or d.get("items") or [] if isinstance(d,dict) else d; d=[x for x in (d or []) if isinstance(x,dict)]
+for s in d:
+    if s.get("template")!="probe": continue
+    print(s.get("id"), s.get("state"), "provider="+str(s.get("provider")))' || true
+  local id; for id in $(g session list --json 2>/dev/null | python3 -c '
+import json,sys
+d=json.load(sys.stdin); d=d.get("sessions") or d.get("items") or [] if isinstance(d,dict) else d; d=[x for x in (d or []) if isinstance(x,dict)]
+print(" ".join(s["id"] for s in d if s.get("template")=="probe"))'); do
+    g bd show "$id" --json 2>/dev/null | python3 -c '
+import json,sys
+d=json.load(sys.stdin); d=d[0] if isinstance(d,list) else d; m=d.get("metadata",{})
+print("  ", d.get("id"), "override="+str(m.get("gc.provider_override")), "command="+str(m.get("command")))'
+  done
+}
+cmd_events() { ctx; grep -a '"type":"provider\.' "$C/.gc/events.jsonl" 2>/dev/null | tail -"${1:-20}" || echo "(no provider.* events)"; }
+cmd_proof() {
+  ctx; local name="${1:?proof name}" d; d="$EV/$name"; mkdir -p "$d"
+  cp "$R"/launches/launch-* "$d/" 2>/dev/null || true
+  cp "$C/.gc/cache/provider-health.json" "$d/provider-health.json" 2>/dev/null || echo "(no health file)" > "$d/provider-health.json"
+  cmd_session > "$d/session.txt" 2>&1 || true
+  cmd_events 50 > "$d/events.jsonl" 2>&1 || true
+  grep -a -E 'provider red|provider-red|provider fallback' "$R/supervisor.log" 2>/dev/null | tail -20 > "$d/supervisor-provider-lines.txt" || true
+  echo "$(date -u +%FT%TZ) gc=$("$GC" version 2>/dev/null) run=$ID" > "$d/identity.txt"
+  echo "proof -> $d"; ls "$d"
+}
+cmd_cleanup() {
+  ctx
+  g stop >/dev/null 2>&1 || true                                  # stops this city's sessions and its bd-owned dolt
+  tmux -L "scratch-$ID" kill-server 2>/dev/null || true           # only this run's tmux socket
+  local pid; pid="$(cat "$R/supervisor.pid" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null || true                # only the supervisor this run started
+  sleep 2
+  local self=" $$ " a=$$; while [ "$a" -gt 1 ]; do a="$(ps -o ppid= -p "$a" | tr -d ' ')"; self="$self$a "; done
+  for p in $(pgrep -f "$R/" || true); do case "$self" in *" $p "*) ;; *) kill "$p" 2>/dev/null || true;; esac; done   # leftovers naming this run's dir, never this shell or its parents
+  cp "$R"/*.log "$EV/" 2>/dev/null || true
+  rm -rf "$R"; [ "$(cat "$EVROOT/current" 2>/dev/null)" = "$ID" ] && rm -f "$EVROOT/current"
+  echo "cleaned run $ID; evidence kept in $EV"; ls "$EV"
+}
+
+sub="${1:-}"; shift || true
+case "$sub" in
+  launch) cmd_launch "$@";; doctor) cmd_doctor;; hold) cmd_hold "$@";; healthy) cmd_healthy "$@";;
+  clear) cmd_clear;; sling) cmd_sling "$@";; recycle) cmd_recycle;; wait-launch) cmd_wait_launch "$@";;
+  session) cmd_session;; events) cmd_events "$@";; proof) cmd_proof "$@";; cleanup) cmd_cleanup;;
+  gc) ctx; g "$@";;
+  *) sed -n '2,20p' "$0"; exit 2;;
+esac
