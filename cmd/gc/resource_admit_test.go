@@ -161,3 +161,27 @@ func TestResourceLedgersArePerHost(t *testing.T) {
 		t.Fatal("newResourceBudget for a remote host: want nil until [hosts] lands")
 	}
 }
+
+// Budgets are per host (multi-host-placement, "Changes to resource-budgets"):
+// a full, head-of-line-blocked host does not defer a start on another host.
+func TestAdmitResourceBudgetIsPerHost(t *testing.T) {
+	cfg := resourceAdmitCfg()
+	rows := []censusRow{
+		resourceCensusRow(1, "builder", string(session.StateActive)),
+		resourceCensusRow(2, "boss", "asleep"),
+		resourceCensusRow(3, "builder", "asleep"),
+	}
+	in := resourceAdmitIn(t, cfg, rows, inflightView{})
+	in.Resources.Budgets["host-a"] = in.Resources.Budgets[resourceLocalHost]
+	r := in.Resources.Rows[admitRow(3)]
+	r.Host = "host-a"
+	in.Resources.Rows[admitRow(3)] = r
+	res := admit(in, []intent{startOn(2, "", 1), startOn(3, "", 0)})
+	causes := causesOf(res.Deferred)
+	if causes[intentStart+":"+admitRow(2).ID] != causeResourcePrefix+string(TraceReasonResourceBudgetFull) {
+		t.Fatalf("local heavy start causes = %v, want resource budget full", causes)
+	}
+	if len(res.Admitted) != 1 || res.Admitted[0].Key != admitRow(3) {
+		t.Fatalf("admitted = %v, want the host-a heavy start", keysOf(res.Admitted))
+	}
+}
