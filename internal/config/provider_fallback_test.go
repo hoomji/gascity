@@ -35,7 +35,7 @@ func TestLoadWithIncludes_FallbackProvidersParsed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	a := findAgentNamed(t, cfg, "worker")
+	a := findWorker(t, cfg)
 	if want := []string{"codex", "claude"}; !slices.Equal(a.FallbackProviders, want) {
 		t.Fatalf("FallbackProviders = %v, want %v", a.FallbackProviders, want)
 	}
@@ -75,7 +75,7 @@ fallback_providers = ["codex"]
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	a := findAgentNamed(t, cfg, "worker")
+	a := findWorker(t, cfg)
 	if want := []string{"codex"}; !slices.Equal(a.FallbackProviders, want) {
 		t.Fatalf("FallbackProviders after patch = %v, want %v", a.FallbackProviders, want)
 	}
@@ -99,8 +99,9 @@ func TestApplyPatches_FallbackProvidersUnsetKeepsList(t *testing.T) {
 	}
 }
 
-func findAgentNamed(t *testing.T, cfg *City, name string) Agent {
+func findWorker(t *testing.T, cfg *City) Agent {
 	t.Helper()
+	const name = "worker"
 	for _, a := range cfg.Agents {
 		if a.Name == name {
 			return a
@@ -151,7 +152,7 @@ effort = "high"
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	got := findAgentNamed(t, cfg, "worker").FallbackOptionDefaults["beta"]
+	got := findWorker(t, cfg).FallbackOptionDefaults["beta"]
 	if got["model"] != "beta-large" || got["effort"] != "high" || len(got) != 2 {
 		t.Fatalf("FallbackOptionDefaults[beta] = %v", got)
 	}
@@ -166,7 +167,7 @@ func TestLoadWithIncludes_FallbackOptionDefaultsRejected(t *testing.T) {
 	}{
 		{name: "key not in fallback_providers", lines: "[agent.fallback_option_defaults.alpha]\nmodel = \"x\"\n", want: `fallback_option_defaults key "alpha" is not listed in fallback_providers`},
 		{name: "bad option value", lines: "[agent.fallback_option_defaults.beta]\neffort = \"extreme\"\n", want: `fallback_option_defaults.beta: option_defaults key "effort": value "extreme" is not a valid choice`},
-		{name: "unknown option key", lines: "[agent.fallback_option_defaults.beta]\ncolour = \"red\"\n", want: `fallback_option_defaults.beta: option_defaults key "colour" is not in the options schema`},
+		{name: "unknown option key", lines: "[agent.fallback_option_defaults.beta]\nshade = \"red\"\n", want: `fallback_option_defaults.beta: option_defaults key "shade" is not in the options schema`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fs := fsys.NewFake()
@@ -197,7 +198,7 @@ effort = "high"
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	got := findAgentNamed(t, cfg, "worker").FallbackOptionDefaults["beta"]
+	got := findWorker(t, cfg).FallbackOptionDefaults["beta"]
 	if got["model"] != "beta-small" || got["effort"] != "high" || len(got) != 2 {
 		t.Fatalf("FallbackOptionDefaults[beta] after patch = %v, want model kept and effort patched", got)
 	}
