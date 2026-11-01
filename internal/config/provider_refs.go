@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// ProviderReferenceKindAgentFallback marks a name from an agent's
+// fallback_providers list.
+const ProviderReferenceKindAgentFallback = "agent-fallback"
+
 // ProviderReference describes a provider name referenced by config.
 type ProviderReference struct {
 	Kind     string
@@ -47,6 +51,18 @@ func MissingProviderReferences(cfg *City) []ProviderReference {
 			Agent:    agent.QualifiedName(),
 			Provider: agent.Provider,
 		})
+	}
+	// fallback_providers names are checked even under start_command: the
+	// list is a launch alternative, and a typo must fail at load, not on the
+	// first red tick.
+	for _, agent := range cfg.Agents {
+		for _, name := range agent.FallbackProviders {
+			add(ProviderReference{
+				Kind:     ProviderReferenceKindAgentFallback,
+				Agent:    agent.QualifiedName(),
+				Provider: name,
+			})
+		}
 	}
 
 	sort.Slice(refs, func(i, j int) bool {
@@ -100,6 +116,8 @@ func providerReferenceLabel(ref ProviderReference) string {
 		return fmt.Sprintf("workspace.provider %q", ref.Provider)
 	case "agent":
 		return fmt.Sprintf("agent %q: provider %q", ref.Agent, ref.Provider)
+	case ProviderReferenceKindAgentFallback:
+		return fmt.Sprintf("agent %q: fallback_providers entry %q", ref.Agent, ref.Provider)
 	default:
 		return fmt.Sprintf("%s provider %q", ref.Kind, ref.Provider)
 	}

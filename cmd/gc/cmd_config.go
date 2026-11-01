@@ -591,6 +591,9 @@ func explainAgent(w io.Writer, a *config.Agent, prov *config.Provenance) {
 	if a.Provider != "" {
 		explainField(w, "provider", a.Provider, source)
 	}
+	if len(a.FallbackProviders) > 0 {
+		explainField(w, "fallback_providers", strings.Join(a.FallbackProviders, ", "), source)
+	}
 	if a.StartCommand != "" {
 		explainField(w, "start_command", a.StartCommand, source)
 	}

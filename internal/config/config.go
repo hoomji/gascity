@@ -730,6 +730,8 @@ type AgentOverride struct {
 	Session *string `toml:"session,omitempty"`
 	// Provider overrides the provider name.
 	Provider *string `toml:"provider,omitempty"`
+	// FallbackProviders replaces the agent's ordered fallback provider list.
+	FallbackProviders *[]string `toml:"fallback_providers,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
 	ContextAdvisory *ContextAdvisory `toml:"context_advisory,omitempty"`
 	// Upstream overrides the model-serving endpoint selection (Phase C).
@@ -3733,6 +3735,14 @@ type Agent struct {
 	Session string `toml:"session,omitempty" jsonschema:"enum=acp"`
 	// Provider names the provider preset to use for this agent.
 	Provider string `toml:"provider,omitempty"`
+	// FallbackProviders is an ordered list of provider presets a fresh pool
+	// session may start with when the primary provider is confirmed red in
+	// .gc/cache/provider-health.json. The first candidate that is not red
+	// wins; an unknown or stale health entry counts as not red. Running and
+	// reused sessions keep the provider they were created with. Each name
+	// must be a key in [providers]. The agent's args and option_defaults are
+	// written for the primary provider and are not applied to a fallback.
+	FallbackProviders []string `toml:"fallback_providers,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
 	ContextAdvisory *ContextAdvisory `toml:"context_advisory,omitempty"`
 	// Upstream selects the model-serving endpoint (a key in [upstreams]) for
@@ -4062,6 +4072,7 @@ func (a Agent) Clone() Agent {
 	out := a
 	out.PreStart = append([]string(nil), a.PreStart...)
 	out.Args = append([]string(nil), a.Args...)
+	out.FallbackProviders = append([]string(nil), a.FallbackProviders...)
 	out.ProcessNames = append([]string(nil), a.ProcessNames...)
 	out.NamepoolNames = append([]string(nil), a.NamepoolNames...)
 	out.InstallAgentHooks = append([]string(nil), a.InstallAgentHooks...)

@@ -155,6 +155,8 @@ func providerReferenceDetails(refs []config.ProviderReference) []string {
 			details = append(details, fmt.Sprintf("workspace.provider %q", ref.Provider))
 		case "agent":
 			details = append(details, fmt.Sprintf("agent %q provider %q", ref.Agent, ref.Provider))
+		case config.ProviderReferenceKindAgentFallback:
+			details = append(details, fmt.Sprintf("agent %q fallback provider %q", ref.Agent, ref.Provider))
 		default:
 			details = append(details, fmt.Sprintf("%s provider %q", ref.Kind, ref.Provider))
 		}
