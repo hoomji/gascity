@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,10 +40,22 @@ const (
 // --- snapshot (loaded once per tick) ---
 
 // providerHealthRecord mirrors one entry in provider-health.json.
+//
+// ttl_s, until and reason are optional; a file without them behaves as it
+// always has (fresh for providerHealthTTL after probed_at).
 type providerHealthRecord struct {
 	Provider string  `json:"provider"`
 	Status   string  `json:"status"`    // "healthy" | "unhealthy"
 	ProbedAt float64 `json:"probed_at"` // Unix epoch seconds (float)
+	// TTLSeconds, when > 0, is this record's freshness window instead of
+	// providerHealthTTL.
+	TTLSeconds float64 `json:"ttl_s,omitempty"`
+	// Until, for an unhealthy record, holds the provider red until this
+	// epoch time regardless of probed_at age (a spent quota with a known
+	// reset). Past Until the record falls back to the TTL rule.
+	Until float64 `json:"until,omitempty"`
+	// Reason is free text carried into gate alerts and fallback events.
+	Reason string `json:"reason,omitempty"`
 }
 
 type providerHealthFileFormat struct {
@@ -58,9 +71,13 @@ type providerHealthSnapshot struct {
 	// A false present means the registry is unavailable — callers fail-open.
 	present bool
 	// entries maps provider name → healthy. Only entries that exist in the
-	// file and are within TTL are stored; stale or missing entries are omitted
-	// so check() returns (true, false) for them (fail-open).
+	// file and are within TTL (or held red by until) are stored; stale or
+	// missing entries are omitted so check() returns (true, false) for them
+	// (fail-open).
 	entries map[string]bool
+	// reasons maps provider name → the reason of its stored entry, when the
+	// file gave one.
+	reasons map[string]string
 }
 
 // loadProviderHealthSnapshot reads cityPath/.gc/cache/provider-health.json and
@@ -98,14 +115,36 @@ func (f providerHealthFileFormat) snapshotAt(now time.Time) *providerHealthSnaps
 	}
 	nowSecs := float64(now.UnixNano()) / 1e9
 	for _, rec := range f.Providers {
-		ageSecs := nowSecs - rec.ProbedAt
-		if ageSecs > providerHealthTTL.Seconds() {
+		if !rec.liveAt(nowSecs) {
 			// Stale — omit so check() fails-open for this provider.
 			continue
 		}
 		snap.entries[rec.Provider] = rec.Status == "healthy"
+		if reason := strings.TrimSpace(rec.Reason); reason != "" {
+			if snap.reasons == nil {
+				snap.reasons = make(map[string]string)
+			}
+			snap.reasons[rec.Provider] = reason
+		} else {
+			delete(snap.reasons, rec.Provider)
+		}
 	}
 	return snap
+}
+
+// liveAt reports whether the record still speaks for its provider at
+// nowSecs: an unhealthy record with until in the future always does;
+// otherwise the record is live while its age is within its TTL (ttl_s when
+// set, providerHealthTTL when not).
+func (rec providerHealthRecord) liveAt(nowSecs float64) bool {
+	if rec.Status != "healthy" && rec.Until > 0 && nowSecs < rec.Until {
+		return true
+	}
+	ttl := providerHealthTTL.Seconds()
+	if rec.TTLSeconds > 0 {
+		ttl = rec.TTLSeconds
+	}
+	return nowSecs-rec.ProbedAt <= ttl
 }
 
 // check returns (healthy, registryPresent).
@@ -122,6 +161,22 @@ func (s *providerHealthSnapshot) check(providerName string) (healthy, registryPr
 		return true, false // no fresh entry → fail-open
 	}
 	return v, true
+}
+
+// reason returns the reason the health file gave for providerName's live
+// entry, or "".
+func (s *providerHealthSnapshot) reason(providerName string) string {
+	if s == nil {
+		return ""
+	}
+	return s.reasons[providerName]
+}
+
+// red reports whether providerName is confirmed red: a live unhealthy entry.
+// Absent, stale and unknown providers are not red (fail-open).
+func (s *providerHealthSnapshot) red(providerName string) bool {
+	healthy, present := s.check(providerName)
+	return present && !healthy
 }
 
 // healthyProviders returns all provider names that are confirmed healthy in
@@ -229,6 +284,19 @@ func emitProviderHealthGateAlert(
 	redSince time.Time,
 	sessionCount int,
 ) {
+	emitProviderHealthGateAlertWithReason(rec, stdout, provider, episodeID, "", redSince, sessionCount)
+}
+
+// emitProviderHealthGateAlertWithReason is emitProviderHealthGateAlert with
+// the health file's reason for the red entry, carried into the message and
+// the event payload when non-empty.
+func emitProviderHealthGateAlertWithReason(
+	rec events.Recorder,
+	stdout io.Writer,
+	provider, episodeID, reason string,
+	redSince time.Time,
+	sessionCount int,
+) {
 	msg := fmt.Sprintf(
 		"Provider health gate OPEN: provider=%s episode=%s since=%s sessions_parked=%d. "+
 			"Respawn for %s sessions paused. "+
@@ -237,16 +305,23 @@ func emitProviderHealthGateAlert(
 		provider, episodeID, redSince.UTC().Format(time.RFC3339), sessionCount,
 		provider, provider,
 	)
+	if reason != "" {
+		msg += " Reason: " + reason
+	}
 	fmt.Fprintln(stdout, msg) //nolint:errcheck
 	if rec == nil {
 		return
 	}
-	payload, _ := json.Marshal(map[string]any{
+	fields := map[string]any{
 		"provider":      provider,
 		"episode_id":    episodeID,
 		"red_since":     redSince.UTC().Format(time.RFC3339),
 		"session_count": sessionCount,
-	})
+	}
+	if reason != "" {
+		fields["reason"] = reason
+	}
+	payload, _ := json.Marshal(fields)
 	rec.Record(events.Event{
 		Type:    events.ProviderHealthGateAlert,
 		Ts:      time.Now().UTC(),
