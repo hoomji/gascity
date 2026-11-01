@@ -301,6 +301,12 @@ func (p *Provider) Start(ctx context.Context, name string, cfg runtime.Config) e
 		return fmt.Errorf("ssh start %q: tmux new-session exited %d", name, code)
 	}
 	p.markAgentPane(ctx, name, pane)
+	// The fence goes on the agent pane before anything can send it input; a
+	// session that cannot be fenced is torn down rather than left unproven.
+	if err := p.publishInputFence(ctx, name, cfg); err != nil {
+		_ = p.Stop(name)
+		return fmt.Errorf("ssh start %q: %w", name, err)
+	}
 
 	// SessionSetup, SessionSetupScript, and SessionLive run on the box,
 	// best-effort, with the same cwd + env prelude.
@@ -412,6 +418,9 @@ func (p *Provider) Relaunch(ctx context.Context, name string, cfg runtime.Config
 		args = append(args, "-c", cfg.WorkDir)
 	}
 	args = append(args, resolveCommand(cfg))
+	// One command list: the respawned pane takes the new incarnation's fence
+	// (or loses the old one) in the same tmux call that respawns it.
+	args = append(args, launchFenceArgs(target, cfg)...)
 	if _, code, err := p.tmux(ctx, name, args...); err != nil {
 		return fmt.Errorf("ssh relaunch %q: %w", name, err)
 	} else if code != 0 {

@@ -282,8 +282,10 @@ func TestProvider_RelaunchRespawnsAgentInWarmSession(t *testing.T) {
 		t.Fatalf("Relaunch: %v", err)
 	}
 	got := firstCall(f, isTmux("respawn-pane"))
-	// respawn-pane has no -e, so env is NOT re-applied (provision-half).
-	want := []string{"tmux", "respawn-pane", "-k", "-t", "=s:@1.%1", "-c", "/w", "agent --resumed"}
+	// respawn-pane has no -e, so env is NOT re-applied (provision-half). An
+	// environment naming no incarnation clears the old pane fence in the same
+	// command list.
+	want := []string{"tmux", "respawn-pane", "-k", "-t", "=s:@1.%1", "-c", "/w", "agent --resumed", ";", "set-option", "-p", "-u", "-t", "=s:@1.%1", runtime.TmuxInputFenceOption}
 	if !slices.Equal(got, want) {
 		t.Errorf("respawn-pane argv =\n  %v\nwant\n  %v", got, want)
 	}

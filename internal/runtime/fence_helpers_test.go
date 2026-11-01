@@ -150,9 +150,9 @@ func TestFakeFenceRefusesEveryMiss(t *testing.T) {
 }
 
 // maxUnfencedBackends bounds the production backends that cannot fence
-// session input (herdr, k8s, ssh). Lower it as backends gain a fence; never
+// session input (herdr, k8s). Lower it as backends gain a fence; never
 // raise it.
-const maxUnfencedBackends = 3
+const maxUnfencedBackends = 2
 
 // fencedBackends is how each production backend that can fence session
 // input does it (RUNTIME-CONTRACT-009 and -013); every other one reports
@@ -160,6 +160,7 @@ const maxUnfencedBackends = 3
 var fencedBackends = map[runtime.Profile]runtime.InputFencing{
 	runtime.ProfileTmux:       runtime.InputFencingAtomic,
 	runtime.ProfileExec:       runtime.InputFencingAtomic,
+	runtime.ProfileSSH:        runtime.InputFencingAtomic,
 	runtime.ProfileACP:        runtime.InputFencingChecked,
 	runtime.ProfileSubprocess: runtime.InputFencingChecked,
 	runtime.ProfileT3Bridge:   runtime.InputFencingChecked,
