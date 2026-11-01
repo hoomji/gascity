@@ -23,8 +23,8 @@ func healthSnap(entries map[string]bool) *providerHealthSnapshot {
 
 // Kills: a fallback taken while the primary is not red, a red or
 // skipped-over candidate chosen, the primary re-chosen from the list, an
-// all-red create admitted, and a start_command agent switched (its command
-// does not depend on the provider).
+// all-red create admitted, and a start_command agent refused or switched
+// (it launches its command, not its provider).
 func TestSelectPoolCreateProvider(t *testing.T) {
 	ws := &config.Workspace{Provider: "claude"}
 	for _, tc := range []struct {
@@ -45,7 +45,8 @@ func TestSelectPoolCreateProvider(t *testing.T) {
 		{name: "all red refuses", agent: config.Agent{Name: "w", FallbackProviders: []string{"codex", "gemini"}}, health: map[string]bool{"claude": false, "codex": false, "gemini": false}, wantErr: true},
 		{name: "no fallback list refuses as before", agent: config.Agent{Name: "w"}, health: map[string]bool{"claude": false}, wantErr: true},
 		{name: "no fallback list green as before", agent: config.Agent{Name: "w"}, health: map[string]bool{"claude": true}},
-		{name: "start_command agent never switches", agent: config.Agent{Name: "w", StartCommand: "run.sh", FallbackProviders: []string{"codex"}}, health: map[string]bool{"claude": false}, wantErr: true},
+		{name: "start_command agent is never gated or switched", agent: config.Agent{Name: "w", StartCommand: "run.sh", FallbackProviders: []string{"codex"}}, health: map[string]bool{"claude": false}},
+		{name: "start_command agent with its own red provider proceeds", agent: config.Agent{Name: "w", Provider: "claude-haiku", StartCommand: "run.sh"}, health: map[string]bool{"claude-haiku": false}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			snap := healthSnap(tc.health)

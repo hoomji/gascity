@@ -49,25 +49,49 @@ func agentPrimaryProviderName(agent *config.Agent, ws *config.Workspace) string 
 	return name
 }
 
+// agentHealthGateProvider is the provider name the provider-health gates
+// key an agent's creates on, or "" when no gate applies. An agent with a
+// start_command launches that command, not a provider (the escape hatch in
+// config.ResolveProvider, which resolves it with no provider name), so its
+// provider field names nothing it runs and the health of that provider
+// never holds it. Otherwise it is agentPrimaryProviderName.
+func agentHealthGateProvider(agent *config.Agent, ws *config.Workspace) string {
+	if agent == nil || agent.StartCommand != "" {
+		return ""
+	}
+	return agentPrimaryProviderName(agent, ws)
+}
+
+// templateHealthGateProvider is the provider name the provider-health gates
+// key a resolved session on (respawn, start, progress-stall recycle), or ""
+// when no gate applies: a session resolved through a start_command escape
+// hatch carries a ResolvedProvider with no name, because it launches no
+// provider.
+func templateHealthGateProvider(tp TemplateParams) string {
+	if tp.ResolvedProvider == nil {
+		return ""
+	}
+	return strings.TrimSpace(tp.ResolvedProvider.Name)
+}
+
 // selectPoolCreateProvider decides which provider a fresh pool create of
 // agent launches with under snap. It returns (nil, nil) when the primary is
-// not red (the create proceeds exactly as without fallbacks), a choice when
-// a fallback is taken, and errPoolSessionCreateProviderRed when the primary
-// and every fallback are red. Unknown and stale entries are not red.
+// not red or the agent launches no provider (the create proceeds exactly as
+// without fallbacks), a choice when a fallback is taken, and
+// errPoolSessionCreateProviderRed when the primary and every fallback are
+// red. Unknown and stale entries are not red.
 func selectPoolCreateProvider(snap *providerHealthSnapshot, agent *config.Agent, ws *config.Workspace) (*providerFallbackChoice, error) {
-	primary := agentPrimaryProviderName(agent, ws)
-	if !snap.red(primary) {
+	primary := agentHealthGateProvider(agent, ws)
+	if primary == "" || !snap.red(primary) {
 		return nil, nil
 	}
-	if agent != nil && agent.StartCommand == "" {
-		for _, candidate := range agent.FallbackProviders {
-			candidate = strings.TrimSpace(candidate)
-			if candidate == "" || candidate == primary {
-				continue
-			}
-			if !snap.red(candidate) {
-				return &providerFallbackChoice{From: primary, To: candidate, Reason: snap.reason(primary)}, nil
-			}
+	for _, candidate := range agent.FallbackProviders {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || candidate == primary {
+			continue
+		}
+		if !snap.red(candidate) {
+			return &providerFallbackChoice{From: primary, To: candidate, Reason: snap.reason(primary)}, nil
 		}
 	}
 	return nil, errPoolSessionCreateProviderRed
