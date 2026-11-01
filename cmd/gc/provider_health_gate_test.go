@@ -287,3 +287,88 @@ func TestEmitProviderHealthGateAlert_Format(t *testing.T) {
 type capWriter struct{ fn func([]byte) }
 
 func (c *capWriter) Write(b []byte) (int, error) { c.fn(b); return len(b), nil }
+
+// writeHealthRecords writes provider-health.json with the given raw records.
+func writeHealthRecords(t *testing.T, dir string, recs ...map[string]any) {
+	t.Helper()
+	cacheDir := filepath.Join(dir, ".gc", "cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatalf("mkdirAll: %v", err)
+	}
+	data, _ := json.Marshal(map[string]any{"providers": recs})
+	if err := os.WriteFile(filepath.Join(cacheDir, "provider-health.json"), data, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+}
+
+// Kills: ttl_s ignored (a long-lived probe goes stale at 60 s, a short one
+// outlives its window), until ignored (a spent quota with a known reset
+// fails open once the probe ages), until honoured past its own time or on a
+// healthy record, and the old format changing behaviour. Each row is one
+// record for "zai" at the given age.
+func TestSnapshotCheck_HealthRecordFreshness(t *testing.T) {
+	ttl := providerHealthTTL.Seconds()
+	for _, tc := range []struct {
+		name        string
+		status      string
+		ageSecs     float64
+		extra       map[string]any
+		wantPresent bool
+		wantHealthy bool
+	}{
+		{name: "old format, fresh red", status: "unhealthy", ageSecs: ttl - 5, wantPresent: true, wantHealthy: false},
+		{name: "old format, fresh green", status: "healthy", ageSecs: ttl - 5, wantPresent: true, wantHealthy: true},
+		{name: "old format, stale red fails open", status: "unhealthy", ageSecs: ttl + 5, wantPresent: false, wantHealthy: true},
+		{name: "ttl_s extends freshness", status: "unhealthy", ageSecs: 300, extra: map[string]any{"ttl_s": 600}, wantPresent: true, wantHealthy: false},
+		{name: "ttl_s extends a green", status: "healthy", ageSecs: 300, extra: map[string]any{"ttl_s": 600}, wantPresent: true, wantHealthy: true},
+		{name: "ttl_s shortens freshness", status: "unhealthy", ageSecs: 30, extra: map[string]any{"ttl_s": 10}, wantPresent: false, wantHealthy: true},
+		{name: "ttl_s past its window", status: "unhealthy", ageSecs: 700, extra: map[string]any{"ttl_s": 600}, wantPresent: false, wantHealthy: true},
+		{name: "until holds red past the TTL", status: "unhealthy", ageSecs: 3000, extra: map[string]any{"until": nowSecs() + 3600}, wantPresent: true, wantHealthy: false},
+		{name: "until releases after its time", status: "unhealthy", ageSecs: 3000, extra: map[string]any{"until": nowSecs() - 10}, wantPresent: false, wantHealthy: true},
+		{name: "past until falls back to the TTL rule", status: "unhealthy", ageSecs: 5, extra: map[string]any{"until": nowSecs() - 10}, wantPresent: true, wantHealthy: false},
+		{name: "until on a healthy record is ignored", status: "healthy", ageSecs: 3000, extra: map[string]any{"until": nowSecs() + 3600}, wantPresent: false, wantHealthy: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			rec := map[string]any{"provider": "zai", "status": tc.status, "probed_at": nowSecs() - tc.ageSecs}
+			for k, v := range tc.extra {
+				rec[k] = v
+			}
+			writeHealthRecords(t, dir, rec)
+			healthy, present := loadProviderHealthSnapshot(dir).check("zai")
+			if present != tc.wantPresent || healthy != tc.wantHealthy {
+				t.Fatalf("check(zai) = (healthy %v, present %v), want (%v, %v)", healthy, present, tc.wantHealthy, tc.wantPresent)
+			}
+		})
+	}
+}
+
+// Kills: the record's reason dropped from the snapshot, or kept for a
+// record that is no longer live.
+func TestSnapshotReason(t *testing.T) {
+	dir := t.TempDir()
+	writeHealthRecords(t, dir,
+		map[string]any{"provider": "claude", "status": "unhealthy", "probed_at": nowSecs() - 3000, "until": nowSecs() + 600, "reason": "weekly quota spent"},
+		map[string]any{"provider": "codex", "status": "unhealthy", "probed_at": nowSecs() - 3000, "reason": "stale"},
+	)
+	snap := loadProviderHealthSnapshot(dir)
+	if got := snap.reason("claude"); got != "weekly quota spent" {
+		t.Fatalf("reason(claude) = %q, want the file's reason", got)
+	}
+	if got := snap.reason("codex"); got != "" {
+		t.Fatalf("reason(codex) = %q, want empty for a stale record", got)
+	}
+}
+
+// Kills: the gate alert dropping the health file's reason.
+func TestEmitProviderHealthGateAlert_CarriesReason(t *testing.T) {
+	var w strings.Builder
+	rec := &capturingRecorder{}
+	emitProviderHealthGateAlertWithReason(rec, &w, "claude", "ep-1", "weekly quota spent", time.Now(), 2)
+	if !strings.Contains(w.String(), "Reason: weekly quota spent") {
+		t.Fatalf("alert %q does not carry the reason", w.String())
+	}
+	if len(rec.events) != 1 || !strings.Contains(string(rec.events[0].Payload), `"reason":"weekly quota spent"`) {
+		t.Fatalf("events %+v, want one alert whose payload carries the reason", rec.events)
+	}
+}

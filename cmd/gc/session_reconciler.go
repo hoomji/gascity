@@ -4845,7 +4845,7 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 					fmt.Fprintf(stderr, "session reconciler: provider-health registry unavailable for %q; treating as green\n", phProvider) //nolint:errcheck
 				} else if !phHealthy {
 					gate.recordRedSkip(phProvider, clk.Now().UTC(), func(p, epID string, since time.Time, count int) {
-						emitProviderHealthGateAlert(rec, stdout, p, epID, since, count)
+						emitProviderHealthGateAlertWithReason(rec, stdout, p, epID, phSnap.reason(p), since, count)
 					})
 					if trace != nil {
 						trace.RecordDecision(TraceSiteReconcilerProviderHealthGate, TraceReasonProviderRed, TraceOutcomeRespawnSkipped, target.tp.TemplateName, name, traceRecordPayload{
