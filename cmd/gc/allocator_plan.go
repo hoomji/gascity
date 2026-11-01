@@ -953,17 +953,11 @@ func (p *decidePass) endpointShut(k endpointKey) bool {
 }
 
 // providerRed reports I7's verdict for an agent's provider, keyed by
-// provider name as legacy's create gate keys it (AM9).
+// provider name as legacy's create gate keys it (AM9). An agent that runs a
+// start_command launches no provider and is never red.
 func (p *decidePass) providerRed(agent *config.Agent) bool {
-	name := strings.TrimSpace(agent.Provider)
-	if name == "" {
-		name = strings.TrimSpace(agent.InheritedProvider)
-	}
-	if name == "" {
-		name = strings.TrimSpace(p.cfg.Workspace.Provider)
-	}
-	healthy, present := p.bp.providerHealthSnapshot.check(name)
-	return present && !healthy
+	name := agentHealthGateProvider(agent, &p.cfg.Workspace)
+	return name != "" && p.bp.providerHealthSnapshot.red(name)
 }
 
 // planErrorCause names the planner's refusal.

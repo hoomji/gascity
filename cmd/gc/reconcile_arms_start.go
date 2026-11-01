@@ -242,10 +242,8 @@ func (r *rowFacts) startIntent(reason string) (intent, bool) {
 		return intent{Reason: decideStartEpisode}, true
 	}
 	res, _ := r.w.Templates.lookup(r.row.Info)
-	if p := res.TP.ResolvedProvider; p != nil {
-		if healthy, present := r.w.ProviderHealth.check(p.Name); present && !healthy {
-			return intent{Reason: decideStartProviderRed}, true
-		}
+	if p := templateHealthGateProvider(res.TP); p != "" && r.w.ProviderHealth.red(p) {
+		return intent{Reason: decideStartProviderRed}, true
 	}
 	if preWakeRefuses(session.DispositionOfInfo(info), reason, now) {
 		return intent{Reason: decideStartHeld}, true // A6's timer heals ask for a pass when a timed hold ends

@@ -14126,13 +14126,15 @@ func TestBuildDesiredState_ProviderRedBlocksNewPoolSessionCreate(t *testing.T) {
 		}
 	}
 
+	// The worker launches its provider: an agent with a start_command
+	// launches no provider and is never gated (scenario E).
 	makeCfg := func() *config.City {
 		return &config.City{
 			Workspace: config.Workspace{Name: "test-city"},
+			Providers: map[string]config.ProviderSpec{"claude": {Command: "echo", PromptMode: "none"}},
 			Agents: []config.Agent{{
 				Name:              "worker",
 				Provider:          "claude",
-				StartCommand:      "echo",
 				ScaleCheck:        "printf 3",
 				MinActiveSessions: intPtr(0),
 				MaxActiveSessions: intPtr(5),
@@ -14256,6 +14258,33 @@ func TestBuildDesiredState_ProviderRedBlocksNewPoolSessionCreate(t *testing.T) {
 		// The active session is reused; the red gate blocks any additional creates.
 		if workerEntries != 1 {
 			t.Fatalf("expected exactly 1 worker entry (reused active); got %d; keys=%v stderr=%s", workerEntries, mapKeys(result.State), stderr.String())
+		}
+	})
+
+	// Scenario E: an agent that runs a start_command launches no provider,
+	// so its provider field's red entry does not block its creates (the
+	// control-dispatcher shape: provider set, start_command runs).
+	t.Run("registry red does not block a start_command agent", func(t *testing.T) {
+		cityPath := t.TempDir()
+		writeHealthFile(t, cityPath, "unhealthy")
+		cfg := makeCfg()
+		cfg.Agents[0].StartCommand = "echo"
+		store := beads.NewMemStore()
+		var stderr strings.Builder
+		result := buildDesiredStateWithSessionBeads(
+			"test-city", cityPath, time.Now().UTC(),
+			cfg, runtime.NewFake(), store, nil,
+			newSessionBeadSnapshot(nil),
+			nil, &stderr,
+		)
+		workerCreates := 0
+		for _, tp := range result.State {
+			if tp.TemplateName == "worker" {
+				workerCreates++
+			}
+		}
+		if workerCreates == 0 || strings.Contains(stderr.String(), "provider red") {
+			t.Fatalf("start_command worker creates = %d, want > 0 with no provider-red refusal; stderr=%s", workerCreates, stderr.String())
 		}
 	})
 }
