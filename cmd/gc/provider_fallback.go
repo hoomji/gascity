@@ -76,7 +76,10 @@ func selectPoolCreateProvider(snap *providerHealthSnapshot, agent *config.Agent,
 // sessionProviderAgent returns the agent a session bead resolves its
 // template from: agent itself, or, when the bead carries a provider
 // override naming a provider in the catalog, a copy launching with that
-// provider. The copy drops the agent's provider-shaped launch overrides
+// provider and the agent's fallback_option_defaults for it as its
+// option_defaults. The overlay is recomputed from config on every
+// resolution (start, resume, respawn), as option_defaults are for the
+// primary; it is never stored on the bead. The copy drops the agent's provider-shaped launch overrides
 // (args, option_defaults, prompt mode/flag, ready hints, process names,
 // permission-warning flag, resume command): they were written for the
 // primary and would mis-launch another provider. Env, lifecycle and every
@@ -98,7 +101,17 @@ func sessionProviderAgent(agent *config.Agent, info session.Info, providers map[
 	c.Provider = override
 	c.InheritedProvider = ""
 	c.Args = nil
+	// The agent's own option_defaults were written for the primary; the
+	// fallback takes its per-agent overlay instead, which config.ResolveProvider
+	// lays over the fallback preset's defaults through the same
+	// mergeAgentOverrides path option_defaults use for the primary.
 	c.OptionDefaults = nil
+	if opts := agent.FallbackOptionDefaults[override]; len(opts) > 0 {
+		c.OptionDefaults = make(map[string]string, len(opts))
+		for k, v := range opts {
+			c.OptionDefaults[k] = v
+		}
+	}
 	c.PromptMode = ""
 	c.PromptFlag = ""
 	c.ReadyDelayMs = nil
