@@ -313,7 +313,7 @@ func runDiscoveredCommand(entry config.DiscoveredCommand, cityPath, cityName str
 	cmd.Stdin = stdinR
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	cmd.Env = append(os.Environ(), citylayout.PackRuntimeEnv(cityPath, entry.PackName)...)
+	cmd.Env = append(os.Environ(), citylayout.PackDirRuntimeEnv(cityPath, packDir, entry.PackName)...)
 	cmd.Env = append(cmd.Env,
 		"GC_PACK_DIR="+packDir,
 		"GC_PACK_NAME="+entry.PackName,
