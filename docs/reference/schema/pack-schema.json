@@ -63,6 +63,13 @@
           "type": "string",
           "description": "Provider names the provider preset to use for this agent."
         },
+        "fallback_providers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "FallbackProviders is an ordered list of provider presets a fresh pool\nsession may start with when the primary provider is confirmed red in\n.gc/cache/provider-health.json. The first candidate that is not red\nwins; an unknown or stale health entry counts as not red. Running and\nreused sessions keep the provider they were created with. Each name\nmust be a key in [providers]. The agent's args and option_defaults are\nwritten for the primary provider and are not applied to a fallback."
+        },
         "context_advisory": {
           "$ref": "#/$defs/ContextAdvisory",
           "description": "ContextAdvisory overrides context-pressure guidance for this agent."
@@ -442,6 +449,13 @@
         "provider": {
           "type": "string",
           "description": "Provider overrides the provider name."
+        },
+        "fallback_providers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "FallbackProviders replaces the agent's ordered fallback provider list."
         },
         "context_advisory": {
           "$ref": "#/$defs/ContextAdvisory",
