@@ -318,3 +318,98 @@ func TestEndpointKeyForAgent_ProviderOverride(t *testing.T) {
 		t.Fatalf("upstream endpoint = %q, want the upstream to win", got)
 	}
 }
+
+// fallbackOptionParams is fallbackResolveParams with option schemas: alpha
+// (the primary) has a model option; beta has model and effort, preset
+// defaults model=beta-small and effort=low, and a resume command.
+func fallbackOptionParams(t *testing.T) *agentBuildParams {
+	t.Helper()
+	bp := fallbackResolveParams(t)
+	choice := func(flag, value string) config.OptionChoice {
+		return config.OptionChoice{Value: value, FlagArgs: []string{flag, value}}
+	}
+	bp.providers = map[string]config.ProviderSpec{
+		"alpha": {
+			Command: "alpha-cli", PromptMode: "none",
+			OptionsSchema: []config.ProviderOption{
+				{Key: "model", Type: "select", Default: "alpha-1", Choices: []config.OptionChoice{choice("--model", "alpha-1"), choice("--model", "alpha-2")}},
+			},
+		},
+		"beta": {
+			Command: "beta-cli", PromptMode: "none",
+			ResumeFlag: "--resume", ResumeStyle: "flag", ResumeCommand: "beta-cli --resume {{.SessionKey}}",
+			OptionsSchema: []config.ProviderOption{
+				{Key: "model", Type: "select", Choices: []config.OptionChoice{choice("--model", "beta-small"), choice("--model", "beta-large")}},
+				{Key: "effort", Type: "select", Choices: []config.OptionChoice{choice("--effort", "low"), choice("--effort", "high")}},
+			},
+			OptionDefaults: map[string]string{"model": "beta-small", "effort": "low"},
+		},
+	}
+	return bp
+}
+
+// Kills: fallback_option_defaults not applied to the chosen fallback, the
+// overlay not winning over the preset, a fallback without an entry losing
+// its preset defaults, the overlay leaking into the primary, and a later
+// (resume/respawn) resolution of the same bead dropping it.
+func TestResolveTemplateForSessionBeadInfo_FallbackOptionDefaults(t *testing.T) {
+	withOverlay := &config.Agent{
+		Name:                   "worker",
+		OptionDefaults:         map[string]string{"model": "alpha-2"},
+		FallbackProviders:      []string{"beta"},
+		FallbackOptionDefaults: map[string]map[string]string{"beta": {"model": "beta-large", "effort": "high"}},
+	}
+	noEntry := &config.Agent{Name: "worker", OptionDefaults: map[string]string{"model": "alpha-2"}, FallbackProviders: []string{"beta"}}
+	resolve := func(t *testing.T, agent *config.Agent, override string, meta ...string) TemplateParams {
+		t.Helper()
+		m := map[string]string{"template": "worker", "agent_name": "worker", "session_name": "s-worker"}
+		if override != "" {
+			m[beadmeta.ProviderOverrideMetadataKey] = override
+		}
+		for i := 0; i+1 < len(meta); i += 2 {
+			m[meta[i]] = meta[i+1]
+		}
+		tp, err := resolveTemplateForSessionBeadInfo(fallbackOptionParams(t), agent, "worker", nil, seedSessionInfo(beads.Bead{ID: "gc-1", Metadata: m}))
+		if err != nil {
+			t.Fatalf("resolveTemplateForSessionBeadInfo: %v", err)
+		}
+		return tp
+	}
+	has := func(s string, subs ...string) bool {
+		for _, sub := range subs {
+			if !strings.Contains(s, sub) {
+				return false
+			}
+		}
+		return true
+	}
+
+	t.Run("chosen fallback launches with the overlay", func(t *testing.T) {
+		tp := resolve(t, withOverlay, "beta")
+		if !has(tp.Command, "beta-cli", "--model beta-large", "--effort high") || has(tp.Command, "beta-small") || has(tp.Command, "--effort low") {
+			t.Fatalf("Command = %q, want beta-cli with model beta-large and effort high", tp.Command)
+		}
+	})
+	t.Run("fallback without an entry keeps its preset defaults", func(t *testing.T) {
+		tp := resolve(t, noEntry, "beta")
+		if !has(tp.Command, "beta-cli", "--model beta-small", "--effort low") || has(tp.Command, "alpha-2") {
+			t.Fatalf("Command = %q, want beta-cli with the preset's beta-small/low", tp.Command)
+		}
+	})
+	t.Run("primary is unaffected", func(t *testing.T) {
+		with := resolve(t, withOverlay, "")
+		without := resolve(t, noEntry, "")
+		if with.Command != without.Command || !has(with.Command, "alpha-cli", "--model alpha-2") || has(with.Command, "beta-large", "--effort") {
+			t.Fatalf("primary Command with overlay %q, without %q; want equal alpha-cli --model alpha-2", with.Command, without.Command)
+		}
+	})
+	t.Run("resume keeps the overlay", func(t *testing.T) {
+		tp := resolve(t, withOverlay, "beta", "state", "asleep", "session_key", "sk-1", "continuation_epoch", "2")
+		if !has(tp.Command, "--model beta-large", "--effort high") {
+			t.Fatalf("resumed Command = %q, want the overlay", tp.Command)
+		}
+		if tp.ResolvedProvider == nil || !has(tp.ResolvedProvider.ResumeCommand, "beta-cli --resume", "--model beta-large", "--effort high") {
+			t.Fatalf("ResumeCommand = %+v, want the overlay on the resume command", tp.ResolvedProvider)
+		}
+	})
+}
