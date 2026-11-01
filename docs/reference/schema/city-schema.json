@@ -139,7 +139,17 @@
             "type": "string"
           },
           "type": "array",
-          "description": "FallbackProviders is an ordered list of provider presets a fresh pool\nsession may start with when the primary provider is confirmed red in\n.gc/cache/provider-health.json. The first candidate that is not red\nwins; an unknown or stale health entry counts as not red. Running and\nreused sessions keep the provider they were created with. Each name\nmust be a key in [providers]. The agent's args and option_defaults are\nwritten for the primary provider and are not applied to a fallback."
+          "description": "FallbackProviders is an ordered list of provider presets a fresh pool\nsession may start with when the primary provider is confirmed red in\n.gc/cache/provider-health.json. The first candidate that is not red\nwins; an unknown or stale health entry counts as not red. Running and\nreused sessions keep the provider they were created with. Each name\nmust be a key in [providers]. The agent's args and option_defaults are\nwritten for the primary provider and are not applied to a fallback;\ngive a fallback its own options with fallback_option_defaults. A\nderived preset ([providers.x] base = \"provider:y\" with its own\noption_defaults) is the city-wide way to pin a fallback's model and\neffort; fallback_option_defaults is the per-agent way."
+        },
+        "fallback_option_defaults": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": "object",
+          "description": "FallbackOptionDefaults maps a fallback_providers name to the option\ndefaults a session launched with that fallback uses, overlaid on the\nfallback preset's own option_defaults (these keys win), exactly as\noption_defaults overlay the primary. Every key must be listed in\nfallback_providers, and every option must pass that provider's\noptions_schema.\nExample: [agent.fallback_option_defaults.claude] model = \"sonnet\""
         },
         "context_advisory": {
           "$ref": "#/$defs/ContextAdvisory",
@@ -745,6 +755,16 @@
           },
           "type": "object",
           "description": "OptionDefaults adds or overrides provider option defaults for this agent.\nKeys are option keys, values are choice values. Merges additively\n(override keys win over existing agent keys).\nExample: option_defaults = { model = \"sonnet\" }"
+        },
+        "fallback_option_defaults": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": "object",
+          "description": "FallbackOptionDefaults merges per fallback provider and per option key\ninto the agent's fallback_option_defaults (override keys win)."
         }
       },
       "additionalProperties": false,
@@ -1049,6 +1069,16 @@
           },
           "type": "object",
           "description": "OptionDefaults adds or overrides provider option defaults for this agent.\nKeys are option keys, values are choice values. Merges additively\n(patch keys win over existing agent keys).\nExample: option_defaults = { model = \"sonnet\" }"
+        },
+        "fallback_option_defaults": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": "object",
+          "description": "FallbackOptionDefaults merges per fallback provider and per option key\ninto the agent's fallback_option_defaults (patch keys win)."
         }
       },
       "additionalProperties": false,

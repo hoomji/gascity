@@ -223,6 +223,7 @@ func TestApplyAgentPatchCoversAllFields(t *testing.T) {
 		MinActiveSessions:       intVal(1),
 		ScaleCheck:              strVal("echo 3"),
 		OptionDefaults:          map[string]string{"model": "sonnet"},
+		FallbackOptionDefaults:  map[string]map[string]string{"codex": {"effort": "high"}},
 	}
 
 	// Verify every AgentPatch field is set (non-zero).
@@ -382,6 +383,7 @@ func TestApplyAgentOverrideCoversAllFields(t *testing.T) {
 		MinActiveSessions:       intVal(1),
 		ScaleCheck:              strVal("echo 3"),
 		OptionDefaults:          map[string]string{"model": "sonnet"},
+		FallbackOptionDefaults:  map[string]map[string]string{"codex": {"effort": "high"}},
 	}
 
 	// Verify every AgentOverride field is set (non-zero).

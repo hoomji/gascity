@@ -842,6 +842,9 @@ type AgentOverride struct {
 	// (override keys win over existing agent keys).
 	// Example: option_defaults = { model = "sonnet" }
 	OptionDefaults map[string]string `toml:"option_defaults,omitempty"`
+	// FallbackOptionDefaults merges per fallback provider and per option key
+	// into the agent's fallback_option_defaults (override keys win).
+	FallbackOptionDefaults map[string]map[string]string `toml:"fallback_option_defaults,omitempty"`
 }
 
 // PackSource defines a legacy remote pack repository.
@@ -3741,8 +3744,20 @@ type Agent struct {
 	// wins; an unknown or stale health entry counts as not red. Running and
 	// reused sessions keep the provider they were created with. Each name
 	// must be a key in [providers]. The agent's args and option_defaults are
-	// written for the primary provider and are not applied to a fallback.
+	// written for the primary provider and are not applied to a fallback;
+	// give a fallback its own options with fallback_option_defaults. A
+	// derived preset ([providers.x] base = "provider:y" with its own
+	// option_defaults) is the city-wide way to pin a fallback's model and
+	// effort; fallback_option_defaults is the per-agent way.
 	FallbackProviders []string `toml:"fallback_providers,omitempty"`
+	// FallbackOptionDefaults maps a fallback_providers name to the option
+	// defaults a session launched with that fallback uses, overlaid on the
+	// fallback preset's own option_defaults (these keys win), exactly as
+	// option_defaults overlay the primary. Every key must be listed in
+	// fallback_providers, and every option must pass that provider's
+	// options_schema.
+	// Example: [agent.fallback_option_defaults.claude] model = "sonnet"
+	FallbackOptionDefaults map[string]map[string]string `toml:"fallback_option_defaults,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
 	ContextAdvisory *ContextAdvisory `toml:"context_advisory,omitempty"`
 	// Upstream selects the model-serving endpoint (a key in [upstreams]) for
@@ -4088,6 +4103,7 @@ func (a Agent) Clone() Agent {
 	out.SharedMCP = append([]string(nil), a.SharedMCP...)
 	out.Env = deepCopyStringMap(a.Env)
 	out.OptionDefaults = deepCopyStringMap(a.OptionDefaults)
+	out.FallbackOptionDefaults = deepCopyNestedStringMap(a.FallbackOptionDefaults)
 	out.ReadyDelayMs = copyIntPtr(a.ReadyDelayMs)
 	out.MaxActiveSessions = copyIntPtr(a.MaxActiveSessions)
 	out.MinActiveSessions = copyIntPtr(a.MinActiveSessions)

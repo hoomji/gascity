@@ -817,6 +817,9 @@ func LoadWithIncludesOptions(fs fsys.FS, path string, opts LoadOptions, extraInc
 	if err := BuildResolvedProviderCache(root); err != nil {
 		return nil, nil, fmt.Errorf("%s: provider cache build failed: %w", path, err)
 	}
+	if err := ValidateFallbackOptionDefaults(root); err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
+	}
 
 	populateAgentLocalAssetDirs(fs, root, cityRoot)
 

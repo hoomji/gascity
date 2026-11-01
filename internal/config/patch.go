@@ -179,6 +179,9 @@ type AgentPatch struct {
 	// (patch keys win over existing agent keys).
 	// Example: option_defaults = { model = "sonnet" }
 	OptionDefaults map[string]string `toml:"option_defaults,omitempty" json:"OptionDefaults,omitempty"`
+	// FallbackOptionDefaults merges per fallback provider and per option key
+	// into the agent's fallback_option_defaults (patch keys win).
+	FallbackOptionDefaults map[string]map[string]string `toml:"fallback_option_defaults,omitempty" json:"FallbackOptionDefaults,omitempty"`
 }
 
 // NamedSessionPatch modifies an existing named session identified by canonical
@@ -707,6 +710,21 @@ func applyAgentMutation(a *Agent, p *AgentPatch, sleepSource string) {
 		}
 		for k, v := range p.OptionDefaults {
 			a.OptionDefaults[k] = v
+		}
+	}
+	// FallbackOptionDefaults: additive merge per provider, then per option
+	// key (patch keys win), the same rule as OptionDefaults.
+	for provider, opts := range p.FallbackOptionDefaults {
+		if a.FallbackOptionDefaults == nil {
+			a.FallbackOptionDefaults = make(map[string]map[string]string, len(p.FallbackOptionDefaults))
+		}
+		dst := a.FallbackOptionDefaults[provider]
+		if dst == nil {
+			dst = make(map[string]string, len(opts))
+			a.FallbackOptionDefaults[provider] = dst
+		}
+		for k, v := range opts {
+			dst[k] = v
 		}
 	}
 	// Pool: sub-field patching.
