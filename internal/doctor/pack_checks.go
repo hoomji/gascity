@@ -71,7 +71,7 @@ func (c *PackScriptCheck) Fix(ctx *CheckContext) error {
 
 	cmd := exec.Command(c.FixScript) //nolint:gosec // path from pack config
 	cmd.Dir = c.PackDir
-	cmd.Env = append(cmd.Environ(), citylayout.PackRuntimeEnv(ctx.CityPath, c.PackName)...)
+	cmd.Env = append(cmd.Environ(), citylayout.PackDirRuntimeEnv(ctx.CityPath, c.PackDir, c.PackName)...)
 	cmd.Env = append(cmd.Env,
 		"GC_PACK_DIR="+c.PackDir,
 	)
@@ -95,7 +95,7 @@ func (c *PackScriptCheck) Fix(ctx *CheckContext) error {
 func (c *PackScriptCheck) Run(ctx *CheckContext) *CheckResult {
 	cmd := exec.Command(c.Script) //nolint:gosec // script path from pack config
 	cmd.Dir = c.PackDir
-	cmd.Env = append(cmd.Environ(), citylayout.PackRuntimeEnv(ctx.CityPath, c.PackName)...)
+	cmd.Env = append(cmd.Environ(), citylayout.PackDirRuntimeEnv(ctx.CityPath, c.PackDir, c.PackName)...)
 	cmd.Env = append(cmd.Env,
 		"GC_PACK_DIR="+c.PackDir,
 	)

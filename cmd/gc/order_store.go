@@ -196,8 +196,7 @@ func orderExecEnvWithError(cityPath string, cfg *config.City, target execStoreTa
 		env["PACK_DIR"] = packDir
 		env["GC_PACK_DIR"] = packDir
 
-		packName := filepath.Base(packDir)
-		if packName != "." && packName != string(filepath.Separator) {
+		if packName := citylayout.PackStateKey(packDir); packName != "" {
 			env["GC_PACK_NAME"] = packName
 			env["GC_PACK_STATE_DIR"] = citylayout.PackStateDir(cityPath, packName)
 		}
