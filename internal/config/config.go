@@ -253,6 +253,11 @@ type City struct {
 	NamedSessions []NamedSession `toml:"named_session,omitempty"`
 	// Rigs lists external projects registered in the city.
 	Rigs []Rig `toml:"rigs,omitempty"`
+	// Hosts declares machines sessions may be placed on, keyed by host name.
+	// "local" is implicit. See engdocs/proposals/multi-host-placement.md.
+	Hosts map[string]HostConfig `toml:"hosts,omitempty"`
+	// Placement holds city-wide placement settings.
+	Placement PlacementConfig `toml:"placement,omitempty"`
 	// Patches holds targeted modifications applied after fragment merge.
 	Patches Patches `toml:"patches,omitempty"`
 	// Storage assigns the six semantic storage classes to immutable named
@@ -717,6 +722,8 @@ type AgentOverride struct {
 	FallbackProviders *[]string `toml:"fallback_providers,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
 	ContextAdvisory *ContextAdvisory `toml:"context_advisory,omitempty"`
+	// Placement restricts which hosts this agent's sessions may run on.
+	Placement *AgentPlacement `toml:"placement,omitempty"`
 	// Upstream overrides the model-serving endpoint selection (Phase C).
 	Upstream *string `toml:"upstream,omitempty"`
 	// Args overrides the provider's default arguments. Leave unset to keep
@@ -3684,6 +3691,8 @@ type Agent struct {
 	FallbackOptionDefaults map[string]map[string]string `toml:"fallback_option_defaults,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
 	ContextAdvisory *ContextAdvisory `toml:"context_advisory,omitempty"`
+	// Placement restricts which hosts this agent's sessions may run on.
+	Placement *AgentPlacement `toml:"placement,omitempty"`
 	// Upstream selects the model-serving endpoint (a key in [upstreams]) for
 	// this agent — WHO serves the model. "" (default) falls back to
 	// agent_defaults.upstream; if still empty, no upstream env is injected
@@ -4033,6 +4042,7 @@ func (a Agent) Clone() Agent {
 	out.MinActiveSessions = copyIntPtr(a.MinActiveSessions)
 	out.AssignedWorkDeferLimit = copyIntPtr(a.AssignedWorkDeferLimit)
 	out.ContextAdvisory = cloneContextAdvisory(a.ContextAdvisory)
+	out.Placement = CloneAgentPlacement(a.Placement)
 	out.EmitsPermissionWarning = copyBoolPtr(a.EmitsPermissionWarning)
 	out.HooksInstalled = copyBoolPtr(a.HooksInstalled)
 	out.InjectAssignedSkills = copyBoolPtr(a.InjectAssignedSkills)

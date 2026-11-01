@@ -2825,6 +2825,7 @@ func (ov *AgentOverride) toAgentPatch() *AgentPatch {
 		Provider:                ov.Provider,
 		FallbackProviders:       ov.FallbackProviders,
 		ContextAdvisory:         ov.ContextAdvisory,
+		Placement:               ov.Placement,
 		Upstream:                ov.Upstream,
 		Args:                    ov.Args,
 		StartCommand:            ov.StartCommand,

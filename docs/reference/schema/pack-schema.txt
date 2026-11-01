@@ -84,6 +84,10 @@
           "$ref": "#/$defs/ContextAdvisory",
           "description": "ContextAdvisory overrides context-pressure guidance for this agent."
         },
+        "placement": {
+          "$ref": "#/$defs/AgentPlacement",
+          "description": "Placement restricts which hosts this agent's sessions may run on."
+        },
         "upstream": {
           "type": "string",
           "description": "Upstream selects the model-serving endpoint (a key in [upstreams]) for\nthis agent — WHO serves the model. \"\" (default) falls back to\nagent_defaults.upstream; if still empty, no upstream env is injected\n(ambient behavior). Switching it relaunches the agent in the warm box."
@@ -471,6 +475,10 @@
           "$ref": "#/$defs/ContextAdvisory",
           "description": "ContextAdvisory overrides context-pressure guidance for this agent."
         },
+        "placement": {
+          "$ref": "#/$defs/AgentPlacement",
+          "description": "Placement replaces the agent's host placement."
+        },
         "upstream": {
           "type": "string",
           "description": "Upstream overrides the model-serving endpoint selection (Phase C)."
@@ -706,6 +714,34 @@
         "name"
       ],
       "description": "AgentPatch modifies existing agents identified by rig scope and Name."
+    },
+    "AgentPlacement": {
+      "properties": {
+        "hosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Hosts this agent may run on. Default: [placement].default_hosts, else\n[\"local\"]."
+        },
+        "require_labels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "RequireLabels must all be on a host for it to be eligible."
+        },
+        "prefer": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Prefer lists hosts tried first, in order, before host priority order."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "AgentPlacement restricts where an agent's sessions may run."
     },
     "ContextAdvisory": {
       "properties": {

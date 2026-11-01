@@ -24,6 +24,8 @@ City is the top-level configuration for a Gas City instance.
 | `agent` | []Agent |  |  | Agents lists all configured agents in this city. Pack-composed cities can compose agents through [imports.*] and ship without any [[agent]] block. |
 | `named_session` | []NamedSession |  |  | NamedSessions lists canonical alias-backed sessions built from reusable agent templates. |
 | `rigs` | []Rig |  |  | Rigs lists external projects registered in the city. |
+| `hosts` | map[string]HostConfig |  |  | Hosts declares machines sessions may be placed on, keyed by host name. "local" is implicit. See engdocs/proposals/multi-host-placement.md. |
+| `placement` | PlacementConfig |  |  | Placement holds city-wide placement settings. |
 | `patches` | Patches |  |  | Patches holds targeted modifications applied after fragment merge. |
 | `storage` | StorageConfig |  |  | Storage assigns the six semantic storage classes to immutable named bindings. Nil preserves the existing all-Work storage topology. |
 | `beads` | BeadsConfig |  |  | Beads configures the bead store backend. |
@@ -98,6 +100,7 @@ Agent defines a configured agent in the city.
 | `fallback_providers` | []string |  |  | FallbackProviders is an ordered list of provider presets a fresh pool session may start with when the primary provider is confirmed red in .gc/cache/provider-health.json. The first candidate that is not red wins; an unknown or stale health entry counts as not red. Running and reused sessions keep the provider they were created with. Each name must be a key in [providers]. The agent's args and option_defaults are written for the primary provider and are not applied to a fallback; give a fallback its own options with fallback_option_defaults. A derived preset ([providers.x] base = "provider:y" with its own option_defaults) is the city-wide way to pin a fallback's model and effort; fallback_option_defaults is the per-agent way. |
 | `fallback_option_defaults` | map[string]object |  |  | FallbackOptionDefaults maps a fallback_providers name to the option defaults a session launched with that fallback uses, overlaid on the fallback preset's own option_defaults (these keys win), exactly as option_defaults overlay the primary. Every key must be listed in fallback_providers, and every option must pass that provider's options_schema. Example: [agent.fallback_option_defaults.claude] model = "sonnet" |
 | `context_advisory` | ContextAdvisory |  |  | ContextAdvisory overrides context-pressure guidance for this agent. |
+| `placement` | AgentPlacement |  |  | Placement restricts which hosts this agent's sessions may run on. |
 | `upstream` | string |  |  | Upstream selects the model-serving endpoint (a key in [upstreams]) for this agent — WHO serves the model. "" (default) falls back to agent_defaults.upstream; if still empty, no upstream env is injected (ambient behavior). Switching it relaunches the agent in the warm box. |
 | `start_command` | string |  |  | StartCommand overrides the provider's command for this agent. |
 | `lifecycle` | string |  |  | Lifecycle controls runtime lifetime semantics. Empty uses the default long-lived session lifecycle; "one_shot" means the command is expected to do bounded work and exit cleanly. Enum: `one_shot` |
@@ -182,6 +185,7 @@ AgentOverride modifies a pack-stamped agent for a specific rig.
 | `provider` | string |  |  | Provider overrides the provider name. |
 | `fallback_providers` | []string |  |  | FallbackProviders replaces the agent's ordered fallback provider list. |
 | `context_advisory` | ContextAdvisory |  |  | ContextAdvisory overrides context-pressure guidance for this agent. |
+| `placement` | AgentPlacement |  |  | Placement restricts which hosts this agent's sessions may run on. |
 | `upstream` | string |  |  | Upstream overrides the model-serving endpoint selection (Phase C). |
 | `args` | []string |  |  | Args overrides the provider's default arguments. Leave unset to keep the pack-defined args; set to an empty list to clear them; set to a populated list to replace them entirely (full replace, not append). |
 | `start_command` | string |  |  | StartCommand overrides the start command. |
@@ -245,6 +249,7 @@ AgentPatch modifies existing agents identified by rig scope and Name.
 | `provider` | string |  |  | Provider overrides the provider name. |
 | `fallback_providers` | []string |  |  | FallbackProviders replaces the agent's ordered fallback provider list. |
 | `context_advisory` | ContextAdvisory |  |  | ContextAdvisory overrides context-pressure guidance for this agent. |
+| `placement` | AgentPlacement |  |  | Placement replaces the agent's host placement. |
 | `upstream` | string |  |  | Upstream overrides the model-serving endpoint selection (Phase C). |
 | `args` | []string |  |  | Args overrides the provider's default arguments. Leave unset to keep the pack-defined args; set to an empty list to clear them; set to a populated list to replace them entirely (full replace, not append). |
 | `start_command` | string |  |  | StartCommand overrides the start command. |
@@ -285,6 +290,16 @@ AgentPatch modifies existing agents identified by rig scope and Name.
 | `scale_check` | string |  |  | ScaleCheck overrides the command template whose output reports new unassigned session demand for bead-backed reconciliation. Supports the same Go template placeholders as Agent.scale_check. |
 | `option_defaults` | map[string]string |  |  | OptionDefaults adds or overrides provider option defaults for this agent. Keys are option keys, values are choice values. Merges additively (patch keys win over existing agent keys). Example: option_defaults = &#123; model = "sonnet" &#125; |
 | `fallback_option_defaults` | map[string]object |  |  | FallbackOptionDefaults merges per fallback provider and per option key into the agent's fallback_option_defaults (patch keys win). |
+
+## AgentPlacement
+
+AgentPlacement restricts where an agent's sessions may run.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `hosts` | []string |  |  | Hosts this agent may run on. Default: [placement].default_hosts, else ["local"]. |
+| `require_labels` | []string |  |  | RequireLabels must all be on a host for it to be eligible. |
+| `prefer` | []string |  |  | Prefer lists hosts tried first, in order, before host priority order. |
 
 ## BeadPolicyConfig
 
@@ -526,6 +541,30 @@ GitHubPRMonitorPatch modifies an existing GitHub PR readiness monitor by name.
 | `poll_interval` | string |  |  | PollInterval overrides the optional polling cadence. |
 | `merge_queue` | string |  |  | MergeQueuePolicy overrides merge-queue signal handling. Enum: `ignore`, `observe`, `repair` |
 
+## HostConfig
+
+HostConfig declares one machine sessions may be placed on.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `transport` | string |  |  | Transport reaches the host. Only "ssh" in v1; empty on "local". Enum: `ssh` |
+| `target` | string |  |  | Target is the ssh destination, resolved by the operator's ~/.ssh/config. No key paths, users or ports live in gc config. |
+| `root` | string |  |  | Root is the absolute host-side directory gc owns (city mirror, store link socket, staged env). |
+| `labels` | []string |  |  | Labels are matched against an agent's placement.require_labels. |
+| `priority` | integer |  |  | Priority orders otherwise equal hosts, higher first. Default 0. |
+| `max_active_sessions` | integer |  |  | MaxActiveSessions caps sessions on this host, independent of memory. |
+| `store` | string |  |  | Store selects how sessions on this host reach the city store: "link" (default) or "direct". Enum: `link`, `direct` |
+| `rigs` | map[string]string |  |  | Rigs maps rig name to the absolute checkout path on this host. A rig with no entry cannot be placed here. |
+| `env` | HostEnv |  |  | Env controls which session env reaches this host. |
+
+## HostEnv
+
+HostEnv controls session env delivery to a remote host.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `forward` | []string |  |  | Forward names secret-classified env keys this host may receive. Secret values not named here are withheld from remote hosts. |
+
 ## Import
 
 Import defines a named import of another pack.
@@ -695,6 +734,15 @@ Patches holds all patch blocks from composition.
 | `rigs` | []RigPatch |  |  | Rigs targets rigs by name. |
 | `providers` | []ProviderPatch |  |  | Providers targets providers by name. |
 | `github_pr_monitor` | []GitHubPRMonitorPatch |  |  | GitHubPRMonitors targets GitHub PR readiness monitors by name. |
+
+## PlacementConfig
+
+PlacementConfig holds city-wide placement settings ([placement]).
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `default_hosts` | []string |  |  | DefaultHosts is the host list for agents with no placement.hosts. Default: ["local"]. |
+| `version_policy` | string |  |  | VersionPolicy decides which remote gc builds may take placements: "exact" (default), "minor" or "any". Enum: `exact`, `minor`, `any` |
 
 ## PoolOverride
 

@@ -304,6 +304,7 @@ func deepCopyAgent(src *config.Agent, name, dir string) config.Agent {
 		Provider:          src.Provider,
 		FallbackProviders: append([]string(nil), src.FallbackProviders...),
 		ContextAdvisory:   config.CloneContextAdvisory(src.ContextAdvisory),
+		Placement:         config.CloneAgentPlacement(src.Placement),
 		Upstream:          src.Upstream,
 		InheritedProvider: src.InheritedProvider,
 		PromptTemplate:    src.PromptTemplate,

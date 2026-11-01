@@ -67,6 +67,8 @@ type AgentPatch struct {
 	FallbackProviders *[]string `toml:"fallback_providers,omitempty"`
 	// ContextAdvisory overrides context-pressure guidance for this agent.
 	ContextAdvisory *ContextAdvisory `toml:"context_advisory,omitempty" json:"ContextAdvisory,omitempty"`
+	// Placement replaces the agent's host placement.
+	Placement *AgentPlacement `toml:"placement,omitempty" json:"Placement,omitempty"`
 	// Upstream overrides the model-serving endpoint selection (Phase C).
 	Upstream *string `toml:"upstream,omitempty"`
 	// Args overrides the provider's default arguments. Leave unset to keep
@@ -572,6 +574,9 @@ func applyAgentMutation(a *Agent, p *AgentPatch, sleepSource string) {
 	}
 	if p.ContextAdvisory != nil {
 		a.ContextAdvisory = cloneContextAdvisory(p.ContextAdvisory)
+	}
+	if p.Placement != nil {
+		a.Placement = CloneAgentPlacement(p.Placement)
 	}
 	if p.Upstream != nil {
 		a.Upstream = *p.Upstream

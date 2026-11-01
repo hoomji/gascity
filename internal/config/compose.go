@@ -820,6 +820,11 @@ func LoadWithIncludesOptions(fs fsys.FS, path string, opts LoadOptions, extraInc
 	if err := ValidateFallbackOptionDefaults(root); err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
+	hostWarnings, err := ValidateHosts(root)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
+	}
+	prov.Warnings = append(prov.Warnings, hostWarnings...)
 
 	populateAgentLocalAssetDirs(fs, root, cityRoot)
 
@@ -1129,6 +1134,16 @@ func mergeFragment(base, fragment *City, fragMeta toml.MetaData, fragPath string
 
 	// Upstreams: additive merge with collision warnings.
 	mergeUpstreams(base, fragment, fragPath, prov)
+
+	// Hosts: additive merge with collision warnings; [placement] keys are
+	// last-writer-wins per key.
+	mergeHosts(base, fragment, fragPath, prov)
+	if fragMeta.IsDefined("placement", "default_hosts") {
+		base.Placement.DefaultHosts = fragment.Placement.DefaultHosts
+	}
+	if fragMeta.IsDefined("placement", "version_policy") {
+		base.Placement.VersionPolicy = fragment.Placement.VersionPolicy
+	}
 
 	// Workspace: per-field merge.
 	mergeWorkspace(base, fragment, fragMeta, fragPath, prov)
