@@ -460,6 +460,7 @@ var registry = slices.Concat([]Field{
 		MCPIdentityMetadataKey, MCPServersSnapshotMetadataKey),
 	same(ClassLaunchConfig, false, sites(legacy("cmd/gc/build_desired_state.go", "computePoolTriggerBindingPatch")), beadmeta.TriggerBeadIDMetadataKey,
 		beadmeta.TriggerBeadStoreRefMetadataKey, beadmeta.BrainParentSIDMetadataKey, beadmeta.PackMetadataKey, beadmeta.PackWorkspaceMetadataKey),
+	same(ClassLaunchConfig, false, sites(legacy("cmd/gc/build_desired_state.go", "selectOrPlanPoolSessionBead")), beadmeta.ProviderOverrideMetadataKey),
 	same(ClassLaunchConfig, false, sites(op("internal/worker/handle_construct.go", "applyCanonicalProfileIdentityMetadata")), "worker_profile_provider_family",
 		"worker_profile_transport_class", "worker_profile_behavior_version", "worker_profile_transcript_adapter_version",
 		"worker_profile_compatibility_version", "worker_profile_certification_fingerprint"),

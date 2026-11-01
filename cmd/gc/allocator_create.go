@@ -48,6 +48,10 @@ type createPlan struct {
 	// the spec and stamps the work dir before it writes the row.
 	Metadata     map[string]string
 	WorktreeSpec *worktree.Spec
+	// ProviderFallback is the planner's fallback provider choice; Metadata
+	// then carries gc.provider_override, and a successful create emits
+	// provider.fallback.
+	ProviderFallback *providerFallbackChoice
 	// WorkBeadID is the request's trigger work, which the in-flight entry
 	// reserves until the census shows the row (inFlightStandIns).
 	WorkBeadID string
@@ -120,6 +124,7 @@ func createPlanOf(id, template string, p poolSessionCreatePlan) createPlan {
 		Slot:              p.slot,
 		Metadata:          p.metadata,
 		WorktreeSpec:      p.worktreeSpec,
+		ProviderFallback:  p.providerFallback,
 	}
 }
 
@@ -324,6 +329,7 @@ func (x *createEffects) run(ctx context.Context, pass *createPass, p createPlan,
 	}
 	if info, err = createPoolSessionBeadWithGuardedAliasUsingLock(view, cfgAgent, p.Template, p.QualifiedInstance, p.Slot, metadata, locks); err == nil {
 		err = prog.afterWrite(ctx, info.ID)
+		emitProviderFallbackEvent(x.host.cityPath, p.Template, info, p.ProviderFallback)
 	}
 	return // the deferred settle sets s
 }

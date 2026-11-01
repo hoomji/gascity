@@ -506,6 +506,12 @@ func IsKnownMergeStrategy(s string) bool {
 // key-shape rule only covers the gc. namespace.
 const OptionMetadataPrefix = "opt_"
 
+// ProviderOverrideMetadataKey names, on a pool session bead, the provider
+// preset the session launches with instead of its agent's primary. It is
+// written once at create time when fallback_providers selection picked a
+// fallback, and is absent when the session uses the primary.
+const ProviderOverrideMetadataKey = "gc.provider_override"
+
 // KnownMetadataKeys lists every engine-owned bead-metadata key this package
 // declares. The guard test asserts every gc.* metadata literal used in non-test
 // Go resolves to a member of this slice (or a KnownMetadataPrefixes entry).
@@ -619,6 +625,7 @@ var KnownMetadataKeys = []string{
 	PartialFragmentMetadataKey,
 	PartialRetryMetadataKey,
 	PackMetadataKey,
+	ProviderOverrideMetadataKey,
 	PackRootMetadataKey,
 	PackWorkspaceMetadataKey,
 	PerDispatchModelMetadataKey,

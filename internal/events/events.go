@@ -507,6 +507,12 @@ const (
 	// the next episode fires independently. (ADR-0013 A1 M3a)
 	ProviderHealthGateAlert = "provider.health_gate_alert"
 
+	// ProviderFallback fires when a fresh pool session is created with one of
+	// its agent's fallback_providers because the primary provider is red in
+	// the provider-health registry. Subject is the new session bead ID; the
+	// payload carries agent, session, from, to and reason.
+	ProviderFallback = "provider.fallback"
+
 	// ReconcilerAlert is the v2 session reconciler's operator alert: a
 	// condition that should never happen, or that needs an operator. The
 	// payload's "alert" names it (cmd/gc reconcile_observe_v2.go).
@@ -668,8 +674,8 @@ var KnownEventTypes = []string{
 	StorageBindingConverged, StorageBindingGenesis,
 	StorageBindingUnconverged, StorageBindingUncheckable,
 	StorageBindingNotConfigured,
-	// ProviderHealthGateAlert and ReconcilerAlert are intentionally omitted
-	// from KnownEventTypes. Each is emitted by the reconciler but its typed
+	// ProviderHealthGateAlert, ProviderFallback and ReconcilerAlert are
+	// intentionally omitted from KnownEventTypes. Each is emitted by the reconciler but its typed
 	// SSE payload is not yet registered in internal/api (the payload registration lives in a
 	// follow-up that adds the full SSE projection). Until then, subscribers
 	// receive it via the custom-event envelope.
