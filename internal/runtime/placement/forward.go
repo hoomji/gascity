@@ -1,0 +1,382 @@
+package placement
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/gastownhall/gascity/internal/runtime"
+)
+
+// The verbs below forward to the backend of the host a session is routed to,
+// exactly as package hybrid forwards to its two legs. An unrouted session
+// reaches the unavailable leg, so it is never reported "not found".
+
+// Start projects cfg for the routed host and delegates to its backend.
+func (p *Provider) Start(ctx context.Context, name string, cfg runtime.Config) error {
+	leg, cfg, err := p.projected(name, cfg)
+	if err != nil {
+		return err
+	}
+	return leg.Start(ctx, name, cfg)
+}
+
+// Stop delegates to the routed backend.
+func (p *Provider) Stop(name string) error {
+	return p.route(name).Stop(name)
+}
+
+// Interrupt delegates to the routed backend.
+func (p *Provider) Interrupt(name string) error {
+	return p.route(name).Interrupt(name)
+}
+
+// IsRunning delegates to the routed backend.
+func (p *Provider) IsRunning(name string) bool {
+	return p.route(name).IsRunning(name)
+}
+
+// IsDeadRuntimeSession delegates to the routed backend when it can positively
+// distinguish live sessions from visible dead artifacts.
+func (p *Provider) IsDeadRuntimeSession(name string) (bool, error) {
+	checker, ok := p.route(name).(runtime.DeadRuntimeSessionChecker)
+	if !ok {
+		return false, nil
+	}
+	return checker.IsDeadRuntimeSession(name)
+}
+
+// IsAttached delegates to the routed backend.
+func (p *Provider) IsAttached(name string) bool {
+	return p.route(name).IsAttached(name)
+}
+
+// IsAttachedWithError forwards the error-bearing attachment probe to the
+// routed backend, so a probe failure is not lost behind the bool. A backend
+// without the capability answers through its IsAttached with a nil error.
+func (p *Provider) IsAttachedWithError(name string) (bool, error) {
+	return runtime.IsAttachedWithError(p.route(name), name)
+}
+
+// Attach delegates to the routed backend.
+func (p *Provider) Attach(name string) error {
+	return p.route(name).Attach(name)
+}
+
+// ProcessAlive delegates to the routed backend.
+func (p *Provider) ProcessAlive(name string, processNames []string) bool {
+	return p.route(name).ProcessAlive(name, processNames)
+}
+
+// ObserveLiveness delegates to the routed backend through runtime.ObserveLiveness
+// so the backend's native LivenessObserver fast-path is preserved (e.g. herdr's
+// agent-status liveness) instead of collapsing to the generic
+// IsRunning+ProcessAlive fold.
+func (p *Provider) ObserveLiveness(name string, processNames []string) runtime.Liveness {
+	return runtime.ObserveLiveness(p.route(name), name, processNames)
+}
+
+// ObserveLivenessWithError forwards the optional error-bearing observation to
+// the selected backend without collapsing uncertainty into false.
+func (p *Provider) ObserveLivenessWithError(name string, processNames []string) (runtime.Liveness, error) {
+	return runtime.ObserveLivenessWithError(p.route(name), name, processNames)
+}
+
+// Nudge delegates to the routed backend.
+func (p *Provider) Nudge(name string, content []runtime.ContentBlock) error {
+	return p.route(name).Nudge(name, content)
+}
+
+// SessionBinding reports the routed backend's thread binding for name when
+// that backend hosts sessions in threads of its own, and no binding otherwise.
+func (p *Provider) SessionBinding(name string) (runtime.SessionBinding, error) {
+	if bp, ok := p.route(name).(runtime.SessionBindingProvider); ok {
+		return bp.SessionBinding(name)
+	}
+	return runtime.SessionBinding{}, nil
+}
+
+// NudgeKeyed delegates to the routed backend with its delivery key when that
+// backend deduplicates keyed deliveries, returning its receipt, and to its
+// Nudge otherwise, with no receipt.
+func (p *Provider) NudgeKeyed(name string, content []runtime.ContentBlock, key string) (runtime.DeliveryReceipt, error) {
+	if kp, ok := p.route(name).(runtime.KeyedNudgeProvider); ok {
+		return kp.NudgeKeyed(name, content, key)
+	}
+	return runtime.DeliveryReceipt{}, p.route(name).Nudge(name, content)
+}
+
+// LookupDelivery delegates to the routed backend when it deduplicates keyed
+// deliveries; another backend keeps none, so it is answered
+// ErrInteractionUnsupported without a call.
+func (p *Provider) LookupDelivery(ctx context.Context, name, key string) (runtime.DeliveryReceipt, error) {
+	if kp, ok := p.route(name).(runtime.KeyedNudgeProvider); ok {
+		return kp.LookupDelivery(ctx, name, key)
+	}
+	return runtime.DeliveryReceipt{}, fmt.Errorf("%w: %q's backend keeps no keyed deliveries", runtime.ErrInteractionUnsupported, name)
+}
+
+// WaitForIdle delegates to the routed backend when it supports explicit
+// idle-boundary waiting.
+func (p *Provider) WaitForIdle(ctx context.Context, name string, timeout time.Duration) error {
+	if wp, ok := p.route(name).(runtime.IdleWaitProvider); ok {
+		return wp.WaitForIdle(ctx, name, timeout)
+	}
+	return runtime.ErrInteractionUnsupported
+}
+
+// SnapshotIdle delegates to the routed backend when it can take a
+// point-in-time idle observation. Like WaitForIdle this must be forwarded
+// explicitly: this Provider enumerates the optional interfaces it supports
+// rather than embedding a backend, so a local tmux session would otherwise
+// lose SnapshotIdle for every session in a local/remote split city.
+func (p *Provider) SnapshotIdle(name string) (bool, error) {
+	if sp, ok := p.route(name).(runtime.IdleSnapshotProvider); ok {
+		return sp.SnapshotIdle(name)
+	}
+	return false, runtime.ErrInteractionUnsupported
+}
+
+// NudgeNow delegates to the routed backend when it supports immediate
+// injection without an internal wait-idle step.
+func (p *Provider) NudgeNow(name string, content []runtime.ContentBlock) error {
+	if np, ok := p.route(name).(runtime.ImmediateNudgeProvider); ok {
+		return np.NudgeNow(name, content)
+	}
+	return p.route(name).Nudge(name, content)
+}
+
+// ResetInterruptedTurn delegates to the routed backend when it supports
+// provider-native interrupted-turn discard semantics.
+func (p *Provider) ResetInterruptedTurn(ctx context.Context, name string) error {
+	if err := runtime.RefuseUnfenceableCtx(ctx, p.route(name), name); err != nil {
+		return err
+	}
+	if rp, ok := p.route(name).(runtime.InterruptedTurnResetProvider); ok {
+		return rp.ResetInterruptedTurn(ctx, name)
+	}
+	return runtime.ErrInteractionUnsupported
+}
+
+// ClearInput delegates to the routed backend when it can empty a session's
+// input box and confirm it is empty.
+func (p *Provider) ClearInput(ctx context.Context, name string, restoreWindow time.Duration) error {
+	if err := runtime.RefuseUnfenceableCtx(ctx, p.route(name), name); err != nil {
+		return err
+	}
+	if cp, ok := p.route(name).(runtime.InputClearProvider); ok {
+		return cp.ClearInput(ctx, name, restoreWindow)
+	}
+	return runtime.ErrInteractionUnsupported
+}
+
+// Relaunch forwards a warm-box agent relaunch to the routed backend when it
+// supports one, so the reconciler's RelaunchProvider type-assert is not masked
+// by the placement router.
+func (p *Provider) Relaunch(ctx context.Context, name string, cfg runtime.Config) error {
+	leg, cfg, err := p.projected(name, cfg)
+	if err != nil {
+		return err
+	}
+	if rp, ok := leg.(runtime.RelaunchProvider); ok {
+		return rp.Relaunch(ctx, name, cfg)
+	}
+	return runtime.ErrRelaunchUnsupported
+}
+
+// TurnInterruptMode reports how the routed backend cancels the session's
+// in-flight turn.
+func (p *Provider) TurnInterruptMode(name string) runtime.TurnInterruptMode {
+	return runtime.TurnInterruptModeFor(p.route(name), name)
+}
+
+// ObserveTurn delegates to the routed backend when it reports which turn is
+// in progress.
+func (p *Provider) ObserveTurn(ctx context.Context, name string) (runtime.TurnState, error) {
+	if tf, ok := p.route(name).(runtime.TurnFenceProvider); ok {
+		return tf.ObserveTurn(ctx, name)
+	}
+	return runtime.TurnState{}, runtime.ErrInteractionUnsupported
+}
+
+// InterruptTurn delegates to the routed backend when it can interrupt a named
+// turn.
+func (p *Provider) InterruptTurn(ctx context.Context, name, turnID string) (runtime.TurnInterrupt, error) {
+	if tf, ok := p.route(name).(runtime.TurnFenceProvider); ok {
+		return tf.InterruptTurn(ctx, name, turnID)
+	}
+	return runtime.TurnInterrupt{}, runtime.ErrInteractionUnsupported
+}
+
+// WaitTurnEnded delegates to the routed backend when it can report that a
+// named turn ended.
+func (p *Provider) WaitTurnEnded(ctx context.Context, name, turnID string, timeout time.Duration) (runtime.TurnState, error) {
+	if tf, ok := p.route(name).(runtime.TurnFenceProvider); ok {
+		return tf.WaitTurnEnded(ctx, name, turnID, timeout)
+	}
+	return runtime.TurnState{}, runtime.ErrInteractionUnsupported
+}
+
+// StopBackgroundWork delegates to the routed backend when it can stop work an
+// interrupted turn left running.
+func (p *Provider) StopBackgroundWork(ctx context.Context, name string) error {
+	if sp, ok := p.route(name).(runtime.BackgroundWorkStopper); ok {
+		return sp.StopBackgroundWork(ctx, name)
+	}
+	return runtime.ErrInteractionUnsupported
+}
+
+// WaitForInterruptBoundary delegates to the routed backend when it can confirm
+// a provider-native interrupt boundary before the next turn is injected.
+func (p *Provider) WaitForInterruptBoundary(ctx context.Context, name string, since time.Time, timeout time.Duration) error {
+	if wp, ok := p.route(name).(runtime.InterruptBoundaryWaitProvider); ok {
+		return wp.WaitForInterruptBoundary(ctx, name, since, timeout)
+	}
+	return runtime.ErrInteractionUnsupported
+}
+
+// Pending delegates to the routed backend when it supports structured
+// interactions.
+func (p *Provider) Pending(name string) (*runtime.PendingInteraction, error) {
+	if ip, ok := p.route(name).(runtime.InteractionProvider); ok {
+		return ip.Pending(name)
+	}
+	return nil, runtime.ErrInteractionUnsupported
+}
+
+// Respond delegates to the routed backend when it supports structured
+// interactions.
+func (p *Provider) Respond(name string, response runtime.InteractionResponse) error {
+	if ip, ok := p.route(name).(runtime.InteractionProvider); ok {
+		return ip.Respond(name, response)
+	}
+	return runtime.ErrInteractionUnsupported
+}
+
+// DismissKnownDialogs delegates to the routed backend when it can dismiss
+// startup dialogs.
+func (p *Provider) DismissKnownDialogs(ctx context.Context, name string, timeout time.Duration) error {
+	if err := runtime.RefuseUnfenceableCtx(ctx, p.route(name), name); err != nil {
+		return err
+	}
+	if dp, ok := p.route(name).(runtime.DialogProvider); ok {
+		return dp.DismissKnownDialogs(ctx, name, timeout)
+	}
+	return runtime.ErrInteractionUnsupported
+}
+
+// GetAllEnvironment delegates to the routed backend when it has a batched
+// environment read.
+func (p *Provider) GetAllEnvironment(name string) (map[string]string, error) {
+	if ep, ok := p.route(name).(runtime.EnvironmentBatchProvider); ok {
+		return ep.GetAllEnvironment(name)
+	}
+	return nil, fmt.Errorf("%w: session %q", runtime.ErrEnvironmentBatchUnsupported, name)
+}
+
+// ConfigureServer configures the server of every backend that has one.
+func (p *Provider) ConfigureServer() error {
+	return runtime.ConfigureServers(p.Backends())
+}
+
+// TeardownServer tears down the server of every backend that has one, so a
+// full stop through the composite still ends the local tmux server.
+func (p *Provider) TeardownServer() error {
+	return runtime.TeardownServers(p.Backends())
+}
+
+// SessionRoster merges the backends' rosters ([runtime.MergeSessionRosters]).
+func (p *Provider) SessionRoster() (map[string]runtime.SessionRosterEntry, error) {
+	return runtime.MergeSessionRosters(p, p.Backends())
+}
+
+// KillCorpseObject forwards to the routed backend when it kills session
+// objects by id. A session lives on exactly one host, so no other backend can
+// host the object.
+func (p *Provider) KillCorpseObject(name, objectID, created string) (runtime.SessionObjectKillResult, error) {
+	killer, ok := p.route(name).(runtime.SessionObjectKiller)
+	if !ok {
+		return runtime.SessionObjectNotKilled, fmt.Errorf("%w: session %q", runtime.ErrSessionObjectKillUnsupported, name)
+	}
+	return killer.KillCorpseObject(name, objectID, created)
+}
+
+// KillZombieObject forwards like KillCorpseObject.
+func (p *Provider) KillZombieObject(name, objectID, created, panePID string) (runtime.SessionObjectKillResult, error) {
+	killer, ok := p.route(name).(runtime.SessionObjectKiller)
+	if !ok {
+		return runtime.SessionObjectNotKilled, fmt.Errorf("%w: session %q", runtime.ErrSessionObjectKillUnsupported, name)
+	}
+	return killer.KillZombieObject(name, objectID, created, panePID)
+}
+
+// SetMeta delegates to the routed backend.
+func (p *Provider) SetMeta(name, key, value string) error {
+	return p.route(name).SetMeta(name, key, value)
+}
+
+// GetMeta delegates to the routed backend.
+func (p *Provider) GetMeta(name, key string) (string, error) {
+	return p.route(name).GetMeta(name, key)
+}
+
+// RemoveMeta delegates to the routed backend.
+func (p *Provider) RemoveMeta(name, key string) error {
+	return p.route(name).RemoveMeta(name, key)
+}
+
+// Peek delegates to the routed backend.
+func (p *Provider) Peek(name string, lines int) (string, error) {
+	return p.route(name).Peek(name, lines)
+}
+
+// ListRunning queries every backend and returns best-effort results plus a
+// partial-list error when one backend fails.
+func (p *Provider) ListRunning(prefix string) ([]string, error) {
+	return runtime.MergeBackendListings(p.ListRunningByBackend(prefix))
+}
+
+// ListRunningByBackend implements [runtime.BackendListingProvider]: one
+// ListRunning call per backend, local first, then hosts by name.
+func (p *Provider) ListRunningByBackend(prefix string) []runtime.BackendListing {
+	return runtime.ListBackends(p.Backends(), prefix)
+}
+
+// GetLastActivity delegates to the routed backend.
+func (p *Provider) GetLastActivity(name string) (time.Time, error) {
+	return p.route(name).GetLastActivity(name)
+}
+
+// ClearScrollback delegates to the routed backend.
+func (p *Provider) ClearScrollback(name string) error {
+	return p.route(name).ClearScrollback(name)
+}
+
+// CopyTo delegates to the routed backend.
+func (p *Provider) CopyTo(name, src, relDst string) error {
+	return p.route(name).CopyTo(name, src, relDst)
+}
+
+// SendKeys delegates to the routed backend.
+func (p *Provider) SendKeys(name string, keys ...string) error {
+	return p.route(name).SendKeys(name, keys...)
+}
+
+// RunLive projects cfg for the routed host and delegates to its backend.
+func (p *Provider) RunLive(name string, cfg runtime.Config) error {
+	leg, cfg, err := p.projected(name, cfg)
+	if err != nil {
+		return err
+	}
+	return leg.RunLive(name, cfg)
+}
+
+// SleepCapability reports idle sleep capability for the routed backend,
+// derived from its capabilities when it does not report one itself.
+func (p *Provider) SleepCapability(name string) runtime.SessionSleepCapability {
+	routed := p.route(name)
+	if scp, ok := routed.(runtime.SleepCapabilityProvider); ok {
+		return scp.SleepCapability(name)
+	}
+	return runtime.SleepCapabilityFromCapabilities(routed.Capabilities())
+}
