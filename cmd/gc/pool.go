@@ -434,6 +434,16 @@ func deepCopyAgent(src *config.Agent, name, dir string) config.Agent {
 		v := *src.MinActiveSessions
 		dst.MinActiveSessions = &v
 	}
+	if len(src.FallbackOptionDefaults) > 0 {
+		dst.FallbackOptionDefaults = make(map[string]map[string]string, len(src.FallbackOptionDefaults))
+		for provider, opts := range src.FallbackOptionDefaults {
+			inner := make(map[string]string, len(opts))
+			for k, v := range opts {
+				inner[k] = v
+			}
+			dst.FallbackOptionDefaults[provider] = inner
+		}
+	}
 	if len(src.OptionDefaults) > 0 {
 		dst.OptionDefaults = make(map[string]string, len(src.OptionDefaults))
 		for k, v := range src.OptionDefaults {

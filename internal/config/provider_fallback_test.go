@@ -109,3 +109,96 @@ func findAgentNamed(t *testing.T, cfg *City, name string) Agent {
 	t.Fatalf("no agent %q", name)
 	return Agent{}
 }
+
+// optionCity has a primary alpha and a fallback beta whose closed options
+// are model (beta-small, beta-large) and effort (low, high).
+func optionCity(agentLines, tail string) string {
+	return `
+[workspace]
+provider = "alpha"
+
+[providers.alpha]
+command = "alpha-cli"
+
+[providers.beta]
+command = "beta-cli"
+
+[[providers.beta.options_schema]]
+key = "model"
+type = "select"
+choices = [{ value = "beta-small", flag_args = ["--model", "beta-small"] }, { value = "beta-large", flag_args = ["--model", "beta-large"] }]
+
+[[providers.beta.options_schema]]
+key = "effort"
+type = "select"
+choices = [{ value = "low", flag_args = ["--effort", "low"] }, { value = "high", flag_args = ["--effort", "high"] }]
+
+[[agent]]
+name = "worker"
+fallback_providers = ["beta"]
+` + agentLines + "\n" + tail
+}
+
+// Kills: fallback_option_defaults not parsed under its TOML key.
+func TestLoadWithIncludes_FallbackOptionDefaultsParsed(t *testing.T) {
+	fs := fsys.NewFake()
+	fs.Files["/city/city.toml"] = []byte(optionCity(`
+[agent.fallback_option_defaults.beta]
+model = "beta-large"
+effort = "high"
+`, ""))
+	cfg, _, err := LoadWithIncludes(fs, "/city/city.toml")
+	if err != nil {
+		t.Fatalf("LoadWithIncludes: %v", err)
+	}
+	got := findAgentNamed(t, cfg, "worker").FallbackOptionDefaults["beta"]
+	if got["model"] != "beta-large" || got["effort"] != "high" || len(got) != 2 {
+		t.Fatalf("FallbackOptionDefaults[beta] = %v", got)
+	}
+}
+
+// Kills: load accepting an overlay for a provider the agent cannot fall
+// back to, an option key outside the provider's schema, or a value that is
+// not one of its choices.
+func TestLoadWithIncludes_FallbackOptionDefaultsRejected(t *testing.T) {
+	for _, tc := range []struct {
+		name, lines, want string
+	}{
+		{name: "key not in fallback_providers", lines: "[agent.fallback_option_defaults.alpha]\nmodel = \"x\"\n", want: `fallback_option_defaults key "alpha" is not listed in fallback_providers`},
+		{name: "bad option value", lines: "[agent.fallback_option_defaults.beta]\neffort = \"extreme\"\n", want: `fallback_option_defaults.beta: option_defaults key "effort": value "extreme" is not a valid choice`},
+		{name: "unknown option key", lines: "[agent.fallback_option_defaults.beta]\ncolour = \"red\"\n", want: `fallback_option_defaults.beta: option_defaults key "colour" is not in the options schema`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := fsys.NewFake()
+			fs.Files["/city/city.toml"] = []byte(optionCity(tc.lines, ""))
+			_, _, err := LoadWithIncludes(fs, "/city/city.toml")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// Kills: a patch replacing fallback_option_defaults wholesale instead of
+// merging per provider and per option key.
+func TestLoadWithIncludes_PatchMergesFallbackOptionDefaults(t *testing.T) {
+	fs := fsys.NewFake()
+	fs.Files["/city/city.toml"] = []byte(optionCity(`
+[agent.fallback_option_defaults.beta]
+model = "beta-small"
+effort = "low"
+`, `
+[[patches.agent]]
+name = "worker"
+[patches.agent.fallback_option_defaults.beta]
+effort = "high"
+`))
+	cfg, _, err := LoadWithIncludes(fs, "/city/city.toml")
+	if err != nil {
+		t.Fatalf("LoadWithIncludes: %v", err)
+	}
+	got := findAgentNamed(t, cfg, "worker").FallbackOptionDefaults["beta"]
+	if got["model"] != "beta-small" || got["effort"] != "high" || len(got) != 2 {
+		t.Fatalf("FallbackOptionDefaults[beta] after patch = %v, want model kept and effort patched", got)
+	}
+}

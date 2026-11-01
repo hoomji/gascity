@@ -1821,6 +1821,22 @@ func deepCopyResolvedPackGlobals(in []ResolvedPackGlobal) []ResolvedPackGlobal {
 	return out
 }
 
+// deepCopyNestedStringMap deep-copies a map of string maps; nil stays nil.
+func deepCopyNestedStringMap(in map[string]map[string]string) map[string]map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]map[string]string, len(in))
+	for k, v := range in {
+		inner := make(map[string]string, len(v))
+		for ik, iv := range v {
+			inner[ik] = iv
+		}
+		out[k] = inner
+	}
+	return out
+}
+
 func deepCopyStringMap(in map[string]string) map[string]string {
 	if in == nil {
 		return nil
@@ -2848,6 +2864,7 @@ func (ov *AgentOverride) toAgentPatch() *AgentPatch {
 		MinActiveSessions:       ov.MinActiveSessions,
 		ScaleCheck:              ov.ScaleCheck,
 		OptionDefaults:          ov.OptionDefaults,
+		FallbackOptionDefaults:  ov.FallbackOptionDefaults,
 	}
 }
 

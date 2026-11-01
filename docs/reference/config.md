@@ -95,7 +95,8 @@ Agent defines a configured agent in the city.
 | `nudge` | string |  |  | Nudge is text typed into the agent's session after startup. Used for CLI agents that don't accept command-line prompts. For a known pool session whose trigger remains unclaimed after the 90-second recovery grace period, an empty or whitespace-only Nudge does not opt out: it sends "Run gc hook --claim --drain-ack --json now; if it returns work, execute it immediately." This fallback applies only to the initial stalled-claim recovery; continuation-claim recovery remains configured-only. Unknown templates receive no fallback. |
 | `session` | string |  |  | Session overrides the session transport for this agent. "" (default) uses the city-level session provider (typically tmux). "acp" uses the Agent Client Protocol (JSON-RPC over stdio). The agent's resolved provider must have supports_acp = true. Enum: `acp` |
 | `provider` | string |  |  | Provider names the provider preset to use for this agent. |
-| `fallback_providers` | []string |  |  | FallbackProviders is an ordered list of provider presets a fresh pool session may start with when the primary provider is confirmed red in .gc/cache/provider-health.json. The first candidate that is not red wins; an unknown or stale health entry counts as not red. Running and reused sessions keep the provider they were created with. Each name must be a key in [providers]. The agent's args and option_defaults are written for the primary provider and are not applied to a fallback. |
+| `fallback_providers` | []string |  |  | FallbackProviders is an ordered list of provider presets a fresh pool session may start with when the primary provider is confirmed red in .gc/cache/provider-health.json. The first candidate that is not red wins; an unknown or stale health entry counts as not red. Running and reused sessions keep the provider they were created with. Each name must be a key in [providers]. The agent's args and option_defaults are written for the primary provider and are not applied to a fallback; give a fallback its own options with fallback_option_defaults. A derived preset ([providers.x] base = "provider:y" with its own option_defaults) is the city-wide way to pin a fallback's model and effort; fallback_option_defaults is the per-agent way. |
+| `fallback_option_defaults` | map[string]object |  |  | FallbackOptionDefaults maps a fallback_providers name to the option defaults a session launched with that fallback uses, overlaid on the fallback preset's own option_defaults (these keys win), exactly as option_defaults overlay the primary. Every key must be listed in fallback_providers, and every option must pass that provider's options_schema. Example: [agent.fallback_option_defaults.claude] model = "sonnet" |
 | `context_advisory` | ContextAdvisory |  |  | ContextAdvisory overrides context-pressure guidance for this agent. |
 | `upstream` | string |  |  | Upstream selects the model-serving endpoint (a key in [upstreams]) for this agent — WHO serves the model. "" (default) falls back to agent_defaults.upstream; if still empty, no upstream env is injected (ambient behavior). Switching it relaunches the agent in the warm box. |
 | `start_command` | string |  |  | StartCommand overrides the provider's command for this agent. |
@@ -220,6 +221,7 @@ AgentOverride modifies a pack-stamped agent for a specific rig.
 | `min_active_sessions` | integer |  |  | MinActiveSessions overrides the minimum number of sessions to keep alive. |
 | `scale_check` | string |  |  | ScaleCheck overrides the shell command whose output reports new unassigned session demand for bead-backed reconciliation. |
 | `option_defaults` | map[string]string |  |  | OptionDefaults adds or overrides provider option defaults for this agent. Keys are option keys, values are choice values. Merges additively (override keys win over existing agent keys). Example: option_defaults = &#123; model = "sonnet" &#125; |
+| `fallback_option_defaults` | map[string]object |  |  | FallbackOptionDefaults merges per fallback provider and per option key into the agent's fallback_option_defaults (override keys win). |
 
 ## AgentPatch
 
@@ -282,6 +284,7 @@ AgentPatch modifies existing agents identified by rig scope and Name.
 | `min_active_sessions` | integer |  |  | MinActiveSessions overrides the minimum number of sessions to keep alive. |
 | `scale_check` | string |  |  | ScaleCheck overrides the command template whose output reports new unassigned session demand for bead-backed reconciliation. Supports the same Go template placeholders as Agent.scale_check. |
 | `option_defaults` | map[string]string |  |  | OptionDefaults adds or overrides provider option defaults for this agent. Keys are option keys, values are choice values. Merges additively (patch keys win over existing agent keys). Example: option_defaults = &#123; model = "sonnet" &#125; |
+| `fallback_option_defaults` | map[string]object |  |  | FallbackOptionDefaults merges per fallback provider and per option key into the agent's fallback_option_defaults (patch keys win). |
 
 ## BeadPolicyConfig
 
