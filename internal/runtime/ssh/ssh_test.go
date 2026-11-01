@@ -117,6 +117,26 @@ func TestSSHArgs_MinimalEndpoint(t *testing.T) {
 	}
 }
 
+// A declared worker host must refuse an unknown key and never borrow the
+// operator's agent or display; the default stays trust-on-first-use with no
+// forwarding options, so the anonymous ssh: form is unchanged.
+func TestSSHArgs_StrictHostKeysAndNoForwarding(t *testing.T) {
+	got := sshArgs(Endpoint{Host: "box", StrictHostKeys: true, NoForwarding: true}, []string{"true"})
+	want := []string{
+		"-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=yes",
+		"-o", "ForwardAgent=no",
+		"-o", "ForwardX11=no",
+		"--", "box", "'true'",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("sshArgs = %v, want %v", got, want)
+	}
+	if got := (Endpoint{Host: "box", StrictHostKeys: true}).Options(); !slices.Equal(got, []string{"-o", "StrictHostKeyChecking=yes"}) {
+		t.Errorf("Options(strict only) = %v", got)
+	}
+}
+
 func TestConn_ExecReturnsRunnerResult(t *testing.T) {
 	f := &fakeRunner{out: []byte("output"), code: 7}
 	c := &Conn{ep: Endpoint{Host: "box"}, run: f}

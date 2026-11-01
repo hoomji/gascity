@@ -39,6 +39,14 @@ type Endpoint struct {
 	Port           int    // ssh port; 0 means ssh's default (22)
 	KeyPath        string // private key path; empty uses ssh's default resolution
 	KnownHostsPath string // known_hosts path; empty uses ssh's default
+	// StrictHostKeys refuses an unknown host key (StrictHostKeyChecking=yes)
+	// instead of pinning it on first contact (accept-new, the default). A
+	// declared worker host sets it: its key must already be known.
+	StrictHostKeys bool
+	// NoForwarding turns off agent and X11 forwarding on every call, so a
+	// box never borrows the operator's ssh agent or display, whatever
+	// ~/.ssh/config says for the host.
+	NoForwarding bool
 }
 
 // target returns the user@host (or bare host) form ssh addresses.
@@ -211,10 +219,7 @@ func (shellRunner) run(ctx context.Context, ep Endpoint, remoteArgv []string, st
 // never be read as an option, and the remote command is POSIX-shell-quoted
 // into a single argument the remote shell runs verbatim.
 func sshArgs(ep Endpoint, remoteArgv []string) []string {
-	args := []string{
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
-	}
+	args := append([]string{"-o", "BatchMode=yes"}, ep.Options()...)
 	if ep.KnownHostsPath != "" {
 		args = append(args, "-o", "UserKnownHostsFile="+ep.KnownHostsPath)
 	}
@@ -227,6 +232,25 @@ func sshArgs(ep Endpoint, remoteArgv []string) []string {
 	args = append(args, "--", ep.target(), shellQuote(remoteArgv))
 	return args
 }
+
+// Options returns the ssh -o options ep implies beyond BatchMode: the host
+// key policy and, with NoForwarding, agent and X11 forwarding off. Callers
+// that run their own ssh (a long-lived port forward to the same endpoint)
+// use it so every connection to a box shares one policy.
+func (e Endpoint) Options() []string {
+	policy := "accept-new"
+	if e.StrictHostKeys {
+		policy = "yes"
+	}
+	opts := []string{"-o", "StrictHostKeyChecking=" + policy}
+	if e.NoForwarding {
+		opts = append(opts, "-o", "ForwardAgent=no", "-o", "ForwardX11=no")
+	}
+	return opts
+}
+
+// Target returns the user@host (or bare host) destination ssh addresses.
+func (e Endpoint) Target() string { return e.target() }
 
 // shellQuote renders argv as a single POSIX shell command string (each
 // argument single-quoted, embedded single quotes escaped as '\”).
