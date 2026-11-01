@@ -303,8 +303,8 @@ func writeHealthRecords(t *testing.T, dir string, recs ...map[string]any) {
 
 // Kills: ttl_s ignored (a long-lived probe goes stale at 60 s, a short one
 // outlives its window), until ignored (a spent quota with a known reset
-// fails open once the probe ages), until honoured past its own time or on a
-// healthy record, and the old format changing behaviour. Each row is one
+// fails open once the probe ages), until honored past its own time or on a
+// healthy record, and the old format changing behavior. Each row is one
 // record for "zai" at the given age.
 func TestSnapshotCheck_HealthRecordFreshness(t *testing.T) {
 	ttl := providerHealthTTL.Seconds()
