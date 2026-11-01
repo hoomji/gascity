@@ -447,6 +447,7 @@ type templateMemoKey struct {
 	Named, PoolManaged, DependencyOnly                                           bool
 	TriggerBeadID, TriggerStoreRef, Pack                                         string
 	AliasDeferred                                                                bool
+	ProviderOverride                                                             string
 }
 
 func templateMemoKeyOf(info session.Info) templateMemoKey {
@@ -457,7 +458,8 @@ func templateMemoKeyOf(info session.Info) templateMemoKey {
 		NamedIdentity: info.ConfiguredNamedIdentity, Named: info.ConfiguredNamedSession, PoolManaged: info.PoolManaged,
 		DependencyOnly: info.DependencyOnly,
 		TriggerBeadID:  info.TriggerBeadID, TriggerStoreRef: info.TriggerBeadStoreRef, Pack: info.Pack,
-		AliasDeferred: poolRuntimeAliasIsDeferredInfo(info),
+		AliasDeferred:    poolRuntimeAliasIsDeferredInfo(info),
+		ProviderOverride: info.ProviderOverride,
 	}
 }
 

@@ -204,6 +204,7 @@ var builtinAuthorship = map[string]Authorship{
 	SessionPendingCleared:                 AuthorController,
 	ReconcilerAlert:                       AuthorController,
 	ProviderHealthGateAlert:               AuthorController,
+	ProviderFallback:                      AuthorController,
 	ProviderSwapped:                       AuthorController,
 
 	// Controller: bead repairs and graph execution facts the controller

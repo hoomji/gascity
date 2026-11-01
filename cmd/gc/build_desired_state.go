@@ -5015,6 +5015,9 @@ func resolveTemplateForSessionBeadInfo(
 ) (TemplateParams, error) {
 	local := *bp
 	local.beadNames = map[string]string{qualifiedName: info.SessionNameMetadata}
+	// A pool session created on a fallback provider launches with it for its
+	// whole life (gc.provider_override), never the agent's primary.
+	cfgAgent = sessionProviderAgent(cfgAgent, info, bp.providers)
 	tp, err := resolveTemplatePrepared(&local, cfgAgent, qualifiedName, fpExtra)
 	if err != nil {
 		return tp, err
@@ -5514,6 +5517,10 @@ type poolSessionCreatePlan struct {
 	// needs worktree.Verify: metadata then lacks gc.work_dir, and the create
 	// effect verifies the spec and stamps it.
 	worktreeSpec *worktree.Spec
+	// providerFallback is set when the create takes one of the agent's
+	// fallback_providers; metadata then carries gc.provider_override, and a
+	// successful create emits provider.fallback.
+	providerFallback *providerFallbackChoice
 }
 
 func selectOrCreatePoolSessionBead(
@@ -5711,21 +5718,18 @@ func planFreshPoolSessionBead(bp *agentBuildParams, cfgAgent *config.Agent, temp
 		return nil, errPoolSessionCreatePartial
 	}
 
-	// Provider-health gate: refuse new creates when the registry reports this
-	// agent's provider as red. Reuse paths above are unaffected (they return
-	// before reaching this point). loadProviderHealthSnapshot always returns a
-	// non-nil snapshot; check() fails-open when the registry is absent or stale.
-	// Symmetric with the respawn gate in session_reconciler.go:2424.
-	provName := strings.TrimSpace(cfgAgent.Provider)
-	if provName == "" {
-		provName = strings.TrimSpace(cfgAgent.InheritedProvider)
-	}
-	if provName == "" && bp.workspace != nil {
-		provName = strings.TrimSpace(bp.workspace.Provider)
-	}
-	if healthy, present := bp.providerHealthSnapshot.check(provName); present && !healthy {
+	// Provider-health gate: when the registry reports this agent's provider
+	// as red, a new create takes the first of its fallback_providers that is
+	// not red, or is refused when there is none. Reuse paths above are
+	// unaffected (they return before reaching this point).
+	// loadProviderHealthSnapshot always returns a non-nil snapshot; check()
+	// fails-open when the registry is absent or stale. Symmetric with the
+	// respawn gate in session_reconciler.go, which keys off the session's
+	// resolved (possibly overridden) provider.
+	fallback, err := selectPoolCreateProvider(bp.providerHealthSnapshot, cfgAgent, bp.workspace)
+	if err != nil {
 		delete(usedSlots, slot)
-		return nil, errPoolSessionCreateProviderRed
+		return nil, err
 	}
 
 	if !bp.tryClaimPoolSessionCreate(template) {
@@ -5737,7 +5741,8 @@ func planFreshPoolSessionBead(bp *agentBuildParams, cfgAgent *config.Agent, temp
 		qualifiedInstance: qualifiedInstance,
 		slot:              slot,
 		poolSlot:          poolSlot,
-		metadata:          metadata,
+		metadata:          stampProviderFallback(metadata, fallback),
+		providerFallback:  fallback,
 	}
 	if bp.planOnly && request.WorktreeSpec != nil && metadata != nil {
 		spec := *request.WorktreeSpec
@@ -6003,8 +6008,10 @@ func executePlannedPoolSessionBeadCreate(
 	info, err := createPoolSessionBeadWithGuardedAlias(bp, cfgAgent, template, plan.qualifiedInstance, plan.slot, plan.metadata)
 	if err != nil {
 		bp.releasePoolSessionCreate()
+		return info, err
 	}
-	return info, err
+	emitProviderFallbackEvent(bp.cityPath, template, info, plan.providerFallback)
+	return info, nil
 }
 
 func beadIdentifiesAsCanonical(bead beads.Bead, canonical string) bool {

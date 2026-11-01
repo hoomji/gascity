@@ -614,7 +614,7 @@ func (p *decidePass) admitPoolPlan(cfgAgent *config.Agent, plan poolSessionCreat
 	}
 	ap := allocPlan{
 		Kind: createPool, Template: template, Plan: plan, Request: request,
-		Endpoint: endpointKeyForAgent(p.cfg, cfgAgent, session.Info{}),
+		Endpoint: endpointKeyForAgent(p.cfg, cfgAgent, session.Info{ProviderOverride: plan.metadata[beadmeta.ProviderOverrideMetadataKey]}),
 	}
 	switch {
 	case p.worktreeRefused(request):

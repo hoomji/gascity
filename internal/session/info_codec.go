@@ -133,6 +133,7 @@ var infoKeyCodec = []infoKeySpec{
 	{beadmeta.TriggerBeadStoreRefMetadataKey, func(i *Info, v string) { i.TriggerBeadStoreRef = v }},
 	{beadmeta.BrainParentSIDMetadataKey, func(i *Info, v string) { i.BrainParentSID = v }},
 	{beadmeta.PackMetadataKey, func(i *Info, v string) { i.Pack = v }},
+	{beadmeta.ProviderOverrideMetadataKey, func(i *Info, v string) { i.ProviderOverride = v }},
 	{beadmeta.PackWorkspaceMetadataKey, func(i *Info, v string) { i.PackWorkspace = v }},
 	{beadmeta.WorkDirMetadataKey, func(i *Info, v string) { i.WorkDirCanonical = v }},
 	{beadmeta.WorkerDirMetadataKey, func(i *Info, v string) { i.WorkerDir = v }},

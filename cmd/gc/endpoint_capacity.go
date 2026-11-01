@@ -52,7 +52,12 @@ func endpointKeyForAgent(cfg *config.City, agent *config.Agent, info sessionpkg.
 			return endpointKey("upstream:" + u)
 		}
 		if agent.StartCommand == "" {
-			name := agent.Provider
+			// A fallback-provider session (gc.provider_override) is gated on
+			// the endpoint it launches against, not its agent's primary.
+			name := strings.TrimSpace(info.ProviderOverride)
+			if name == "" {
+				name = agent.Provider
+			}
 			if name == "" && cfg != nil {
 				name = cfg.Workspace.Provider
 			}

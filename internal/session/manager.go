@@ -220,6 +220,10 @@ type Info struct {
 	TriggerBeadStoreRef string // gc.trigger_bead_store_ref (raw)
 	BrainParentSID      string // gc.brain_parent_sid (raw)
 	Pack                string // gc.pack (raw); resolveTemplateForSessionBead threads it into GC_PACKER_PACK
+	// ProviderOverride is the RAW gc.provider_override metadata: the
+	// fallback provider preset this pool session was created with. Empty
+	// means the agent's primary provider.
+	ProviderOverride string
 	// PackWorkspace is the RAW gc.pack_workspace metadata (beadmeta.PackWorkspaceMetadataKey),
 	// the pack workspace slug bindPoolSessionTriggerBead stamps alongside gc.pack.
 	// The pool-trigger binding diff compares it (trimmed) against the request's

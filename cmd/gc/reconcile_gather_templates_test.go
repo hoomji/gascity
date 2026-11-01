@@ -261,6 +261,7 @@ func TestTemplateMemoKeyCoversResolverReads(t *testing.T) {
 		"AgentName": true, "Alias": true, "SessionOrigin": true, "ManualSessionMetadata": true, "PoolSlot": true,
 		"ConfiguredNamedIdentity": true, "ConfiguredNamedSession": true, "PoolManaged": true, "DependencyOnly": true,
 		"TriggerBeadID": true, "TriggerBeadStoreRef": true, "Pack": true, "Closed": true,
+		"ProviderOverride": true,
 	}
 	c.cfg.Agents = append(c.cfg.Agents,
 		config.Agent{Name: "solo", StartCommand: "true", MaxActiveSessions: intPtr(1)},
