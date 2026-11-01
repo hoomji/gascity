@@ -381,7 +381,7 @@ func TestApplyNestedCaps_OvercommittedFloorsUseLexicalTemplateOrder(t *testing.T
 	}
 	trace := newPoolDesiredStateTestTrace("alpha", "zeta")
 
-	result := applyNestedCaps(cfg, nil, nil, trace)
+	result := applyNestedCaps(cfg, nil, nil, nil, trace)
 	counts := poolDesiredRequestCounts(result)
 
 	if counts["alpha"] != 2 || counts["zeta"] != 1 {
@@ -418,7 +418,7 @@ func TestApplyNestedCaps_NoFloorsPreservesDemandPriority(t *testing.T) {
 			{Template: "a", Tier: "new", BeadPriority: 4, WorkBeadID: "a-2"},
 		}
 
-		result := applyNestedCaps(cfg, requests, nil, nil)
+		result := applyNestedCaps(cfg, requests, nil, nil, nil)
 		counts := poolDesiredRequestCounts(result)
 
 		if counts["a"] != 2 || counts["b"] != 1 {
@@ -444,7 +444,7 @@ func TestApplyNestedCaps_NoFloorsPreservesDemandPriority(t *testing.T) {
 			{Template: "b", Tier: "new", BeadPriority: 9, WorkBeadID: "b-1"},
 		}
 
-		result := applyNestedCaps(cfg, requests, nil, nil)
+		result := applyNestedCaps(cfg, requests, nil, nil, nil)
 		counts := poolDesiredRequestCounts(result)
 
 		if counts["a"] != 1 || counts["b"] != 0 {
@@ -470,7 +470,7 @@ func TestApplyNestedCaps_PathShapedAgentDirHonorsRigCap(t *testing.T) {
 		{Template: template, Tier: "new", WorkBeadID: "work-2"},
 	}
 
-	result := applyNestedCaps(cfg, requests, nil, nil)
+	result := applyNestedCaps(cfg, requests, nil, nil, nil)
 	counts := poolDesiredRequestCounts(result)
 
 	if counts[template] != 1 {

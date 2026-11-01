@@ -272,7 +272,7 @@ func computePoolDesiredStatesAtPreA3(
 		}
 	}
 
-	return applyNestedCaps(cfg, allRequests, aliasHeldTemplates, trace)
+	return applyNestedCaps(cfg, allRequests, aliasHeldTemplates, nil, trace)
 }
 
 func poolNewDemandRequestsPreA3(

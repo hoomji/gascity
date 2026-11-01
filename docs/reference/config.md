@@ -40,6 +40,7 @@ City is the top-level configuration for a Gas City instance.
 | `chat_sessions` | ChatSessionsConfig |  |  | ChatSessions configures chat session behavior (auto-suspend). |
 | `session_sleep` | SessionSleepConfig |  |  | SessionSleep configures idle sleep policy defaults for managed sessions. |
 | `convergence` | ConvergenceConfig |  |  | Convergence configures convergence loop limits. |
+| `resources` | ResourcesConfig |  |  | Resources declares this host's memory budget and the resource classes agents reserve against it. Unset means no resource admission. |
 | `doctor` | DoctorConfig |  |  | Doctor configures gc doctor thresholds and policy toggles (worktree size warnings, nested-worktree auto-prune). |
 | `maintenance` | MaintenanceConfig |  |  | Maintenance configures periodic store-maintenance loops. |
 | `service` | []Service |  |  | Services declares workspace-owned HTTP services mounted on the controller edge under /svc/&#123;name&#125;. |
@@ -111,6 +112,7 @@ Agent defines a configured agent in the city.
 | `env` | map[string]string |  |  | Env sets additional environment variables for the agent process. |
 | `option_defaults` | map[string]string |  |  | OptionDefaults overrides the provider's effective schema defaults for this agent. Keys are option keys, values are choice values. Applied on top of the provider's OptionDefaults (agent keys win). Example: option_defaults = &#123; permission_mode = "plan", model = "sonnet" &#125; |
 | `max_active_sessions` | integer |  |  | MaxActiveSessions is the agent-level cap on concurrent sessions. Nil means inherit from rig, then workspace, then unlimited. Replaces pool.max. |
+| `resource_class` | string |  |  | ResourceClass names the [resources.classes] entry each session of this agent reserves against the host memory budget. Empty means the [resources] default_class, if any. |
 | `min_active_sessions` | integer |  |  | MinActiveSessions is the minimum number of sessions to keep alive. Agent-level only. Counts against rig/workspace caps. Replaces pool.min. This controls pool sessions independently of [[named_session]] mode="always"; both produce sessions, and gc doctor reports accidental combinations. |
 | `scale_check` | string |  |  | ScaleCheck is a shell command template whose output reports new unassigned session demand. In bead-backed reconciliation this is additive: assigned work is resumed separately, and ScaleCheck reports only how many new generic sessions to start, still bounded by all cap levels. Legacy no-store evaluation continues to treat the output as the desired session count. If it contains Go template placeholders, gc expands them using the same PathContext fields as work_dir and session_setup (Agent, AgentBase, Rig, RigRoot, CityRoot, CityName, DefaultBranch) before running the command. |
 | `drain_timeout` | string |  | `5m` | DrainTimeout is the maximum time to wait for a session to finish its current work before force-killing it during scale-down. Duration string (e.g., "5m", "30m", "1h"). Defaults to "5m". |
@@ -218,6 +220,7 @@ AgentOverride modifies a pack-stamped agent for a specific rig.
 | `mouse_mode` | string |  |  | MouseMode overrides whether tmux mouse mode is preserved ("on" or "off"). Enum: `on`, `off` |
 | `inject_fragments_append` | []string |  |  | InjectFragmentsAppend appends to the agent's inject_fragments list. |
 | `max_active_sessions` | integer |  |  | MaxActiveSessions overrides the agent-level cap on concurrent sessions. |
+| `resource_class` | string |  |  | ResourceClass overrides the agent's [resources.classes] entry. |
 | `min_active_sessions` | integer |  |  | MinActiveSessions overrides the minimum number of sessions to keep alive. |
 | `scale_check` | string |  |  | ScaleCheck overrides the shell command whose output reports new unassigned session demand for bead-backed reconciliation. |
 | `option_defaults` | map[string]string |  |  | OptionDefaults adds or overrides provider option defaults for this agent. Keys are option keys, values are choice values. Merges additively (override keys win over existing agent keys). Example: option_defaults = &#123; model = "sonnet" &#125; |
@@ -281,6 +284,7 @@ AgentPatch modifies existing agents identified by rig scope and Name.
 | `install_agent_hooks_append` | []string |  |  | InstallAgentHooksAppend appends to the agent's install_agent_hooks list. |
 | `inject_fragments_append` | []string |  |  | InjectFragmentsAppend appends to the agent's inject_fragments list. |
 | `max_active_sessions` | integer |  |  | MaxActiveSessions overrides the agent-level cap on concurrent sessions. |
+| `resource_class` | string |  |  | ResourceClass overrides the agent's [resources.classes] entry. |
 | `min_active_sessions` | integer |  |  | MinActiveSessions overrides the minimum number of sessions to keep alive. |
 | `scale_check` | string |  |  | ScaleCheck overrides the command template whose output reports new unassigned session demand for bead-backed reconciliation. Supports the same Go template placeholders as Agent.scale_check. |
 | `option_defaults` | map[string]string |  |  | OptionDefaults adds or overrides provider option defaults for this agent. Keys are option keys, values are choice values. Merges additively (patch keys win over existing agent keys). Example: option_defaults = &#123; model = "sonnet" &#125; |
@@ -782,6 +786,26 @@ ProviderSpec defines a named provider's startup parameters.
 | `title_model` | string |  |  | TitleModel is the OptionsSchema model key used for title generation. Resolved via the "model" option in OptionsSchema to get FlagArgs. Defaults to the cheapest/fastest model for each provider. Examples: "haiku" (claude), "o4-mini" (codex), "gemini-2.5-flash" (gemini) |
 | `acp_command` | string |  |  | ACPCommand overrides Command when the session transport is ACP. When empty, Command is used for both tmux and ACP transports. |
 | `acp_args` | []string |  |  | ACPArgs overrides Args when the session transport is ACP. When nil, Args is used for both tmux and ACP transports. |
+
+## ResourceClass
+
+ResourceClass declares what one session of an agent in this class reserves.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `memory` | string |  |  | Memory is the memory one session of this class reserves against the host budget, as a size such as "8GiB". |
+| `max_active_sessions` | integer |  |  | MaxActiveSessions caps how many sessions of this class may be resident on this host at once. Nil means no class cap; 0 means the class never starts on this host. |
+
+## ResourcesConfig
+
+ResourcesConfig is the [resources] table: a per-host memory budget and the resource classes agents reserve against it.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `memory` | string |  |  | Memory is the memory gc may hand out as session reservations on this host: a size such as "48GiB" or "1.5GB", or "auto" for the host's total physical memory. Empty means no memory budget. |
+| `reserve` | string |  |  | Reserve is held back from Memory for the OS, the controller and anything not started by gc. Defaults to 0. |
+| `default_class` | string |  |  | DefaultClass is the class of agents that set no resource_class. Empty means such agents reserve nothing and are never deferred. |
+| `classes` | map[string]ResourceClass |  |  | Classes maps a class name to its reservation. |
 
 ## Rig
 

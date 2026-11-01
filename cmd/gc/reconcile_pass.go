@@ -133,11 +133,16 @@ func (p *planner) tracePass(e gatherEnv, now time.Time) passResult {
 	}
 	intents, paced := p.paceIdleProbes(&w, intents, now)
 	unregistered = append(unregistered, paced...)
+	resources := resourceAdmitInputOf(cfg, w.Census.Canonical(), w.InFlight)
 	res := admit(admitInput{
 		Now: now, Cfg: cfg, Bucket: p.bucket, FairSeed: p.fairSeed, InFlight: w.InFlight, BringUp: w.Census.BringUp(cfg),
 		Endpoints: w.Gates, Backoff: w.Backoff, Paused: w.Paused,
-		BootOpen: w.Boot.open(), // P2
+		BootOpen:  w.Boot.open(), // P2
+		Resources: resources,
 	}, intents)
+	if p.effects != nil {
+		logResourceDeferrals(res, resources.Rows, p.stderr)
+	}
 	res.Deferred = append(res.Deferred, unregistered...)
 	next = earliest(next, res.NextBackoff) // a row backoff's expiry is a row deadline (v5.10d (b))
 	// The planner state admission leaves is stored before any submit. A

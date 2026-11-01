@@ -168,6 +168,8 @@ type AgentPatch struct {
 	InjectFragmentsAppend []string `toml:"inject_fragments_append,omitempty"`
 	// MaxActiveSessions overrides the agent-level cap on concurrent sessions.
 	MaxActiveSessions *int `toml:"max_active_sessions,omitempty"`
+	// ResourceClass overrides the agent's [resources.classes] entry.
+	ResourceClass *string `toml:"resource_class,omitempty"`
 	// MinActiveSessions overrides the minimum number of sessions to keep alive.
 	MinActiveSessions *int `toml:"min_active_sessions,omitempty"`
 	// ScaleCheck overrides the command template whose output reports new
@@ -696,6 +698,9 @@ func applyAgentMutation(a *Agent, p *AgentPatch, sleepSource string) {
 	}
 	if p.MaxActiveSessions != nil {
 		a.MaxActiveSessions = p.MaxActiveSessions
+	}
+	if p.ResourceClass != nil {
+		a.ResourceClass = *p.ResourceClass
 	}
 	if p.MinActiveSessions != nil {
 		a.MinActiveSessions = p.MinActiveSessions

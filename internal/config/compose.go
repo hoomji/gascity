@@ -801,6 +801,11 @@ func LoadWithIncludesOptions(fs fsys.FS, path string, opts LoadOptions, extraInc
 		}
 	}
 	prov.Warnings = append(prov.Warnings, ValidateSemantics(root, path)...)
+	resourceWarnings, err := ValidateResources(root, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	prov.Warnings = append(prov.Warnings, resourceWarnings...)
 	prov.Warnings = append(prov.Warnings, DetectLegacyProviderInheritance(root, path)...)
 	prov.Warnings = append(prov.Warnings, detectLegacyWorkspaceFields(root, path, prov.Workspace)...)
 
@@ -1255,6 +1260,9 @@ func mergeFragment(base, fragment *City, fragMeta toml.MetaData, fragPath string
 	mergeSessionSleep(base, fragment, fragMeta, fragPath, prov)
 	if fragMeta.IsDefined("convergence") {
 		base.Convergence = fragment.Convergence
+	}
+	if fragMeta.IsDefined("resources") {
+		base.Resources = fragment.Resources
 	}
 	if fragMeta.IsDefined("maintenance") {
 		base.Maintenance = fragment.Maintenance

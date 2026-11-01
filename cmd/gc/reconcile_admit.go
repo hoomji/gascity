@@ -200,6 +200,9 @@ type admitInput struct {
 	// Paused is a provider swap in progress (P7); BootOpen the boot gate (P2).
 	Paused   bool
 	BootOpen bool
+	// Resources are the host resource budgets and the reservations already
+	// held (resource_admit.go); zero means no resource admission.
+	Resources resourceAdmitInput
 }
 
 // admitResult is admit's output: the intents to submit, the rest with their
@@ -245,6 +248,8 @@ type admission struct {
 	budget       *poolplan.CreateBudget
 	budgetSet    bool
 	poolAdmitted bool
+	// resources are the host ledgers; nil without a [resources] table.
+	resources *resourceLedgers
 }
 
 // admit is the pass's admission (P4). In order: starts, in LRU rank with
@@ -289,6 +294,7 @@ func admit(in admitInput, intents []intent) admitResult {
 			a.parkedOn[r.Endpoint]++
 		}
 	}
+	a.resources = in.Resources.ledgers(intents)
 	res := admitResult{}
 	for _, it := range a.order(intents) {
 		if it.Cause = a.admitOne(&it); it.Cause != "" {
@@ -401,11 +407,19 @@ func (a *admission) admitOne(it *intent) string {
 		if a.starved = a.starved || cause == causeAwaitingBudget; cause != "" {
 			return cause
 		}
+		if cause := a.resourceCause(*it); cause != "" {
+			return cause
+		}
+		a.commitResource(*it)
 		a.countBringUp(it.Key, it.Endpoint, held)
 	case capCreates:
+		if cause := a.resourceCause(*it); cause != "" {
+			return cause
+		}
 		if cause := a.createCause(*it); cause != "" {
 			return cause
 		}
+		a.commitResource(*it)
 		a.countBringUp(rowKey{}, it.Endpoint, false)
 		a.createTokens++
 	case capProbing:

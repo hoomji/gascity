@@ -388,6 +388,7 @@ func deepCopyAgent(src *config.Agent, name, dir string) config.Agent {
 		v := *src.MaxActiveSessions
 		dst.MaxActiveSessions = &v
 	}
+	dst.ResourceClass = src.ResourceClass
 	dst.MinActiveSessions = src.MinActiveSessions
 	dst.ScaleCheck = src.ScaleCheck
 	if len(src.NamepoolNames) > 0 {

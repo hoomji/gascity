@@ -283,6 +283,8 @@ func knownTOMLKeys() []string {
 		reflect.TypeOf(OrdersConfig{}),
 		reflect.TypeOf(APIConfig{}),
 		reflect.TypeOf(ConvergenceConfig{}),
+		reflect.TypeOf(ResourcesConfig{}),
+		reflect.TypeOf(ResourceClass{}),
 		reflect.TypeOf(Service{}),
 		reflect.TypeOf(ServiceWorkflowConfig{}),
 		reflect.TypeOf(ServiceProcessConfig{}),

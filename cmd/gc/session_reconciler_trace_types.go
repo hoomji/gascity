@@ -92,6 +92,8 @@ const (
 	TraceSitePoolInFlightReuse              TraceSiteCode = "reconciler.pool.inflight_reuse"
 	TraceSitePoolWakeKnownIdentity          TraceSiteCode = "reconciler.pool.wake_known_identity"
 	TraceSitePoolNewDemandCap               TraceSiteCode = "reconciler.pool.new_demand_cap"
+	TraceSitePoolResourceBudget             TraceSiteCode = "reconciler.pool.resource_budget"
+	TraceSiteReconcilerResourceBudget       TraceSiteCode = "reconciler.session.resource_budget"
 	TraceSiteReconcilerUnknownState         TraceSiteCode = "reconciler.session.skip_unknown_state"
 	TraceSiteReconcilerOrphaned             TraceSiteCode = "reconciler.session.orphan_or_suspended"
 	TraceSiteReconcilerCloseOrphan          TraceSiteCode = "reconciler.session.close_orphan"
@@ -161,6 +163,10 @@ const (
 	TraceReasonAgentCap               TraceReasonCode = "agent_cap"
 	TraceReasonRigCap                 TraceReasonCode = "rig_cap"
 	TraceReasonWorkspaceCap           TraceReasonCode = "workspace_cap"
+	TraceReasonResourceBudgetFull     TraceReasonCode = "resource_budget_full"
+	TraceReasonResourceQueuedBehind   TraceReasonCode = "resource_queued_behind"
+	TraceReasonResourceClassFull      TraceReasonCode = "resource_class_full"
+	TraceReasonResourceNeverFits      TraceReasonCode = "resource_never_fits"
 	TraceReasonCap                    TraceReasonCode = "cap"
 	TraceReasonMinFill                TraceReasonCode = "min_fill"
 	TraceReasonInFlightReuse          TraceReasonCode = "inflight_reuse"
@@ -310,6 +316,9 @@ const (
 	// TraceOutcomeDeferredByOnDeathHook marks a start deferred before any
 	// write because the name's on_death hook is queued or running.
 	TraceOutcomeDeferredByOnDeathHook TraceOutcomeCode = "deferred_by_on_death_hook"
+	// TraceOutcomeDeferredByResourceBudget marks a start deferred before any
+	// write because its resource class does not fit the host memory budget.
+	TraceOutcomeDeferredByResourceBudget TraceOutcomeCode = "deferred_by_resource_budget"
 	// TraceOutcomeDeferredByPrepareBudget marks a start deferred before any
 	// write because the planner call's cumulative prepare time spent its budget.
 	TraceOutcomeDeferredByPrepareBudget TraceOutcomeCode = "deferred_by_prepare_budget"

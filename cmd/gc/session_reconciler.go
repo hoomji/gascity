@@ -5230,6 +5230,17 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 		return 0
 	}
 
+	// Resource budget gate (engdocs/proposals/resource-budgets.md): a
+	// candidate whose class does not fit the host memory budget is deferred
+	// before any write and does not spend the wake budget. No [resources]
+	// table returns the candidates unchanged.
+	if cfg.Resources.Enabled() {
+		startCandidates = applyResourceBudgetToStarts(cfg, startCandidates,
+			resourceResidentInfos(infoByID, func(info sessionpkg.Info) bool {
+				return pendingCreateStartInFlightInfo(info, clk, startupTimeout)
+			}), trace, stderr)
+	}
+
 	phaseStart = time.Now()
 	plannedWakes := executePlannedStartsTraced(
 		ctx, startCandidates, cfg, desiredState, sp, store, cityName,

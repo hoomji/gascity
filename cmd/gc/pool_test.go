@@ -928,6 +928,7 @@ func TestDeepCopyAgentCoversAllFields(t *testing.T) {
 		EmitsPermissionWarning:       &trueVal,
 		Env:                          map[string]string{"K": "V"},
 		MaxActiveSessions:            intPtr(5),
+		ResourceClass:                "heavy",
 		MinActiveSessions:            intPtr(1),
 		ScaleCheck:                   "echo 3",
 		WorkQuery:                    "bd ready",

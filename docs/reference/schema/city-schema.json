@@ -229,6 +229,10 @@
           "type": "integer",
           "description": "MaxActiveSessions is the agent-level cap on concurrent sessions.\nNil means inherit from rig, then workspace, then unlimited.\nReplaces pool.max."
         },
+        "resource_class": {
+          "type": "string",
+          "description": "ResourceClass names the [resources.classes] entry each session of this\nagent reserves against the host memory budget. Empty means the\n[resources] default_class, if any."
+        },
         "min_active_sessions": {
           "type": "integer",
           "description": "MinActiveSessions is the minimum number of sessions to keep alive.\nAgent-level only. Counts against rig/workspace caps. Replaces pool.min.\nThis controls pool sessions independently of [[named_session]]\nmode=\"always\"; both produce sessions, and gc doctor reports accidental\ncombinations."
@@ -741,6 +745,10 @@
           "type": "integer",
           "description": "MaxActiveSessions overrides the agent-level cap on concurrent sessions."
         },
+        "resource_class": {
+          "type": "string",
+          "description": "ResourceClass overrides the agent's [resources.classes] entry."
+        },
         "min_active_sessions": {
           "type": "integer",
           "description": "MinActiveSessions overrides the minimum number of sessions to keep alive."
@@ -1055,6 +1063,10 @@
           "type": "integer",
           "description": "MaxActiveSessions overrides the agent-level cap on concurrent sessions."
         },
+        "resource_class": {
+          "type": "string",
+          "description": "ResourceClass overrides the agent's [resources.classes] entry."
+        },
         "min_active_sessions": {
           "type": "integer",
           "description": "MinActiveSessions overrides the minimum number of sessions to keep alive."
@@ -1328,6 +1340,10 @@
         "convergence": {
           "$ref": "#/$defs/ConvergenceConfig",
           "description": "Convergence configures convergence loop limits."
+        },
+        "resources": {
+          "$ref": "#/$defs/ResourcesConfig",
+          "description": "Resources declares this host's memory budget and the resource classes\nagents reserve against it. Unset means no resource admission."
         },
         "doctor": {
           "$ref": "#/$defs/DoctorConfig",
@@ -2791,6 +2807,47 @@
       "additionalProperties": false,
       "type": "object",
       "description": "ProviderSpec defines a named provider's startup parameters."
+    },
+    "ResourceClass": {
+      "properties": {
+        "memory": {
+          "type": "string",
+          "description": "Memory is the memory one session of this class reserves against the\nhost budget, as a size such as \"8GiB\"."
+        },
+        "max_active_sessions": {
+          "type": "integer",
+          "description": "MaxActiveSessions caps how many sessions of this class may be resident\non this host at once. Nil means no class cap; 0 means the class never\nstarts on this host."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ResourceClass declares what one session of an agent in this class reserves."
+    },
+    "ResourcesConfig": {
+      "properties": {
+        "memory": {
+          "type": "string",
+          "description": "Memory is the memory gc may hand out as session reservations on this\nhost: a size such as \"48GiB\" or \"1.5GB\", or \"auto\" for the host's total\nphysical memory. Empty means no memory budget."
+        },
+        "reserve": {
+          "type": "string",
+          "description": "Reserve is held back from Memory for the OS, the controller and\nanything not started by gc. Defaults to 0."
+        },
+        "default_class": {
+          "type": "string",
+          "description": "DefaultClass is the class of agents that set no resource_class. Empty\nmeans such agents reserve nothing and are never deferred."
+        },
+        "classes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ResourceClass"
+          },
+          "type": "object",
+          "description": "Classes maps a class name to its reservation."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ResourcesConfig is the [resources] table: a per-host memory budget and the resource classes agents reserve against it."
     },
     "Rig": {
       "properties": {

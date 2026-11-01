@@ -2861,6 +2861,7 @@ func (ov *AgentOverride) toAgentPatch() *AgentPatch {
 		InstallAgentHooksAppend: ov.InstallAgentHooksAppend,
 		InjectFragmentsAppend:   ov.InjectFragmentsAppend,
 		MaxActiveSessions:       ov.MaxActiveSessions,
+		ResourceClass:           ov.ResourceClass,
 		MinActiveSessions:       ov.MinActiveSessions,
 		ScaleCheck:              ov.ScaleCheck,
 		OptionDefaults:          ov.OptionDefaults,

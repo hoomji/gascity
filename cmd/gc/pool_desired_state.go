@@ -651,7 +651,7 @@ func computePoolDesiredStatesAt(
 		}
 	}
 
-	return applyNestedCaps(cfg, allRequests, aliasHeldTemplates, trace)
+	return applyNestedCaps(cfg, allRequests, aliasHeldTemplates, newResourceLedgerFromSessions(cfg, sessionInfos), trace)
 }
 
 func concreteNestedCapRequests(
@@ -970,7 +970,12 @@ func poolSessionConsumesNewDemandInfo(info sessionpkg.Info) bool {
 //     therefore the precedence *within* new demand, not across phases.
 //
 // TestApplyNestedCaps_NoFloorsPreservesDemandPriority pins both regimes.
-func applyNestedCaps(cfg *config.City, requests []SessionRequest, aliasHeldTemplates map[string]struct{}, trace *sessionReconcilerTraceCycle) []PoolDesiredState {
+//
+// When resources is non-nil (the city has a [resources] table), every
+// request the caps admit is also charged to the host memory budget: concrete
+// requests unconditionally, floors and new demand only when they fit
+// (engdocs/proposals/resource-budgets.md).
+func applyNestedCaps(cfg *config.City, requests []SessionRequest, aliasHeldTemplates map[string]struct{}, resources *resourceLedgers, trace *sessionReconcilerTraceCycle) []PoolDesiredState {
 	// Order the phase-3 priority walk: priority DESC, resume tier first within
 	// same priority. Phase 1 walks this same slice but does not honor the order
 	// as an admission ranking against new demand — it admits every concrete
@@ -992,7 +997,12 @@ func applyNestedCaps(cfg *config.City, requests []SessionRequest, aliasHeldTempl
 	usage := newNestedCapUsage()
 	accepted := make(map[string][]SessionRequest) // template → accepted requests
 	consumed := acceptConcreteNestedCapRequests(requests, limits, &usage, accepted, trace)
-	reserveNestedCapFloors(cfg, requests, aliasHeldTemplates, limits, &usage, accepted, consumed, trace)
+	for _, reqs := range accepted {
+		for _, req := range reqs {
+			resources.charge(resourceLocalHost, req.SessionBeadID, req.Template)
+		}
+	}
+	reserveNestedCapFloors(cfg, requests, aliasHeldTemplates, limits, &usage, accepted, consumed, resources, trace)
 
 	// Walk demand not already used by a floor, accepting by priority.
 	for i, req := range requests {
@@ -1007,6 +1017,9 @@ func applyNestedCaps(cfg *config.City, requests []SessionRequest, aliasHeldTempl
 			if trace != nil {
 				trace.RecordDecision(site, reason, TraceOutcomeRejected, template, "", payload)
 			}
+			continue
+		}
+		if !admitPoolRequestToResourceBudget(resources, req, trace) {
 			continue
 		}
 
@@ -1082,6 +1095,7 @@ func reserveNestedCapFloors(
 	usage *nestedCapUsage,
 	accepted map[string][]SessionRequest,
 	consumed []bool,
+	resources *resourceLedgers,
 	trace *sessionReconcilerTraceCycle,
 ) {
 	floors := make([]nestedCapFloor, 0, len(cfg.Agents))
@@ -1120,13 +1134,13 @@ func reserveNestedCapFloors(
 			}
 			consumed[i] = true
 			request.FloorGuarantee = request.Tier == "new"
-			if !acceptNestedCapFloor(request, floor, limits, usage, accepted, trace) {
+			if !acceptNestedCapFloor(request, floor, limits, usage, accepted, resources, trace) {
 				break
 			}
 		}
 		for usage.agentCount[floor.template] < floor.minimum {
 			request := SessionRequest{Template: floor.template, Tier: "new", FloorGuarantee: true}
-			if !acceptNestedCapFloor(request, floor, limits, usage, accepted, trace) {
+			if !acceptNestedCapFloor(request, floor, limits, usage, accepted, resources, trace) {
 				break
 			}
 		}
@@ -1139,6 +1153,7 @@ func acceptNestedCapFloor(
 	limits nestedCapLimits,
 	usage *nestedCapUsage,
 	accepted map[string][]SessionRequest,
+	resources *resourceLedgers,
 	trace *sessionReconcilerTraceCycle,
 ) bool {
 	if usage.isDuplicateSessionRequest(request) {
@@ -1150,6 +1165,9 @@ func acceptNestedCapFloor(
 			payload["floor_min"] = floor.minimum
 			trace.RecordDecision(site, reason, TraceOutcomeRejected, floor.template, "", payload)
 		}
+		return false
+	}
+	if !admitPoolRequestToResourceBudget(resources, request, trace) {
 		return false
 	}
 	accepted[floor.template] = append(accepted[floor.template], request)

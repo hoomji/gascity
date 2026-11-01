@@ -158,6 +158,10 @@
           "type": "integer",
           "description": "MaxActiveSessions is the agent-level cap on concurrent sessions.\nNil means inherit from rig, then workspace, then unlimited.\nReplaces pool.max."
         },
+        "resource_class": {
+          "type": "string",
+          "description": "ResourceClass names the [resources.classes] entry each session of this\nagent reserves against the host memory budget. Empty means the\n[resources] default_class, if any."
+        },
         "min_active_sessions": {
           "type": "integer",
           "description": "MinActiveSessions is the minimum number of sessions to keep alive.\nAgent-level only. Counts against rig/workspace caps. Replaces pool.min.\nThis controls pool sessions independently of [[named_session]]\nmode=\"always\"; both produce sessions, and gc doctor reports accidental\ncombinations."
@@ -673,6 +677,10 @@
         "max_active_sessions": {
           "type": "integer",
           "description": "MaxActiveSessions overrides the agent-level cap on concurrent sessions."
+        },
+        "resource_class": {
+          "type": "string",
+          "description": "ResourceClass overrides the agent's [resources.classes] entry."
         },
         "min_active_sessions": {
           "type": "integer",

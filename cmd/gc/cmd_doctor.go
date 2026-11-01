@@ -337,6 +337,7 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 		register(doctor.NewRigPackCoverageCheck(cfg, cityPath))
 		register(newPackRuntimesDoctorCheck(cfg))
 		register(newPromptDeliveryBudgetDoctorCheck(cityPath, cfg, exec.LookPath))
+		register(newResourceBudgetDoctorCheck(cfg))
 		register(newMCPConfigDoctorCheck(cityPath, cfg, exec.LookPath))
 		register(newMCPSharedTargetDoctorCheck(cityPath, cfg, exec.LookPath))
 		register(newMCPAdoptionDoctorCheck(cityPath, cfg, exec.LookPath))

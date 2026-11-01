@@ -291,6 +291,9 @@ type City struct {
 	SessionSleep SessionSleepConfig `toml:"session_sleep,omitempty"`
 	// Convergence configures convergence loop limits.
 	Convergence ConvergenceConfig `toml:"convergence,omitempty"`
+	// Resources declares this host's memory budget and the resource classes
+	// agents reserve against it. Unset means no resource admission.
+	Resources ResourcesConfig `toml:"resources,omitempty"`
 	// Doctor configures gc doctor thresholds and policy toggles
 	// (worktree size warnings, nested-worktree auto-prune).
 	Doctor DoctorConfig `toml:"doctor,omitempty"`
@@ -815,6 +818,8 @@ type AgentOverride struct {
 	InjectFragmentsAppend []string `toml:"inject_fragments_append,omitempty"`
 	// MaxActiveSessions overrides the agent-level cap on concurrent sessions.
 	MaxActiveSessions *int `toml:"max_active_sessions,omitempty"`
+	// ResourceClass overrides the agent's [resources.classes] entry.
+	ResourceClass *string `toml:"resource_class,omitempty"`
 	// MinActiveSessions overrides the minimum number of sessions to keep alive.
 	MinActiveSessions *int `toml:"min_active_sessions,omitempty"`
 	// ScaleCheck overrides the shell command whose output reports new
@@ -3723,6 +3728,10 @@ type Agent struct {
 	// Nil means inherit from rig, then workspace, then unlimited.
 	// Replaces pool.max.
 	MaxActiveSessions *int `toml:"max_active_sessions,omitempty"`
+	// ResourceClass names the [resources.classes] entry each session of this
+	// agent reserves against the host memory budget. Empty means the
+	// [resources] default_class, if any.
+	ResourceClass string `toml:"resource_class,omitempty"`
 	// MinActiveSessions is the minimum number of sessions to keep alive.
 	// Agent-level only. Counts against rig/workspace caps. Replaces pool.min.
 	// This controls pool sessions independently of [[named_session]]
