@@ -1,0 +1,45 @@
+---
+title: "A pool agent with fallbacks: which provider new work starts on"
+---
+stateDiagram-v2
+  direction LR
+  state "At the same time" as all {
+    state "Quota health" as r0 {
+      s0: Primary usable
+      s1: Primary spent
+      s2: Primary and first fallback spent
+      s3: Every provider spent
+      [*] --> s0
+      s0 --> s1: quota-watch writes a new reading
+      s0 --> s2: quota-watch writes a new reading
+      s1 --> s0: quota-watch writes a new reading
+      s1 --> s2: quota-watch writes a new reading
+      s0 --> s3: quota-watch writes a new reading
+      s1 --> s3: quota-watch writes a new reading
+      s2 --> s0: quota-watch writes a new reading
+      s2 --> s1: quota-watch writes a new reading
+      s2 --> s3: quota-watch writes a new reading
+      s3 --> s0: quota-watch writes a new reading
+      s3 --> s1: quota-watch writes a new reading
+      s3 --> s2: quota-watch writes a new reading
+    }
+    --
+    state "Agent with fallbacks" as r1 {
+      s4: No session
+      s5: Working on primary
+      s6: Working on first fallback
+      s7: Working on second fallback
+      s8: Work waiting, nothing usable
+      [*] --> s4
+      s4 --> s5: work is slung to the agent [when Primary usable]
+      s4 --> s6: work is slung to the agent [when Primary spent]
+      s5 --> s4: the session ends
+      s4 --> s7: work is slung to the agent [when Primary and first fallback spent]
+      s6 --> s4: the session ends
+      s4 --> s8: work is slung to the agent [when Every provider spent]
+      s7 --> s4: the session ends
+      s8 --> s5: work is slung to the agent [when Primary usable]
+      s8 --> s6: work is slung to the agent [when Primary spent]
+      s8 --> s7: work is slung to the agent [when Primary and first fallback spent]
+    }
+  }

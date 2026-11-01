@@ -1,0 +1,22 @@
+---
+title: "core.control-dispatcher (runs its own command, nominal provider = primary)"
+---
+stateDiagram-v2
+  direction LR
+  state "At the same time" as all {
+    state "Primary provider" as r0 {
+      s0: Usable
+      s1: Spent (held)
+      [*] --> s0
+      s0 --> s1: quota-watch writes a new reading
+      s1 --> s0: quota-watch writes a new reading
+    }
+    --
+    state "Control dispatcher" as r1 {
+      s2: Stopped
+      s3: Running
+      [*] --> s2
+      s2 --> s3: gc starts the dispatcher
+      s3 --> s2: the dispatcher stops
+    }
+  }

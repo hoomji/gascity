@@ -1,0 +1,37 @@
+---
+title: "core.control-dispatcher (runs its own command, nominal provider = primary)"
+---
+stateDiagram-v2
+  direction LR
+  state "Legend" as legend {
+    lg0: Breaks DispatcherNeverBlockedByQuota
+    lg1: Path to the DispatcherNeverBlockedByQuota bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  state "At the same time" as all {
+    state "Primary provider" as r0 {
+      s0: Usable
+      s1: Spent (held)
+      [*] --> s0
+      s0 --> s1: quota-watch writes a new reading
+      s1 --> s0: quota-watch writes a new reading
+    }
+    --
+    state "Control dispatcher" as r1 {
+      s2: Stopped
+      s3: Running
+      s4: Blocked by quota
+      [*] --> s2
+      s2 --> s3: gc starts the dispatcher [when Usable]
+      s3 --> s2: the dispatcher stops
+      s2 --> s4: gc starts the dispatcher [when Spent (held)]
+      s4 --> s3: gc starts the dispatcher [when Usable]
+    }
+  }
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s2 bugPath
+  class s4 breaks
+  class s4 bugPath
