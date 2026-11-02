@@ -84,9 +84,12 @@ Proof standards:
 - Prove both the action and the result. A launch record that names the provider and argv beats a bead field alone. A refusal is shown as no launch plus the supervisor's `provider red` line.
 - The health file is the production boundary. Writing it by hand stands in for the `quota-watch` pack, which writes the same file. That's the only stand-in.
 
-## Cleanup
+## Verdict and cleanup
+
+Record the verdict before cleanup. `launch` already wrote the binary's commit and sha256 to `build.txt` in the evidence dir; `verdict` appends them with the result to `~/.cache/gc-verify/verified.tsv`, which `gc-promote` reads to warn when a build was never verified.
 
 ```sh
+$GCV verdict pass "all features proven"   # or: fail "<feature>: <what broke>"
 $GCV cleanup
 ```
 

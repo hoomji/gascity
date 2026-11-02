@@ -13,6 +13,7 @@
 #   gcv events                   provider.* events from the scratch city
 #   gcv proof NAME               copy launch records, session metadata, events, health file to evidence
 #   gcv gc ARGS...               run gc against the scratch city with the isolated env
+#   gcv verdict pass|fail [NOTE] record the run's verdict + gc commit/sha256 in verified.tsv
 #   gcv cleanup                  stop everything this run started; keeps evidence
 #
 # The current run is ${GCV_RUN:-the id in ~/.cache/gc-verify/current}.
@@ -58,6 +59,20 @@ print(json.dumps(rec))
 PY
 }
 
+# build_record GCBIN: the identity of the binary under test (version string, commit, sha256).
+build_record() {
+  local v; v="$("$1" version --long 2>/dev/null | head -1)"
+  printf 'gc_bin=%s\nversion=%s\ncommit=%s\nsha256=%s\n' "$1" "$v" \
+    "$(printf '%s' "$v" | sed -n 's/.*commit: \([0-9a-f]*\).*/\1/p' | head -1)" "$(sha256sum "$1" | cut -d' ' -f1)"
+}
+# gcv verdict pass|fail [NOTE]: append this run's verdict to $EVROOT/verified.tsv
+cmd_verdict() {
+  ctx; local v="${1:?verdict pass|fail}"; case "$v" in pass|fail) ;; *) die "verdict must be pass or fail";; esac
+  local commit sha; commit="$(sed -n 's/^commit=//p' "$EV/build.txt")"; sha="$(sed -n 's/^sha256=//p' "$EV/build.txt")"
+  [ -f "$EVROOT/verified.tsv" ] || printf 'ts\trun\tcommit\tsha256\tverdict\tnote\n' > "$EVROOT/verified.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$ID" "$commit" "$sha" "$v" "${2:-}" >> "$EVROOT/verified.tsv"
+  echo "recorded $v for commit=$commit run=$ID in $EVROOT/verified.tsv"
+}
 cmd_launch() {
   local gcbin; gcbin="$(command -v gc)"
   while [ $# -gt 0 ]; do case "$1" in --gc) gcbin="$2"; shift 2;; *) die "launch: unknown arg $1";; esac; done
@@ -65,6 +80,7 @@ cmd_launch() {
   ID="pf$(date +%m%d%H%M%S)"; R="/var/tmp/gcv-$ID"; EV="$EVROOT/$ID"; C="$R/city"
   mkdir -p "$R"/{gchome,xdg,bin,launches} "$EV"; chmod 700 "$R/xdg"
   echo "$gcbin" > "$R/gc-bin"; echo "$ID" > "$EVROOT/current"
+  build_record "$gcbin" > "$EV/build.txt"   # which gc this run verifies; read by gc-promote's warning check
   export GC_HOME="$R/gchome" XDG_RUNTIME_DIR="$R/xdg"; GC="$gcbin"
   cat > "$R/bin/fake-agent" <<'SH'
 #!/bin/sh
@@ -219,7 +235,7 @@ cmd_proof() {
   cmd_session > "$d/session.txt" 2>&1 || true
   cmd_events 50 > "$d/events.jsonl" 2>&1 || true
   grep -a -E 'provider red|provider-red|provider fallback' "$R/supervisor.log" 2>/dev/null | tail -20 > "$d/supervisor-provider-lines.txt" || true
-  echo "$(date -u +%FT%TZ) gc=$("$GC" version 2>/dev/null) run=$ID" > "$d/identity.txt"
+  echo "$(date -u +%FT%TZ) gc=$("$GC" version --long 2>/dev/null) run=$ID" > "$d/identity.txt"
   echo "proof -> $d"; ls "$d"
 }
 cmd_cleanup() {
@@ -240,7 +256,7 @@ sub="${1:-}"; shift || true
 case "$sub" in
   launch) cmd_launch "$@";; doctor) cmd_doctor;; hold) cmd_hold "$@";; healthy) cmd_healthy "$@";;
   clear) cmd_clear;; sling) cmd_sling "$@";; recycle) cmd_recycle;; wait-launch) cmd_wait_launch "$@";;
-  session) cmd_session;; events) cmd_events "$@";; proof) cmd_proof "$@";; cleanup) cmd_cleanup;;
+  session) cmd_session;; events) cmd_events "$@";; proof) cmd_proof "$@";; verdict) cmd_verdict "$@";; cleanup) cmd_cleanup;;
   gc) ctx; g "$@";;
   *) sed -n '2,20p' "$0"; exit 2;;
 esac
