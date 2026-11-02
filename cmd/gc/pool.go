@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -294,25 +295,26 @@ func expandSessionSetup(cmds []string, ctx SessionSetupContext) []string {
 // don't affect the original.
 func deepCopyAgent(src *config.Agent, name, dir string) config.Agent {
 	dst := config.Agent{
-		Name:              name,
-		Description:       src.Description,
-		Dir:               dir,
-		WorkDir:           src.WorkDir,
-		TmuxAlias:         src.TmuxAlias,
-		Scope:             src.Scope,
-		Session:           src.Session,
-		Provider:          src.Provider,
-		FallbackProviders: append([]string(nil), src.FallbackProviders...),
-		ContextAdvisory:   config.CloneContextAdvisory(src.ContextAdvisory),
-		Upstream:          src.Upstream,
-		InheritedProvider: src.InheritedProvider,
-		PromptTemplate:    src.PromptTemplate,
-		Nudge:             src.Nudge,
-		StartCommand:      src.StartCommand,
-		Lifecycle:         src.Lifecycle,
-		PromptMode:        src.PromptMode,
-		PromptFlag:        src.PromptFlag,
-		ReadyPromptPrefix: src.ReadyPromptPrefix,
+		Name:                          name,
+		Description:                   src.Description,
+		Dir:                           dir,
+		WorkDir:                       src.WorkDir,
+		TmuxAlias:                     src.TmuxAlias,
+		Scope:                         src.Scope,
+		Session:                       src.Session,
+		Provider:                      src.Provider,
+		FallbackProviders:             slices.Clone(src.FallbackProviders),
+		FallbackProvidersFromDefaults: src.FallbackProvidersFromDefaults,
+		ContextAdvisory:               config.CloneContextAdvisory(src.ContextAdvisory),
+		Upstream:                      src.Upstream,
+		InheritedProvider:             src.InheritedProvider,
+		PromptTemplate:                src.PromptTemplate,
+		Nudge:                         src.Nudge,
+		StartCommand:                  src.StartCommand,
+		Lifecycle:                     src.Lifecycle,
+		PromptMode:                    src.PromptMode,
+		PromptFlag:                    src.PromptFlag,
+		ReadyPromptPrefix:             src.ReadyPromptPrefix,
 		// DefaultSlingFormula: deep-copied below with other pointer fields.
 		WorkQuery:          src.WorkQuery,
 		SlingQuery:         src.SlingQuery,

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -3502,6 +3503,14 @@ type AgentDefaults struct {
 	// for agents that do not set their own upstream (Phase C — the Upstream
 	// axis). Applied to agents with an empty Upstream by ApplyAgentDefaults.
 	Upstream string `toml:"upstream,omitempty"`
+	// FallbackProviders is the default ordered fallback provider list for
+	// agents that leave their own fallback_providers unset. An agent (or a
+	// [[patches.agent]] / [[rigs.overrides]] entry) that sets its own list,
+	// including an explicit empty list to opt out, keeps it. Applied by
+	// ApplyAgentDefaults from the city's composed [agent_defaults]; unlike
+	// provider, it is not inherited from an included pack's [agent_defaults].
+	// Each name must be a key in [providers].
+	FallbackProviders []string `toml:"fallback_providers,omitempty"`
 	// WakeMode is the parsed/composed default wake mode ("resume" or
 	// "fresh"), but it is not yet auto-applied at runtime.
 	WakeMode string `toml:"wake_mode,omitempty" jsonschema:"enum=resume,enum=fresh"`
@@ -3544,6 +3553,9 @@ func mergeAgentDefaultsAliasPreferCanonical(dst *AgentDefaults, src AgentDefault
 	}
 	if !meta.IsDefined("agent_defaults", "upstream") {
 		dst.Upstream = src.Upstream
+	}
+	if !meta.IsDefined("agent_defaults", "fallback_providers") {
+		dst.FallbackProviders = cloneStrings(src.FallbackProviders)
 	}
 	if !meta.IsDefined("agent_defaults", "wake_mode") {
 		dst.WakeMode = src.WakeMode
@@ -3673,7 +3685,14 @@ type Agent struct {
 	// derived preset ([providers.x] base = "provider:y" with its own
 	// option_defaults) is the city-wide way to pin a fallback's model and
 	// effort; fallback_option_defaults is the per-agent way.
+	// An unset list inherits [agent_defaults] fallback_providers; an explicit
+	// empty list opts out of it.
 	FallbackProviders []string `toml:"fallback_providers,omitempty"`
+	// FallbackProvidersFromDefaults records that FallbackProviders was
+	// inherited from [agent_defaults] by ApplyAgentDefaults rather than set
+	// on the agent, a patch or a rig override. Provenance only (gc config
+	// explain); never parsed.
+	FallbackProvidersFromDefaults bool `toml:"-" json:"-"`
 	// FallbackOptionDefaults maps a fallback_providers name to the option
 	// defaults a session launched with that fallback uses, overlaid on the
 	// fallback preset's own option_defaults (these keys win), exactly as
@@ -4011,7 +4030,9 @@ func (a Agent) Clone() Agent {
 	out := a
 	out.PreStart = append([]string(nil), a.PreStart...)
 	out.Args = append([]string(nil), a.Args...)
-	out.FallbackProviders = append([]string(nil), a.FallbackProviders...)
+	// cloneStrings keeps nil distinct from an explicit empty list: empty
+	// opts the agent out of [agent_defaults] fallback_providers.
+	out.FallbackProviders = cloneStrings(a.FallbackProviders)
 	out.ProcessNames = append([]string(nil), a.ProcessNames...)
 	out.NamepoolNames = append([]string(nil), a.NamepoolNames...)
 	out.InstallAgentHooks = append([]string(nil), a.InstallAgentHooks...)
@@ -4310,6 +4331,20 @@ func ApplyAgentDefaults(cfg *City) {
 		}
 	}
 
+	// Fallback providers: agents whose list is unset (nil) inherit the
+	// city-level default list. An explicit empty list is an opt-out.
+	if defaults := cfg.AgentDefaults.FallbackProviders; len(defaults) > 0 {
+		for i := range cfg.Agents {
+			if cfg.Agents[i].Name == ControlDispatcherAgentName {
+				continue
+			}
+			if cfg.Agents[i].FallbackProviders == nil {
+				cfg.Agents[i].FallbackProviders = cloneStrings(defaults)
+				cfg.Agents[i].FallbackProvidersFromDefaults = true
+			}
+		}
+	}
+
 	// Upstream axis (Phase C): agents with no explicit upstream inherit the
 	// city-level default so model-serving selection can be set once city-wide.
 	if upstream := cfg.AgentDefaults.Upstream; upstream != "" {
@@ -4442,6 +4477,12 @@ func mergeAgentDefaults(dst *AgentDefaults, src AgentDefaults, label string, pro
 			prov.Warnings = append(prov.Warnings, fmt.Sprintf("agent_defaults.upstream redefined by %q", label))
 		}
 		dst.Upstream = src.Upstream
+	}
+	if len(src.FallbackProviders) > 0 {
+		if prov != nil && len(dst.FallbackProviders) > 0 && !slices.Equal(dst.FallbackProviders, src.FallbackProviders) {
+			prov.Warnings = append(prov.Warnings, fmt.Sprintf("agent_defaults.fallback_providers redefined by %q", label))
+		}
+		dst.FallbackProviders = cloneStrings(src.FallbackProviders)
 	}
 	if src.WakeMode != "" {
 		if prov != nil && dst.WakeMode != "" && dst.WakeMode != src.WakeMode {

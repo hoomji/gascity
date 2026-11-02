@@ -568,7 +568,11 @@ func applyAgentMutation(a *Agent, p *AgentPatch, sleepSource string) {
 		a.Provider = *p.Provider
 	}
 	if p.FallbackProviders != nil {
-		a.FallbackProviders = append([]string(nil), (*p.FallbackProviders)...)
+		// Keep an explicit empty list non-nil: it opts the agent out of
+		// [agent_defaults] fallback_providers.
+		a.FallbackProviders = make([]string, len(*p.FallbackProviders))
+		copy(a.FallbackProviders, *p.FallbackProviders)
+		a.FallbackProvidersFromDefaults = false
 	}
 	if p.ContextAdvisory != nil {
 		a.ContextAdvisory = cloneContextAdvisory(p.ContextAdvisory)
