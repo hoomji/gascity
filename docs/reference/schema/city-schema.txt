@@ -139,7 +139,7 @@
             "type": "string"
           },
           "type": "array",
-          "description": "FallbackProviders is an ordered list of provider presets a fresh pool\nsession may start with when the primary provider is confirmed red in\n.gc/cache/provider-health.json. The first candidate that is not red\nwins; an unknown or stale health entry counts as not red. Running and\nreused sessions keep the provider they were created with. Each name\nmust be a key in [providers]. The agent's args and option_defaults are\nwritten for the primary provider and are not applied to a fallback;\ngive a fallback its own options with fallback_option_defaults. A\nderived preset ([providers.x] base = \"provider:y\" with its own\noption_defaults) is the city-wide way to pin a fallback's model and\neffort; fallback_option_defaults is the per-agent way."
+          "description": "FallbackProviders is an ordered list of provider presets a fresh pool\nsession may start with when the primary provider is confirmed red in\n.gc/cache/provider-health.json. The first candidate that is not red\nwins; an unknown or stale health entry counts as not red. Running and\nreused sessions keep the provider they were created with. Each name\nmust be a key in [providers]. The agent's args and option_defaults are\nwritten for the primary provider and are not applied to a fallback;\ngive a fallback its own options with fallback_option_defaults. A\nderived preset ([providers.x] base = \"provider:y\" with its own\noption_defaults) is the city-wide way to pin a fallback's model and\neffort; fallback_option_defaults is the per-agent way.\nAn unset list inherits [agent_defaults] fallback_providers; an explicit\nempty list opts out of it."
         },
         "fallback_option_defaults": {
           "additionalProperties": {
@@ -411,6 +411,13 @@
         "upstream": {
           "type": "string",
           "description": "Upstream is the default model-serving endpoint (a key in [upstreams])\nfor agents that do not set their own upstream (Phase C — the Upstream\naxis). Applied to agents with an empty Upstream by ApplyAgentDefaults."
+        },
+        "fallback_providers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "FallbackProviders is the default ordered fallback provider list for\nagents that leave their own fallback_providers unset. An agent (or a\n[[patches.agent]] / [[rigs.overrides]] entry) that sets its own list,\nincluding an explicit empty list to opt out, keeps it. Applied by\nApplyAgentDefaults from the city's composed [agent_defaults]; unlike\nprovider, it is not inherited from an included pack's [agent_defaults].\nEach name must be a key in [providers]."
         },
         "wake_mode": {
           "type": "string",

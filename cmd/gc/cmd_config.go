@@ -592,7 +592,11 @@ func explainAgent(w io.Writer, a *config.Agent, prov *config.Provenance) {
 		explainField(w, "provider", a.Provider, source)
 	}
 	if len(a.FallbackProviders) > 0 {
-		explainField(w, "fallback_providers", strings.Join(a.FallbackProviders, ", "), source)
+		fallbackSource := source
+		if a.FallbackProvidersFromDefaults {
+			fallbackSource = "agent_defaults in " + filepath.Base(prov.Root)
+		}
+		explainField(w, "fallback_providers", strings.Join(a.FallbackProviders, ", "), fallbackSource)
 	}
 	if a.StartCommand != "" {
 		explainField(w, "start_command", a.StartCommand, source)
