@@ -12,6 +12,7 @@ This is the maintained source for verifying provider fallback in gc. Read this i
 ## Driving conventions
 
 - Start every case with `gcv recycle`. A reused session never changes provider, by design, so a stale session hides the case under test.
+- Run `gcv clear` before any `gcv hold`. Holds merge into the health file, so an earlier case's holds carry over.
 - Assert on the launch record (`provider=`, `argv=`), not only on bead metadata.
 - Take a proof (`gcv proof <feature-id>`) after each case's assertion.
 
@@ -19,9 +20,9 @@ This is the maintained source for verifying provider fallback in gc. Read this i
 
 | Feature | File | Proven |
 |---|---|---|
-| Fallback on a red primary | [fallback-on-red.md](fallback-on-red.md) | 2026-11-01, gc f2d8d5dbb |
+| Fallback on a red primary | [fallback-on-red.md](fallback-on-red.md) | 2026-11-02, gc bae017018 (run pf1102032727) |
 | Health record freshness (`ttl_s`, `until`, fail-open) | [health-freshness.md](health-freshness.md) | not yet |
-| Per-fallback options (`fallback_option_defaults`) | [fallback-options.md](fallback-options.md) | 2026-11-01, gc f2d8d5dbb |
+| Per-fallback options (`fallback_option_defaults`) | [fallback-options.md](fallback-options.md) | 2026-11-02, gc bae017018 (run pf1102032727, fallback-taken overlay) |
 | Headroom balancing (`fallback_strategy = "headroom"`) | [headroom-strategy.md](headroom-strategy.md) | not yet: needs the build with fallback_strategy |
 
 ## Proof and skip reporting

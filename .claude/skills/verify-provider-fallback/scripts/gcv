@@ -19,6 +19,8 @@
 # The current run is ${GCV_RUN:-the id in ~/.cache/gc-verify/current}.
 # Scratch state: /var/tmp/gcv-<id> (short path: unix socket limits). Evidence: ~/.cache/gc-verify/<id>/.
 set -euo pipefail
+# gc start refuses a HOME that differs from the resolved user home, and HOME may be a symlink.
+export HOME="$(readlink -f "$HOME")"
 
 EVROOT="${GCV_EVIDENCE_ROOT:-$HOME/.cache/gc-verify}"
 mkdir -p "$EVROOT"
