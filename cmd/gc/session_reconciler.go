@@ -3575,13 +3575,13 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 					}
 				}
 				providerHealthy := true
-				if !exempt && (!floorExempt || holdsClaim) && tp.ResolvedProvider != nil {
+				if phProvider := templateHealthGateProvider(tp); !exempt && (!floorExempt || holdsClaim) && phProvider != "" {
 					// Reuse the per-tick provider-health snapshot (#2962). Gate 1
 					// (provider RED) takes precedence: never recycle a session whose
 					// provider is red. Evaluate this for claim-holders too so they are
 					// never restarted into a known-dead provider. Fail-open — an
 					// absent/stale registry is treated as healthy.
-					if h, present := phSnap.check(tp.ResolvedProvider.Name); present {
+					if h, present := phSnap.check(phProvider); present {
 						providerHealthy = h
 					}
 				}
@@ -4837,8 +4837,8 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 			// provider is red. Does NOT consume the wake budget (no append to
 			// startCandidates). Episode tracking fires exactly one alert per
 			// red episode via emitProviderHealthGateAlert.
-			if gate != nil && target.tp.ResolvedProvider != nil {
-				phProvider := target.tp.ResolvedProvider.Name
+			// A start_command session launches no provider and is never gated.
+			if phProvider := templateHealthGateProvider(target.tp); gate != nil && phProvider != "" {
 				phHealthy, phPresent := phSnap.check(phProvider)
 				if !phPresent {
 					// Registry absent or no fresh entry — fail-open, log once per provider per tick.
