@@ -1,6 +1,6 @@
 ---
 name: verify-provider-fallback
-description: Drive and prove gc provider fallback (fallback_providers, fallback_option_defaults, fallback_strategy/headroom, provider-health.json ttl_s/until/reason, gc.provider_override, the provider.fallback event) in an isolated scratch Gas City with fake providers. Use when changing provider_fallback.go, provider_health_gate.go, the pool create path, provider resolution, or before promoting a gc build that touches them; also when a live city reports a provider-red refusal and you need a clean repro.
+description: Drive and prove gc provider fallback (fallback_providers, [agent_defaults] fallback_providers inheritance and [] opt-out, fallback_option_defaults, fallback_strategy/headroom, provider-health.json ttl_s/until/reason, gc.provider_override, the provider.fallback event) in an isolated scratch Gas City with fake providers. Use when changing provider_fallback.go, provider_health_gate.go, the pool create path, provider resolution, or before promoting a gc build that touches them; also when a live city reports a provider-red refusal and you need a clean repro.
 ---
 
 # Verify provider fallback
@@ -23,8 +23,9 @@ What it does:
 2. Seeds `city.toml` with `--file`, so `gc init` never asks which coding agent to use. There are three fake providers, `fake-primary`, `fake-fallback` and `fake-third`. Each has an `effort` option (low/medium/high) that becomes `--effort <v>`.
 3. Drops the always-on mayor.
 4. Adds the agent `probe`: `provider = fake-primary`, `fallback_providers = [fake-fallback, fake-third]`, and `fallback_option_defaults.fake-fallback.effort = "high"`.
-5. Starts a private supervisor on a free port, with `GC_HOME` and `XDG_RUNTIME_DIR` set to the run dir. `HOME` stays real, because gc's platform supervisor refuses a `HOME` override.
-6. Runs `gc start` and prints `RUN_ID=… scratch=… evidence=… port=…`.
+5. Sets `[agent_defaults] fallback_providers = ["fake-third"]` in `city.toml` and adds two agents on `fake-primary`: `heir` (no list, so it inherits the default) and `optout` (`fallback_providers = []`).
+6. Starts a private supervisor on a free port, with `GC_HOME` and `XDG_RUNTIME_DIR` set to the run dir. `HOME` stays real, because gc's platform supervisor refuses a `HOME` override.
+7. Runs `gc start` and prints `RUN_ID=… scratch=… evidence=… port=…`.
 
 **Ready** means `gcv doctor` prints `DOCTOR OK`. `launch` runs it last. A cold `gc init` (bd and Dolt bootstrap) takes 2–5 minutes, so give `launch` a timeout of at least 600 s.
 
@@ -56,12 +57,17 @@ Run it first whenever something looks off. If it fails, don't drive this run.
 | `$GCV hold PROVIDER [SECS] [--headroom N] [--reason TEXT]` | Writes an unhealthy record to the scratch city's `.gc/cache/provider-health.json`: `ttl_s` = SECS (at least 60), `until` = now + SECS |
 | `$GCV healthy PROVIDER [--headroom N]` | Writes a healthy record |
 | `$GCV clear` | Removes the health file. No file means fail-open: everything counts as healthy |
-| `$GCV sling TITLE` | Routes one plain bead to `probe` (`gc sling probe --stdin --no-formula --no-convoy`) |
-| `$GCV recycle` | Closes the probe's sessions and clears the launch records. Run it before each case, because a reused session never changes provider |
-| `$GCV wait-launch [SECS]` | Waits for the probe's launch record and prints it (`provider=`, `session=`, `argv=--effort …`) |
-| `$GCV session` | Shows each probe session's state, `provider`, `gc.provider_override` and stored `command` |
+| `$GCV sling TITLE` | Routes one plain bead to the agent (`gc sling <agent> --stdin --no-formula --no-convoy`) |
+| `$GCV recycle` | Closes the agent's sessions and clears all launch records. Run it before each case, because a reused session never changes provider |
+| `$GCV wait-launch [SECS]` | Waits for the agent's launch record and prints it (`provider=`, `session=`, `agent=`, `argv=--effort …`) |
+| `$GCV launch-count` | Counts the agent's launch records. Use it for every "no new launch" assertion |
+| `$GCV session` | Shows each of the agent's sessions: state, `provider`, `gc.provider_override` and stored `command` |
+| `$GCV explain [AGENT…]` | Prints each agent's `fallback_providers` row with its source (default: probe, heir, optout, core.control-dispatcher); `(none)` means no list |
+| `$GCV live-check [CITY]` | **Read-only** on the live city (default `~/city`): runs only `gc config explain` and checks the mayor and control dispatcher show no list and an agent shows `# agent_defaults in city.toml`. Needs no run |
 | `$GCV events [N]` | Shows the scratch city's `provider.*` events |
 | `$GCV gc ARGS…` | Runs any gc command against the scratch city with the isolated env |
+
+Agent-scoped commands (`sling`, `recycle`, `wait-launch`, `launch-count`, `session`) act on `GCV_AGENT`, default `probe`; set `GCV_AGENT=heir` or `optout` for the inherited-list cases.
 
 Each case is: `recycle` → set the health state → `sling` → `wait-launch` (or expect none) → `session` / `events` → `proof NAME`. The recipes are in [features/](features/README.md).
 
@@ -84,7 +90,7 @@ Proof standards:
 - Prove both the action and the result. A launch record that names the provider and argv beats a bead field alone. A refusal is shown as no launch plus the supervisor's `provider red` line.
 - The health file is the production boundary. Writing it by hand stands in for the `quota-watch` pack, which writes the same file. That's the only stand-in.
 
-## Verdict and cleanup
+## Cleanup
 
 Record the verdict before cleanup. `launch` already wrote the binary's commit and sha256 to `build.txt` in the evidence dir; `verdict` appends them with the result to `~/.cache/gc-verify/verified.tsv`, which `gc-promote` reads to warn when a build was never verified.
 

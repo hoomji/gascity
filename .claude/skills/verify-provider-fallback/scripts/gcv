@@ -6,23 +6,29 @@
 #   gcv hold PROVIDER [SECS] [--headroom N] [--reason TEXT]   mark PROVIDER unhealthy (until now+SECS)
 #   gcv healthy PROVIDER [--headroom N]                        write a healthy record
 #   gcv clear                    remove provider-health.json
-#   gcv sling TITLE              route one plain bead to the probe agent
-#   gcv recycle                  close the probe's sessions so the next sling creates a new one
-#   gcv wait-launch [SECS]       wait for a probe launch record; prints it
-#   gcv session                  probe session(s): id, state, provider, gc.provider_override, command
+#   gcv sling TITLE              route one plain bead to the agent ($GCV_AGENT, default probe)
+#   gcv recycle                  close the agent's sessions so the next sling creates a new one
+#   gcv wait-launch [SECS]       wait for the agent's launch record; prints it
+#   gcv launch-count             number of launch records for the agent (reuse: exactly 1)
+#   gcv session                  agent session(s): id, state, provider, gc.provider_override, command
+#   gcv explain [AGENT...]       fallback_providers row (value + source) per agent in the scratch city
+#   gcv live-check [CITY]        READ-ONLY: same rows from the live city (default ~/city); asserts mayor
+#                                has none and an inheriting agent shows 'agent_defaults in city.toml'
 #   gcv events                   provider.* events from the scratch city
 #   gcv proof NAME               copy launch records, session metadata, events, health file to evidence
 #   gcv gc ARGS...               run gc against the scratch city with the isolated env
 #   gcv verdict pass|fail [NOTE] record the run's verdict + gc commit/sha256 in verified.tsv
 #   gcv cleanup                  stop everything this run started; keeps evidence
 #
-# The current run is ${GCV_RUN:-the id in ~/.cache/gc-verify/current}.
+# The current run is ${GCV_RUN:-the id in ~/.cache/gc-verify/current}. Agent-scoped commands act on
+# ${GCV_AGENT:-probe}; the scratch city also has heir (no list: inherits [agent_defaults]) and optout ([]).
 # Scratch state: /var/tmp/gcv-<id> (short path: unix socket limits). Evidence: ~/.cache/gc-verify/<id>/.
 set -euo pipefail
 # gc start refuses a HOME that differs from the resolved user home, and HOME may be a symlink.
 export HOME="$(readlink -f "$HOME")"
 
 EVROOT="${GCV_EVIDENCE_ROOT:-$HOME/.cache/gc-verify}"
+AGENT="${GCV_AGENT:-probe}"
 mkdir -p "$EVROOT"
 
 die() { echo "gcv: $*" >&2; exit 1; }
@@ -120,6 +126,8 @@ flag_args = ["--effort", "{v}"]
 '''
     return out
 c = '[workspace]\nprovider = "fake-primary"\n' + prov("fake-primary") + prov("fake-fallback") + prov("fake-third")
+# Default list differs from probe's own list, so "own list wins" and "inherits" pick different providers.
+c += '\n[agent_defaults]\nfallback_providers = ["fake-third"]\n'
 open(f"{R}/city-seed.toml", "w").write(c)
 PY
   # --file seeds city.toml (fake providers only), so init never asks which coding agent to use.
@@ -154,6 +162,14 @@ idle_timeout = "2m"
 effort = "high"
 TOML
   echo "Probe agent for gcv. Do nothing." > "$C/agents/probe/prompt.template.md"
+  # heir sets no fallback_providers (inherits [agent_defaults]); optout sets [] (opts out).
+  local a line
+  for a in heir optout; do
+    case "$a" in heir) line="";; optout) line='fallback_providers = []';; esac
+    mkdir -p "$C/agents/$a"
+    printf 'description = "gcv %s agent"\nprovider = "fake-primary"\n%s\nscope = "city"\nsession = "tmux"\nwake_mode = "fresh"\nmax_active_sessions = 1\nmin_active_sessions = 0\nidle_timeout = "2m"\n' "$a" "$line" > "$C/agents/$a/agent.toml"
+    echo "gcv $a agent. Do nothing." > "$C/agents/$a/prompt.template.md"
+  done
   local port; port="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')"
   printf '[supervisor]\nport = %s\n' "$port" > "$R/gchome/supervisor.toml"
   # Private foreground supervisor, detached from this shell (setsid) so a terminal scope cannot kill it.
@@ -191,12 +207,12 @@ cmd_healthy() {
   health_write "$prov" healthy 600 "$head" "gcv healthy"
 }
 cmd_clear() { ctx; rm -f "$C/.gc/cache/provider-health.json"; echo "health file removed"; }
-cmd_sling() { ctx; printf '%s\ngcv verification bead\n' "${1:-gcv probe}" | (cd "$C" && g sling probe --stdin --no-formula --no-convoy); }
+cmd_sling() { ctx; printf '%s\ngcv verification bead\n' "${1:-gcv probe}" | (cd "$C" && g sling "$AGENT" --stdin --no-formula --no-convoy); }
 cmd_recycle() {
   ctx; local ids; ids="$(g session list --json 2>/dev/null | python3 -c '
 import json,sys
 d=json.load(sys.stdin); d=d.get("sessions") or d.get("items") or [] if isinstance(d,dict) else d; d=[x for x in (d or []) if isinstance(x,dict)]
-print(" ".join(s["id"] for s in d if s.get("template")=="probe" and s.get("state") not in ("closed",)))')"
+print(" ".join(s["id"] for s in d if s.get("template")==sys.argv[1] and s.get("state") not in ("closed",)))' "$AGENT")"
   local i n
   for i in $ids; do
     for n in $(seq 1 15); do   # a session still starting can refuse a close; retry, then say so
@@ -208,8 +224,8 @@ print(" ".join(s["id"] for s in d if s.get("template")=="probe" and s.get("state
 }
 cmd_wait_launch() {
   ctx; local secs="${1:-90}" f=""
-  for _ in $(seq 1 "$secs"); do f="$(grep -l '^agent=probe$' "$R"/launches/launch-* 2>/dev/null | head -1 || true)"; [ -n "$f" ] && break; sleep 1; done
-  [ -n "$f" ] || die "no probe launch within ${secs}s (check: gcv session; gcv events; $R/supervisor.log)"
+  for _ in $(seq 1 "$secs"); do f="$(grep -lx "agent=$AGENT" "$R"/launches/launch-* 2>/dev/null | head -1 || true)"; [ -n "$f" ] && break; sleep 1; done
+  [ -n "$f" ] || die "no $AGENT launch within ${secs}s (check: gcv session; gcv events; $R/supervisor.log)"
   cat "$f"
 }
 cmd_session() {
@@ -217,17 +233,42 @@ cmd_session() {
 import json,sys,subprocess
 d=json.load(sys.stdin); d=d.get("sessions") or d.get("items") or [] if isinstance(d,dict) else d; d=[x for x in (d or []) if isinstance(x,dict)]
 for s in d:
-    if s.get("template")!="probe": continue
-    print(s.get("id"), s.get("state"), "provider="+str(s.get("provider")))' || true
+    if s.get("template")!=sys.argv[1]: continue
+    print(s.get("id"), s.get("state"), "provider="+str(s.get("provider")))' "$AGENT" || true
   local id; for id in $(g session list --json 2>/dev/null | python3 -c '
 import json,sys
 d=json.load(sys.stdin); d=d.get("sessions") or d.get("items") or [] if isinstance(d,dict) else d; d=[x for x in (d or []) if isinstance(x,dict)]
-print(" ".join(s["id"] for s in d if s.get("template")=="probe"))'); do
+print(" ".join(s["id"] for s in d if s.get("template")==sys.argv[1]))' "$AGENT"); do
     g bd show "$id" --json 2>/dev/null | python3 -c '
 import json,sys
 d=json.load(sys.stdin); d=d[0] if isinstance(d,list) else d; m=d.get("metadata",{})
 print("  ", d.get("id"), "override="+str(m.get("gc.provider_override")), "command="+str(m.get("command")))'
   done
+}
+cmd_launch_count() { ctx; grep -lx "agent=$AGENT" "$R"/launches/launch-* 2>/dev/null | wc -l; }
+# explain_rows: stdin is `gc config explain`; prints "<agent> <fallback_providers row or (none)>" per named agent.
+explain_rows() {
+  python3 -c '
+import re, sys
+want = sys.argv[1:]; blocks = {}; cur = None
+for l in sys.stdin:
+    m = re.match(r"^Agent: (\S+)$", l)
+    if m: cur = m.group(1); blocks[cur] = None; continue
+    if cur and l.strip().startswith("fallback_providers "): blocks[cur] = l.split("=", 1)[1].strip()
+for a in want or sorted(blocks):
+    print(a, "MISSING-AGENT" if a not in blocks else (blocks[a] or "(none)"))' "$@"
+}
+cmd_explain() { ctx; [ $# -gt 0 ] || set -- probe heir optout core.control-dispatcher; g config explain 2>/dev/null | explain_rows "$@"; }
+# READ-ONLY on the live city: config explain only; never start, stop, sling or write.
+cmd_live_check() {
+  local city="${1:-$HOME/city}" out rows ok=1 gcbin; gcbin="$(command -v gc)"
+  out="$(env -u GC_HOME -u GCV_RUN "$gcbin" --city "$city" config explain 2>/dev/null)" || die "live config explain failed for $city"
+  rows="$(printf '%s\n' "$out" | explain_rows mayor core.control-dispatcher)"; echo "$rows"
+  printf '%s\n' "$rows" | grep -qx 'mayor (none)' && echo "OK mayor has no fallback_providers" || { echo "FAIL mayor shows a fallback list"; ok=0; }
+  printf '%s\n' "$rows" | grep -qx 'core.control-dispatcher (none)' && echo "OK control-dispatcher exempt" || { echo "FAIL control-dispatcher shows a fallback list"; ok=0; }
+  local heir; heir="$(printf '%s\n' "$out" | explain_rows | grep -m1 '# agent_defaults in city.toml$' || true)"
+  [ -n "$heir" ] && echo "OK inheriting agent: $heir" || { echo "FAIL no agent shows 'agent_defaults in city.toml'"; ok=0; }
+  [ $ok = 1 ] && echo "LIVE-CHECK OK ($("$gcbin" version 2>/dev/null))" || { echo "LIVE-CHECK FAIL"; return 1; }
 }
 cmd_events() { ctx; grep -a '"type":"provider\.' "$C/.gc/events.jsonl" 2>/dev/null | tail -"${1:-20}" || echo "(no provider.* events)"; }
 cmd_proof() {
@@ -258,7 +299,8 @@ sub="${1:-}"; shift || true
 case "$sub" in
   launch) cmd_launch "$@";; doctor) cmd_doctor;; hold) cmd_hold "$@";; healthy) cmd_healthy "$@";;
   clear) cmd_clear;; sling) cmd_sling "$@";; recycle) cmd_recycle;; wait-launch) cmd_wait_launch "$@";;
+  launch-count) cmd_launch_count;; explain) cmd_explain "$@";; live-check) cmd_live_check "$@";;
   session) cmd_session;; events) cmd_events "$@";; proof) cmd_proof "$@";; verdict) cmd_verdict "$@";; cleanup) cmd_cleanup;;
   gc) ctx; g "$@";;
-  *) sed -n '2,20p' "$0"; exit 2;;
+  *) sed -n '2,26p' "$0"; exit 2;;
 esac
