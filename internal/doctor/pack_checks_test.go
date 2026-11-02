@@ -155,7 +155,11 @@ func TestPackScriptCheckEmptyOutput(t *testing.T) {
 }
 
 func TestPackScriptCheckEnvVars(t *testing.T) {
-	dir := t.TempDir()
+	// The pack state dir is keyed by the pack dir's base name.
+	dir := filepath.Join(t.TempDir(), "topo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cityPath := t.TempDir()
 	// Script echoes env vars to verify they're passed.
 	script := writeCheckScript(t, dir,
@@ -356,5 +360,56 @@ func TestParseScriptOutput(t *testing.T) {
 				t.Errorf("details count = %d, want %d", len(details), tt.wantDetail)
 			}
 		})
+	}
+}
+
+// TestPackScriptCheckPackStateDirIsKeyedByPackDir proves a pack doctor check
+// and its fix script get the same GC_PACK_STATE_DIR as the pack's exec orders
+// and commands: <city>/.gc/runtime/packs/<pack dir base name>, not the scoped
+// [pack].name (hoomji/quota-watch).
+func TestPackScriptCheckPackStateDirIsKeyedByPackDir(t *testing.T) {
+	root := t.TempDir()
+	cityDir := filepath.Join(root, "city")
+	packDir := filepath.Join(root, "cache", "quota-watch")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := writeCheckScript(t, packDir, "#!/bin/sh\necho \"$GC_PACK_STATE_DIR\"\nexit 0\n")
+	fixOut := filepath.Join(root, "fix.out")
+	fix := filepath.Join(packDir, "fix.sh")
+	if err := os.WriteFile(fix, []byte("#!/bin/sh\nprintf '%s' \"$GC_PACK_STATE_DIR\" > \""+fixOut+"\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := &PackScriptCheck{
+		CheckName: "quota-watch:probe",
+		Script:    script,
+		FixScript: fix,
+		PackDir:   packDir,
+		PackName:  "hoomji/quota-watch",
+	}
+	want := filepath.Join(cityDir, ".gc", "runtime", "packs", "quota-watch")
+	ctx := &CheckContext{CityPath: cityDir}
+	if got := c.Run(ctx).Message; got != want {
+		t.Fatalf("check GC_PACK_STATE_DIR = %q, want %q", got, want)
+	}
+	if err := c.Fix(ctx); err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+	if got, err := os.ReadFile(fixOut); err != nil || string(got) != want {
+		t.Fatalf("fix GC_PACK_STATE_DIR = %q (err=%v), want %q", got, err, want)
+	}
+}
+
+// TestPackScriptCheckWithoutPackNameHasNoPackStateDir pins that a city-local
+// doctor check (no pack name) still gets no GC_PACK_STATE_DIR, so scripts
+// that default it (dolt runtime.sh: ${GC_PACK_STATE_DIR:-.../packs/dolt})
+// keep their default.
+func TestPackScriptCheckWithoutPackNameHasNoPackStateDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GC_PACK_STATE_DIR", "")
+	script := writeCheckScript(t, dir, "#!/bin/sh\necho \"state=${GC_PACK_STATE_DIR:-unset}\"\nexit 0\n")
+	c := &PackScriptCheck{CheckName: "local:probe", Script: script, PackDir: dir}
+	if got := c.Run(&CheckContext{CityPath: dir}).Message; got != "state=unset" {
+		t.Fatalf("local check message = %q, want state=unset", got)
 	}
 }

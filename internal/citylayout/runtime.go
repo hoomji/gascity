@@ -212,6 +212,75 @@ func PackStateDir(cityRoot, packName string) string {
 	return filepath.Join(RuntimePacksDir(cityRoot), packName)
 }
 
+// PackStateKey returns the key under .gc/runtime/packs/ for the pack rooted
+// at packDir: the pack directory's base name. Every part of a pack (exec
+// orders, commands, doctor checks) keys its state dir this way so the pack
+// sees one GC_PACK_STATE_DIR. Returns "" when packDir has no usable base name.
+func PackStateKey(packDir string) string {
+	packDir = strings.TrimSpace(packDir)
+	if packDir == "" {
+		return ""
+	}
+	key := filepath.Base(filepath.Clean(packDir))
+	if key == "." || key == string(filepath.Separator) {
+		return ""
+	}
+	return key
+}
+
+// AdoptLegacyPackStateDir moves state written under a pack's old scoped-name
+// key (packs/<scope>/<name>, used by commands and doctor checks before state
+// dirs were keyed by pack dir) to packs/<key> when packs/<key> does not exist
+// yet. Single-segment legacy names are never moved: packs/<name> may be
+// another pack's canonical dir. It is best effort; on any failure the old
+// dir is left in place.
+func AdoptLegacyPackStateDir(cityRoot, packName, key string) {
+	packName = strings.TrimSpace(packName)
+	if key == "" || !strings.Contains(packName, "/") {
+		return
+	}
+	legacy := PackStateDir(cityRoot, packName)
+	canonical := PackStateDir(cityRoot, key)
+	if legacy == canonical {
+		return
+	}
+	if info, err := os.Stat(legacy); err != nil || !info.IsDir() {
+		return
+	}
+	if _, err := os.Lstat(canonical); !os.IsNotExist(err) {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(canonical), 0o700); err != nil {
+		return
+	}
+	if err := os.Rename(legacy, canonical); err != nil {
+		return
+	}
+	packsDir := RuntimePacksDir(cityRoot)
+	for dir := filepath.Dir(legacy); dir != packsDir && strings.HasPrefix(dir, packsDir+string(filepath.Separator)); dir = filepath.Dir(dir) {
+		if os.Remove(dir) != nil { // stops at the first non-empty parent
+			break
+		}
+	}
+}
+
+// PackDirRuntimeEnv returns city runtime env vars plus GC_PACK_STATE_DIR for
+// the pack rooted at packDir. packName gates the state dir (no name, no
+// GC_PACK_STATE_DIR, as for city-local checks) and drives legacy adoption.
+func PackDirRuntimeEnv(cityRoot, packDir, packName string) []string {
+	env := CityRuntimeEnv(cityRoot)
+	if strings.TrimSpace(packName) == "" {
+		return env
+	}
+	key := PackStateKey(packDir)
+	if key == "" {
+		key = packName
+	} else {
+		AdoptLegacyPackStateDir(cityRoot, packName, key)
+	}
+	return append(env, "GC_PACK_STATE_DIR="+PackStateDir(cityRoot, key))
+}
+
 // SuspensionStateFile returns the path to the unified runtime
 // suspension-state file. It holds the live city, rig, and (in a
 // follow-up) agent suspension preferences that should not be
