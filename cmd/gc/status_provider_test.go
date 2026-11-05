@@ -229,3 +229,22 @@ func TestStatusProviderAttachTimeoutIsUnavailable(t *testing.T) {
 		t.Fatal("statusProviderPartial = false, want true after attachment timeout")
 	}
 }
+
+func TestStatusProviderDefaultBudgetToleratesLoadedHostProbe(t *testing.T) {
+	origWarn := statusProviderTimeoutWarning
+	t.Cleanup(func() { statusProviderTimeoutWarning = origWarn })
+	statusProviderTimeoutWarning = func() {}
+
+	base := newStatusProbeProvider()
+	base.running.Store(true)
+	// A multi-exec tmux liveness probe on a host at load ~40 takes ~100ms.
+	base.delay.Store(int64(100 * time.Millisecond))
+	wrapped := newBoundedStatusProvider(base)
+
+	if !wrapped.IsRunning("worker") {
+		t.Fatal("IsRunning returned false, want running under the default probe budget")
+	}
+	if statusProviderPartial(wrapped) {
+		t.Fatal("status marked partial for a 100ms probe under the default budget")
+	}
+}
