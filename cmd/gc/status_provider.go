@@ -11,8 +11,14 @@ import (
 	"github.com/gastownhall/gascity/internal/runtime"
 )
 
+// defaultStatusProviderCallTimeout bounds one runtime probe. A liveness probe
+// chains several tmux execs; on a loaded host (load average ~40) that chain
+// routinely overruns tens of milliseconds, which turned every agent row
+// "unknown". One second keeps a hung runtime bounded without false unknowns.
+const defaultStatusProviderCallTimeout = time.Second
+
 var (
-	statusProviderCallTimeout    = 50 * time.Millisecond
+	statusProviderCallTimeout    = defaultStatusProviderCallTimeout
 	statusProviderTimeoutWarning = func() {
 		fmt.Fprintln(os.Stderr, "gc status: runtime status probe timed out; using partial status")
 	}
