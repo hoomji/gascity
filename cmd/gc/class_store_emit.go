@@ -851,7 +851,7 @@ func (s *emittingClassStore) ListByMetadataAny(key string, values []string, limi
 		return lister.ListByMetadataAny(key, values, limit, opts...)
 	}
 	query := beads.ListByMetadataAnyQuery(key, values, limit, opts...)
-	rows, err := s.Store.List(query)
+	rows, err := s.List(query)
 	exact := rows[:0]
 	for _, row := range rows {
 		if query.MetadataAny.Matches(row) {
