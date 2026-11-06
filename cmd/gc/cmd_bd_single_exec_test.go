@@ -402,7 +402,10 @@ func TestGcBdCrossScopeByIDRunsBdOnce(t *testing.T) {
 		wantCalls []string
 		wantScope string
 	}{
-		{"city bead read from a rig cwd", true, []string{"show", "demo-abc", "--json"}, []string{"show demo-abc --json"}, "city"},
+		{"city bead read from a rig cwd", true, []string{"show", "demo-abc"}, []string{"show demo-abc"}, "city"},
+		// --json suppresses the scope disclosure, so the shape agents type
+		// most pins the call count alone.
+		{"city bead read from a rig cwd as JSON", true, []string{"show", "demo-abc", "--json"}, []string{"show demo-abc --json"}, ""},
 		{"rig bead read from the city cwd", false, []string{"show", "fe-abc"}, []string{"show fe-abc"}, `rig "frontend"`},
 		{"city bead write from a rig cwd", true, []string{"update", "demo-abc", "--status", "in_progress"}, []string{"show --json demo-abc", "update demo-abc --status in_progress"}, ""},
 	}
