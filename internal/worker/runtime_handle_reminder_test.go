@@ -46,3 +46,15 @@ func TestFormatRuntimeWaitIdleReminderDefaultsBlankSource(t *testing.T) {
 		t.Errorf("blank source should default to \"session\":\n%s", out)
 	}
 }
+
+// SESSION-REMINDER-001: the worker-boundary reminder asks for action in the
+// current turn, not after it (ci-d1t8).
+func TestRuntimeWaitIdleReminderRequestsImmediateAction(t *testing.T) {
+	out := formatRuntimeWaitIdleReminder("deacon", "check the merge queue")
+	if !strings.Contains(out, "Handle these reminders now, before responding to the user.") {
+		t.Fatalf("reminder does not ask for action now:\n%s", out)
+	}
+	if strings.Contains(out, "after this turn") {
+		t.Fatalf("reminder still defers to after this turn:\n%s", out)
+	}
+}
