@@ -1,0 +1,92 @@
+name: city-next drift gates
+
+# Fork-only gates for the city trunk (city-next): BUILD-file drift and lint
+# debt fail here, in CI, instead of depending on the local pre-commit hook.
+# That hook runs `make lint-changed` and expects `make bazel-sync` to have
+# been run, and any commit made with --no-verify skips both: for weeks
+# city-next took commits whose BUILD files were missing Go sources, which
+# broke nogo's type-check of //internal/config and //cmd/gc for every later
+# commit until a manual `make bazel-sync` caught it up.
+#
+# bazel.yml carries the canonical "BUILD files in sync" check, but it runs on
+# Blacksmith runners a fork does not have and on pull requests only (push is
+# main-only), so on this fork it never executes. These jobs run the same two
+# commands on ubuntu-latest, locally (setup-bazel with no remote env: no
+# rbe-west, no fork cache), like fork-verify.yml. They never run in
+# gastownhall/gascity, so they never shadow a required check there.
+
+on:
+  # PRs into city-next are the point; main, hotfix/** and release/** ride
+  # along because every branch-filtered PR workflow here must cover them
+  # (scripts/workflow_pr_branch_filter_test.go).
+  pull_request:
+    branches: [city-next, main, "hotfix/**", "release/**"]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [city-next]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: city-next-drift-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-sync:
+    name: city-next BUILD sync
+    if: ${{ github.repository != 'gastownhall/gascity' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: ./.github/actions/go-mod-download
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+      - name: Restore the LLVM archive
+        uses: ./.github/actions/llvm-archive-cache
+      # make bazel-sync = gazelle + the hermetic repo tree + the hermeticity
+      # ledger's go_test tags + the integration lane's package suite. Any
+      # change it makes, tracked or new (gazelle writes a BUILD.bazel for a
+      # new package), is drift the commit should have carried.
+      - name: BUILD files are in sync (make bazel-sync)
+        run: |
+          make bazel-sync
+          drift=$(git status --porcelain --untracked-files=all)
+          if [ -n "$drift" ]; then
+            echo "::error::BUILD files out of sync; run 'make bazel-sync' and commit the result."
+            echo "$drift" >&2
+            git diff | head -200 >&2
+            exit 1
+          fi
+
+  lint:
+    name: city-next lint (nogo)
+    if: ${{ github.repository != 'gastownhall/gascity' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: ./.github/actions/go-mod-download
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+      - name: Restore the LLVM archive
+        uses: ./.github/actions/llvm-archive-cache
+      # make lint: nogo (go vet's analyzers plus the linters .golangci.yml
+      # enables) over every Go package, the analyzers the pre-commit hook's
+      # `make lint-changed` runs on staged packages only.
+      - name: Lint (make lint)
+        run: make lint
