@@ -3426,7 +3426,7 @@ func formatNudgeInjectOutput(items []queuedNudge) string {
 		message := extmsg.SanitizeForSystemReminder(item.Message)
 		fmt.Fprintf(&sb, "- [%s] %s\n", source, message)
 	}
-	sb.WriteString("\nHandle them after this turn.\n")
+	sb.WriteString("\nHandle these reminders now, before responding to the user.\n")
 	sb.WriteString("</system-reminder>\n")
 	return sb.String()
 }

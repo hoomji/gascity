@@ -31,7 +31,7 @@ func TestLaneHappyPathDeliversOneBatch(t *testing.T) {
 	h.clk.Advance(time.Millisecond)
 	n2 := h.propose(t, laneMsg("n2", RoleNotice, "second"))
 	h.clk.Advance(time.Millisecond)
-	p := h.propose(t, laneMsg("p", RolePrompt, "do the thing", func(r *Request) { r.Producer.Principal = "operator" }))
+	p := h.propose(t, laneMsg("key-prompt-1", RolePrompt, "do the thing", func(r *Request) { r.Producer.Principal = "operator" }))
 	h.clk.Advance(time.Millisecond)
 	n3 := h.propose(t, laneMsg("n3", RoleNotice, "third"))
 	exec := newFakeExec(h.clk)
