@@ -733,3 +733,141 @@ func writeTestFile(t *testing.T, path, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+// pinnedGolangciLint returns the Makefile's GOLANGCI_LINT_VERSION and the
+// go.mod Go version, the two things a usable golangci-lint must match.
+func pinnedGolangciLint(t *testing.T, repoRoot string) (version, goVersion string) {
+	t.Helper()
+	makefile, err := os.ReadFile(filepath.Join(repoRoot, "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	for _, line := range strings.Split(string(makefile), "\n") {
+		if v, ok := strings.CutPrefix(line, "GOLANGCI_LINT_VERSION := "); ok {
+			version = strings.TrimSpace(v)
+		}
+	}
+	gomod, err := os.ReadFile(filepath.Join(repoRoot, "go.mod"))
+	if err != nil {
+		t.Fatalf("read go.mod: %v", err)
+	}
+	for _, line := range strings.Split(string(gomod), "\n") {
+		if v, ok := strings.CutPrefix(line, "go "); ok {
+			goVersion = strings.TrimSpace(v)
+		}
+	}
+	if version == "" || goVersion == "" {
+		t.Fatalf("pinned versions not found: golangci-lint %q, go %q", version, goVersion)
+	}
+	return version, goVersion
+}
+
+// TestGolangciLintTargetReinstallsMismatchedBinary drives the Makefile's
+// $(GOLANGCI_LINT) target with a fake go that records installs. A binary
+// that merely exists used to satisfy the target, so a Go bump in go.mod left
+// a golangci-lint that refuses to load the module and the pre-commit hook
+// failed until someone rebuilt it by hand.
+func TestGolangciLintTargetReinstallsMismatchedBinary(t *testing.T) {
+	repoRoot := repoRoot(t)
+	version, goVersion := pinnedGolangciLint(t, repoRoot)
+
+	tests := []struct {
+		name        string
+		installed   string // `golangci-lint version` output; "" means no binary
+		override    bool   // pass GOLANGCI_LINT on the command line
+		wantInstall bool
+	}{
+		{name: "caller-owned override is never replaced", installed: "golangci-lint has version 0.0.1 built with go1.1.0 from (unknown)", override: true, wantInstall: false},
+		{name: "missing caller-owned override is installed", installed: "", override: true, wantInstall: true},
+		{name: "built with an older go", installed: "golangci-lint has version " + version + " built with go1.1.0 from (unknown)", wantInstall: true},
+		{name: "wrong golangci-lint version", installed: "golangci-lint has version 0.0.1 built with go" + goVersion + " from (unknown)", wantInstall: true},
+		{name: "missing binary", installed: "", wantInstall: true},
+		{name: "pinned version and go", installed: "golangci-lint has version " + version + " built with go" + goVersion + " from (unknown)", wantInstall: false},
+		{name: "pinned version built with newer go", installed: "golangci-lint has version " + version + " built with go99.0.0 from (unknown)", wantInstall: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeBin := t.TempDir()
+			lintDir := t.TempDir()
+			installLog := filepath.Join(t.TempDir(), "install.log")
+			writeExecutable(t, filepath.Join(fakeBin, "go"), `#!/usr/bin/env bash
+case "$1" in
+  env)
+    case "$2" in
+      GOPATH) echo /nonexistent-gopath ;;
+      GOOS) echo linux ;;
+      GOARCH) echo amd64 ;;
+    esac
+    ;;
+  install)
+    printf 'GOTOOLCHAIN=%s GOBIN=%s %s\n' "$GOTOOLCHAIN" "$GOBIN" "$*" >>"`+installLog+`"
+    ;;
+esac
+exit 0
+`)
+			binary := filepath.Join(lintDir, "golangci-lint")
+			if tt.installed != "" {
+				writeExecutable(t, binary, "#!/usr/bin/env bash\necho '"+tt.installed+"'\n")
+			}
+
+			args := []string{"--no-print-directory", "BIN_DIR=" + lintDir}
+			if tt.override {
+				args = append(args, "GOLANGCI_LINT="+binary)
+			}
+			cmd := exec.Command("make", append(args, binary)...)
+			cmd.Dir = repoRoot
+			cmd.Env = []string{
+				"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"HOME=" + t.TempDir(),
+			}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("make %s failed: %v\n%s", binary, err, out)
+			}
+
+			logged, err := os.ReadFile(installLog)
+			if err != nil && !os.IsNotExist(err) {
+				t.Fatalf("read install log: %v", err)
+			}
+			if !tt.wantInstall {
+				if len(logged) != 0 {
+					t.Fatalf("matching binary was reinstalled:\n%s\nmake output:\n%s", logged, out)
+				}
+				return
+			}
+			want := "GOTOOLCHAIN=go" + goVersion + " GOBIN=" + lintDir +
+				" install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v" + version + "\n"
+			if string(logged) != want {
+				t.Fatalf("install log = %q, want %q\nmake output:\n%s", logged, want, out)
+			}
+		})
+	}
+}
+
+// TestPreCommitFormatterUsesGolangciLintOverride pins that the formatter runs
+// the binary the hook resolved (GOLANGCI_LINT), not the first golangci-lint
+// on PATH, which can be a stale copy.
+func TestPreCommitFormatterUsesGolangciLintOverride(t *testing.T) {
+	repoRoot := repoRoot(t)
+	pathDir := t.TempDir()
+	writeExecutable(t, filepath.Join(pathDir, "golangci-lint"), "#!/usr/bin/env bash\necho 'stale golangci-lint on PATH ran' >&2\nexit 3\n")
+	pinned := filepath.Join(t.TempDir(), "golangci-lint")
+	writeExecutable(t, pinned, "#!/usr/bin/env bash\ncat\n")
+
+	source := filepath.Join(t.TempDir(), "formatted.go")
+	if err := os.WriteFile(source, []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	cmd := exec.Command(filepath.Join(repoRoot, "scripts", "precommit-format-staged-go"))
+	cmd.Dir = repoRoot
+	cmd.Env = []string{
+		"PATH=" + pathDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"GOLANGCI_LINT=" + pinned,
+		"HOME=" + t.TempDir(),
+		"TMPDIR=" + t.TempDir(),
+	}
+	cmd.Stdin = strings.NewReader(source + "\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("formatter did not use GOLANGCI_LINT: %v\n%s", err, out)
+	}
+}

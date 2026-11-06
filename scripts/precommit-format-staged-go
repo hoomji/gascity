@@ -2,6 +2,7 @@
 set -euo pipefail
 
 status=0
+lint=${GOLANGCI_LINT:-golangci-lint}
 
 while IFS= read -r file; do
   if [ -z "$file" ] || [ ! -f "$file" ]; then
@@ -9,7 +10,7 @@ while IFS= read -r file; do
   fi
 
   tmp=$(mktemp "${TMPDIR:-/tmp}/gc-precommit-fmt.XXXXXX")
-  if ! golangci-lint fmt --stdin <"$file" >"$tmp"; then
+  if ! "$lint" fmt --stdin <"$file" >"$tmp"; then
     rm -f "$tmp"
     status=1
     continue

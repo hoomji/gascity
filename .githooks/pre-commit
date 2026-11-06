@@ -18,6 +18,12 @@ if [ -z "$staged_go_files" ] && [ -z "$staged_web_src" ] && [ -z "$staged_docs" 
 fi
 
 if [ -n "$staged_go_files" ]; then
+  # Format with the Makefile's pinned golangci-lint, (re)installed when it is
+  # the wrong version or built with a Go older than go.mod. A bare PATH
+  # lookup can find a stale copy that refuses to load this module.
+  make -s ensure-golangci-lint || exit 1
+  GOLANGCI_LINT="$(go env GOPATH)/bin/golangci-lint"
+  export GOLANGCI_LINT
   printf '%s\n' "$staged_go_files" | scripts/precommit-format-staged-go
   printf '%s\n' "$staged_go_files" | xargs git add
 

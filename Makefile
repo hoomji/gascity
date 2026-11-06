@@ -341,6 +341,7 @@ LINT_GOMEMLIMIT ?= 6GiB
 LINT_ENV = GOFLAGS="$(QUALITY_GATE_GOFLAGS)" GOMEMLIMIT=$(LINT_GOMEMLIMIT)
 QUALITY_GATE_GOFLAGS = $$(go env GOFLAGS | sed -E 's/(^|[[:space:]])-mod=[^[:space:]]+//g') -mod=readonly
 CI_STATIC_SELECT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))scripts/ci-static-select
+ENSURE_GOLANGCI_LINT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))scripts/ensure-golangci-lint
 
 # Lint and vet run as nogo (//tools/nogo): go vet's analyzers plus the
 # linters .golangci.yml enables, validated beside every Go compile, so
@@ -1003,23 +1004,23 @@ cover: test-cover
 ## install-tools: install pinned golangci-lint + oapi-codegen + oasdiff
 install-tools: $(GOLANGCI_LINT) install-oapi-codegen install-oasdiff
 
-$(GOLANGCI_LINT):
-	@echo "Installing golangci-lint v$(GOLANGCI_LINT_VERSION)..."
-	@attempt=1; max_attempts=5; delay=2; \
-	while [ $$attempt -le $$max_attempts ]; do \
-		echo "golangci-lint install attempt $$attempt/$$max_attempts"; \
-		if GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION); then \
-			exit 0; \
-		fi; \
-		if [ $$attempt -lt $$max_attempts ]; then \
-			echo "golangci-lint install failed; retrying in $${delay}s..." >&2; \
-			sleep $$delay; \
-		fi; \
-		attempt=$$((attempt + 1)); \
-		delay=$$((delay * 2)); \
-	done; \
-	echo "ERROR: failed to install golangci-lint v$(GOLANGCI_LINT_VERSION) after $$max_attempts attempts" >&2; \
-	exit 1
+# Always runs (FORCE): an existing binary can still be the wrong version or
+# built with a Go older than go.mod, which golangci-lint refuses to load.
+# The script exits fast when the binary already matches. A GOLANGCI_LINT
+# set on the command line or in the environment belongs to the caller: it
+# is only installed when missing, never replaced.
+$(GOLANGCI_LINT): FORCE
+ifeq ($(filter command line environment environment override,$(origin GOLANGCI_LINT)),)
+	@"$(ENSURE_GOLANGCI_LINT)" "$(GOLANGCI_LINT)" "$(GOLANGCI_LINT_VERSION)"
+else
+	@test -e "$(GOLANGCI_LINT)" || "$(ENSURE_GOLANGCI_LINT)" "$(GOLANGCI_LINT)" "$(GOLANGCI_LINT_VERSION)"
+endif
+
+## ensure-golangci-lint: install or upgrade the pinned golangci-lint (used by the pre-commit hook)
+ensure-golangci-lint: $(GOLANGCI_LINT)
+
+.PHONY: ensure-golangci-lint FORCE
+FORCE:
 
 ## install-oapi-codegen: install pinned oapi-codegen so the spec→client drift
 ## test (TestGeneratedClientInSync) can regenerate client_gen.go without skipping.
