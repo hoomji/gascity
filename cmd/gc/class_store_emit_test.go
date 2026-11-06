@@ -1816,6 +1816,11 @@ func TestEmittingClassStoreOverClaimsArePinnedPerEngine(t *testing.T) {
 			"ReadyBlockedByAbsent", "ReadyContext",
 			"SequenceFloor", "SetSequenceFloor", "StoreHealthPath",
 			"StrandsAbsentTargets",
+			// ListContext over a NativeDoltStore binding forwards through
+			// beads.ListWithContext, which finds no ContextLister and runs the
+			// pre-read ctx check then List: the path ListWithContext takes over
+			// a wrapper without the method.
+			"ListContext",
 		},
 		reflect.TypeOf(&beads.SQLiteStore{}): {
 			"ConditionalWritesModeSource", "Count",
