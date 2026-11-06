@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -570,7 +571,12 @@ func doBd(args []string, stdout, stderr io.Writer) int {
 	// stdout (human or --json) is untouched, and it never changes the exit
 	// code, matching the disclosure style #5162/#5167 established for the
 	// sibling relocated-class invariant.
-	if verb, _, ok := bdRelocatedClassVerb(bdArgs); ok && bdScopeDisclosureVerbs[verb] {
+	//
+	// Suppressed under --json: a machine reader asked for a document, and a
+	// caller that merges the streams (2>&1, a CombinedOutput, a pane capture)
+	// would otherwise feed this prose line to its JSON decoder. The store the
+	// read targeted is still named by the --rig/--city the caller passed.
+	if verb, _, ok := bdRelocatedClassVerb(bdArgs); ok && bdScopeDisclosureVerbs[verb] && !bdArgsWantJSON(bdArgs) {
 		fmt.Fprintf(stderr, "gc bd: answering from the %s store\n", scopeLabel(target)) //nolint:errcheck // best-effort stderr
 	}
 
@@ -1198,6 +1204,27 @@ var bdScopeDisclosureVerbs = map[string]bool{
 	"ready":  true,
 	"search": true,
 	"show":   true,
+}
+
+// bdArgsWantJSON reports whether a bd invocation asked for JSON output:
+// a bare --json, or --json=<true> in any spelling strconv.ParseBool accepts,
+// anywhere before a "--" terminator. --json=false does not count.
+func bdArgsWantJSON(bdArgs []string) bool {
+	want := false
+	for _, arg := range bdArgs {
+		if arg == "--" {
+			break
+		}
+		if arg == "--json" {
+			want = true
+			continue
+		}
+		if value, ok := strings.CutPrefix(arg, "--json="); ok {
+			parsed, err := strconv.ParseBool(value)
+			want = err == nil && parsed
+		}
+	}
+	return want
 }
 
 // scopeLabel renders a store target for operator-facing diagnostics, e.g.

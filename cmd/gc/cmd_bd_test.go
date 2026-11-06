@@ -897,12 +897,10 @@ esac
 		args       []string
 		wantStderr string // "" means stderr must be empty
 	}{
-		// show is a read-only passthrough verb, so it now carries the
-		// gastownhall/gascity#5170 scope-disclosure line (see
-		// TestGcBdDisclosesAnsweringStore); this test's own concern —
-		// BD_EXPORT_AUTO is suppressed and no auto-export error reaches the
-		// operator — is unaffected by that one additive line.
-		{args: []string{"show", "gc-1", "--json"}, wantStderr: "gc bd: answering from the city store\n"},
+		// show is a read-only passthrough verb, but under --json the
+		// gastownhall/gascity#5170 scope-disclosure line is suppressed (see
+		// TestGcBdScopeDisclosureSilentUnderJSON), so stderr stays empty.
+		{args: []string{"show", "gc-1", "--json"}, wantStderr: ""},
 		{args: []string{"update", "gc-1", "--claim", "--json"}, wantStderr: ""},
 	} {
 		args := tc.args
@@ -3261,6 +3259,59 @@ func TestGcBdDisclosesAnsweringStore(t *testing.T) {
 		}
 		if strings.Contains(stderr.String(), "answering from") {
 			t.Fatalf("stderr = %q, want no scope disclosure for a write verb; stderr=%q", stderr.String(), stderr.String())
+		}
+	})
+}
+
+// TestGcBdScopeDisclosureSilentUnderJSON pins that the "answering from the
+// ... store" disclosure never reaches a --json reader. It goes to stderr
+// only, and is suppressed entirely when --json is given, so a caller that
+// merges stdout and stderr (2>&1 | jq, CombinedOutput, json.load of a pane
+// capture) never decodes it. Plain-text reads keep it, on stderr.
+func TestGcBdScopeDisclosureSilentUnderJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"rig show --json", []string{"--rig", "frontend", "show", "fe-1", "--json"}},
+		{"rig show --json before verb", []string{"--rig", "frontend", "--json", "show", "fe-1"}},
+		{"rig list --json=true", []string{"--rig", "frontend", "list", "--json=true"}},
+		{"city list --json", []string{"list", "--json"}},
+		{"rig ready --json", []string{"--rig", "frontend", "ready", "--json"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			newBdScopeDisclosureTestCity(t)
+
+			var stdout, stderr bytes.Buffer
+			if got := doBd(tc.args, &stdout, &stderr); got != 0 {
+				t.Fatalf("doBd(%v) = %d, want 0; stdout=%q stderr=%q", tc.args, got, stdout.String(), stderr.String())
+			}
+			if strings.Contains(stdout.String()+stderr.String(), "answering from") {
+				t.Fatalf("doBd(%v): scope disclosure emitted under --json; stdout=%q stderr=%q", tc.args, stdout.String(), stderr.String())
+			}
+			var doc any
+			if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+				t.Fatalf("doBd(%v): stdout is not one JSON document: %v; stdout=%q", tc.args, err, stdout.String())
+			}
+		})
+	}
+
+	t.Run("plain text and --json=false keep the disclosure on stderr", func(t *testing.T) {
+		for _, args := range [][]string{
+			{"--rig", "frontend", "show", "fe-1"},
+			{"--rig", "frontend", "list", "--json=false"},
+		} {
+			newBdScopeDisclosureTestCity(t)
+			var stdout, stderr bytes.Buffer
+			if got := doBd(args, &stdout, &stderr); got != 0 {
+				t.Fatalf("doBd(%v) = %d, want 0; stderr=%q", args, got, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), `gc bd: answering from the rig "frontend" store`) {
+				t.Fatalf("doBd(%v) stderr = %q, want the disclosure", args, stderr.String())
+			}
+			if strings.Contains(stdout.String(), "answering from") {
+				t.Fatalf("doBd(%v) wrote the disclosure to stdout: %q", args, stdout.String())
+			}
 		}
 	})
 }
