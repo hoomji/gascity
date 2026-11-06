@@ -31,6 +31,7 @@ var localWriteCensusExempt = map[string]string{
 	"CachingStore.ListByAssignee":                        "read",
 	"CachingStore.ListByLabel":                           "read",
 	"CachingStore.ListByMetadata":                        "read",
+	"CachingStore.ListByMetadataAny":                     "read",
 	"CachingStore.ListOpen":                              "read",
 	"CachingStore.ObservedList":                          "read",
 	"CachingStore.OwnsBeadID":                            "read",
