@@ -1481,8 +1481,8 @@ func (c *CachingStore) readCacheWithOverlayContext(ctx context.Context, gate fun
 		return err
 	}
 	// Deferred so it runs after every unlock below: a dirty-row refresh can be
-	// the first reader to see a close made by another process.
-	defer c.announceUnannouncedCloses()
+	// the first reader to see a close or a claim made by another process.
+	defer c.announceReadInstalls()
 	suppressed := make(map[string]struct{})
 	for pass := 0; pass < 2; pass++ {
 		c.mu.RLock()
@@ -1546,9 +1546,10 @@ func (c *CachingStore) readCacheWithOverlayContext(ctx context.Context, gate fun
 				continue
 			}
 			opts := absorbOpts{
-				depsMode:   depsFromFields,
-				seqMode:    seqClearBeadSeqOnly,
-				clearDirty: true,
+				depsMode:     depsFromFields,
+				seqMode:      seqClearBeadSeqOnly,
+				clearDirty:   true,
+				announceRead: true,
 			}
 			// R1: rows whose backing.Get carried no dependency fields had their
 			// authoritative deps fetched separately; install them verbatim so the
