@@ -86,6 +86,12 @@ export type AgentPatch = {
         [key: string]: string;
     };
     EnvRemove: Array<string> | null;
+    FallbackOptionDefaults?: {
+        [key: string]: {
+            [key: string]: string;
+        };
+    };
+    FallbackProviders: Array<string> | null;
     HooksInstalled: boolean | null;
     IdleTimeout: string | null;
     InjectAssignedSkills: boolean | null;

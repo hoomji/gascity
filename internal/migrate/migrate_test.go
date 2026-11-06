@@ -1131,6 +1131,8 @@ func TestAgentConfigFromAgentCoversPersistedFields(t *testing.T) {
 		EmitsPermissionWarning: &trueVal,
 		Env:                    map[string]string{"K": "V"},
 		OptionDefaults:         map[string]string{"effort": "max"},
+		FallbackProviders:      []string{"codex"},
+		FallbackOptionDefaults: map[string]map[string]string{"codex": {"model": "gpt"}},
 		MaxActiveSessions:      intPtr(5),
 		MinActiveSessions:      intPtr(1),
 		ScaleCheck:             "echo 3",
@@ -1178,6 +1180,8 @@ func TestAgentConfigFromAgentCoversPersistedFields(t *testing.T) {
 		"PoolName":                     true,
 		"BindingName":                  true,
 		"PackName":                     true,
+		// Provenance only (toml:"-"): set by ApplyAgentDefaults.
+		"FallbackProvidersFromDefaults": true,
 		// Runtime-only provenance consumed inside internal/config.
 		"source": true,
 		"layout": true,
@@ -1253,5 +1257,69 @@ func TestAgentConfigFromAgentCarriesAutoReclaimStaleClaims(t *testing.T) {
 	got := agentConfigFromAgent(config.Agent{AutoReclaimStaleClaims: true})
 	if !got.AutoReclaimStaleClaims {
 		t.Error("agentConfigFromAgent should carry AutoReclaimStaleClaims through to the persisted agentFile")
+	}
+}
+
+// TestAgentFileCarriesFallbackProviders pins the migrated agent.toml for the
+// fallback fields: a list and its per-provider options survive, an explicit
+// empty list (the opt-out from [agent_defaults] fallback_providers) stays an
+// explicit empty list, and an unset or default-inherited list stays unset.
+func TestAgentFileCarriesFallbackProviders(t *testing.T) {
+	parsed, err := config.Parse([]byte(`
+[[agent]]
+name = "listed"
+provider = "claude"
+fallback_providers = ["codex"]
+[agent.fallback_option_defaults.codex]
+model = "gpt"
+
+[[agent]]
+name = "opted-out"
+provider = "claude"
+fallback_providers = []
+
+[[agent]]
+name = "unset"
+provider = "claude"
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	inherited := config.Agent{Name: "inherited", Provider: "claude", FallbackProviders: []string{"codex"}, FallbackProvidersFromDefaults: true}
+	agents := append(append([]config.Agent{}, parsed.Agents...), inherited)
+
+	tests := map[string]struct {
+		want    []string
+		notWant []string
+	}{
+		"listed":    {want: []string{`fallback_providers = ["codex"]`, `[fallback_option_defaults.codex]`, `model = "gpt"`}},
+		"opted-out": {want: []string{`fallback_providers = []`}},
+		"unset":     {notWant: []string{"fallback_providers"}},
+		"inherited": {notWant: []string{"fallback_providers"}},
+	}
+	for _, agent := range agents {
+		tt, ok := tests[agent.Name]
+		if !ok {
+			t.Fatalf("unexpected agent %q", agent.Name)
+		}
+		data, err := marshalAgentFile(agentConfigFromAgent(agent))
+		if err != nil {
+			t.Fatalf("%s: marshal: %v", agent.Name, err)
+		}
+		out := string(data)
+		for _, w := range tt.want {
+			if !strings.Contains(out, w) {
+				t.Errorf("%s: agent.toml missing %q:\n%s", agent.Name, w, out)
+			}
+		}
+		for _, nw := range tt.notWant {
+			if strings.Contains(out, nw) {
+				t.Errorf("%s: agent.toml has %q:\n%s", agent.Name, nw, out)
+			}
+		}
+		delete(tests, agent.Name)
+	}
+	if len(tests) != 0 {
+		t.Fatalf("agents not checked: %v", tests)
 	}
 }

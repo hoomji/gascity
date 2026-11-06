@@ -2767,7 +2767,7 @@ calls = 1
 [[count]]
 path = "scripts/precommit_contract_test.go"
 resource = "subprocess"
-calls = 11
+calls = 13
 
 [[count]]
 path = "scripts/push_ownership_guard_test.go"
