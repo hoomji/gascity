@@ -87,7 +87,7 @@ func (h deferredSubmitHarness) deliverPass(t *testing.T) []string {
 // A user's submit the runtime deferred (BB live E2E, codex-cli 0.162.1:
 // {"queued": true}) is still the user's prompt. The queue's poller types it
 // as the user would have, verbatim: wrapped as a deferred <system-reminder>
-// ("Handle them after this turn") the agent takes it as a note, and GC's
+// (formerly "Handle them after this turn") the agent takes it as a note, and GC's
 // structured history holds no user message with the submitted text.
 func TestDeferredSubmitIsDeliveredAsTheUserPrompt(t *testing.T) {
 	const prompt = "User request:\nList the files in this directory."

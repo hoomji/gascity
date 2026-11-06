@@ -4,12 +4,12 @@ You have a deferred reminder that was queued until a safe boundary:
 
 - [session] review queued work
 
-Handle them after this turn.
+Handle these reminders now, before responding to the user.
 </system-reminder>
 <system-reminder>
 You have a deferred reminder that was queued until a safe boundary:
 
 - [mail] mail arrived
 
-Handle them after this turn.
+Handle these reminders now, before responding to the user.
 </system-reminder>

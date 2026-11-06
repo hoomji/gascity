@@ -667,7 +667,7 @@ func formatRuntimeWaitIdleReminder(source, message string) string {
 	sb.WriteString("<system-reminder>\n")
 	sb.WriteString("You have a deferred reminder that was queued until a safe boundary:\n\n")
 	fmt.Fprintf(&sb, "- [%s] %s\n", source, message)
-	sb.WriteString("\nHandle them after this turn.\n")
+	sb.WriteString("\nHandle these reminders now, before responding to the user.\n")
 	sb.WriteString("</system-reminder>\n")
 	return sb.String()
 }
