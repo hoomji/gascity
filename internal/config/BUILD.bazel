@@ -17,6 +17,7 @@ go_library(
         "endpoint_compat_edit.go",
         "envname.go",
         "extmsg.go",
+        "fallback_options.go",
         "fingerprint_ctime_unix.go",
         "fingerprint_ctime_windows.go",
         "github_pr_monitor.go",
