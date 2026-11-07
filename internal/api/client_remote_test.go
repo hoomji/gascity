@@ -849,14 +849,14 @@ func TestNewRemoteEventsClientDoesNotRetrySSE401(t *testing.T) {
 			name: "agent output",
 			path: "/v0/city/mc/agent/base/output/stream",
 			call: func(ctx context.Context, gen *genclient.ClientWithResponses) (*http.Response, error) {
-				return gen.StreamAgentOutput(ctx, "mc", "base")
+				return gen.StreamAgentOutput(ctx, "mc", "base", nil)
 			},
 		},
 		{
 			name: "qualified agent output",
 			path: "/v0/city/mc/agent/dir/base/output/stream",
 			call: func(ctx context.Context, gen *genclient.ClientWithResponses) (*http.Response, error) {
-				return gen.StreamAgentOutputQualified(ctx, "mc", "dir", "base")
+				return gen.StreamAgentOutputQualified(ctx, "mc", "dir", "base", nil)
 			},
 		},
 		{

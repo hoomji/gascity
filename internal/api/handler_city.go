@@ -4,6 +4,7 @@ type cityGetResponse struct {
 	Name            string `json:"name"`
 	Path            string `json:"path"`
 	Version         string `json:"version,omitempty"`
+	IncarnationID   string `json:"incarnation_id,omitempty"`
 	Suspended       bool   `json:"suspended"`
 	Provider        string `json:"provider,omitempty"`
 	SessionTemplate string `json:"session_template,omitempty"`

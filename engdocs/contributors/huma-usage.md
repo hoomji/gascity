@@ -117,6 +117,15 @@ func cityPost[I, O any] (sm *SupervisorMux, tail string,
 }
 ```
 
+The same one-line-per-helper shape declares the `412` the
+`X-GC-City-Incarnation` precondition can emit
+(`addCityIncarnation412`, passed by every `cityGet`/`Post`/`Put`/
+`Patch`/`Delete`/`Register` helper). The header parameter itself
+is declared differently: `bindCity` enforces it from the typed
+input value, so it lives as a field on the shared `CityScope`
+mixin rather than as an appended `op.Parameters` entry — one
+definition, not fifty, and no hidden contract.
+
 **The sharp edge.** If you skip `huma.Post` and call
 `huma.Register` with a manually-built `huma.Operation`, you lose
 auto-`OperationID`/Summary generation — the spec ends up with

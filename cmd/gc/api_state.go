@@ -114,14 +114,18 @@ type controllerState struct {
 	// built from it there. Nil for every city that authors no [storage] section,
 	// and for an API state built without a runtime — both route every class at
 	// the work store.
-	storageRoutes          *storageRoutes
-	cityBeadsDiagnostic    *beads.BeadsDiagnostic
-	cityMailProv           mail.Provider // city-level mail provider (all mail is city-scoped)
-	eventProv              events.Provider
-	usageSink              usage.Sink
-	editor                 *configedit.Editor
-	cityName               string
-	cityPath               string
+	storageRoutes       *storageRoutes
+	cityBeadsDiagnostic *beads.BeadsDiagnostic
+	cityMailProv        mail.Provider // city-level mail provider (all mail is city-scoped)
+	eventProv           events.Provider
+	usageSink           usage.Sink
+	editor              *configedit.Editor
+	cityName            string
+	cityPath            string
+	// incarnationID is the city's incarnation id latched at construction
+	// (best-effort: boot ensures the file first, so a missing id here
+	// means a test state over a fake city dir). Written once, read lock-free.
+	incarnationID          string
 	version                string
 	startedAt              time.Time
 	storeMetadataSignature string
@@ -323,16 +327,20 @@ func newControllerStateWithRoutes(
 	// reason: a later city.toml edit must not flip an already-open store.
 	nativeTransport := resolvedNativeTransportMode(cfg)
 	cs := &controllerState{
-		beadsQuiescent:      beadsQuiescent,
-		cfg:                 cfg,
-		sp:                  sp,
-		cacheCtx:            ctx,
-		storageRoutes:       routes,
-		eventProv:           ep,
-		usageSink:           usageSinkForCity(cfg, cityPath),
-		editor:              configedit.NewEditor(fsys.OSFS{}, tomlPath),
-		cityName:            cityName,
-		cityPath:            cityPath,
+		beadsQuiescent: beadsQuiescent,
+		cfg:            cfg,
+		sp:             sp,
+		cacheCtx:       ctx,
+		storageRoutes:  routes,
+		eventProv:      ep,
+		usageSink:      usageSinkForCity(cfg, cityPath),
+		editor:         configedit.NewEditor(fsys.OSFS{}, tomlPath),
+		cityName:       cityName,
+		cityPath:       cityPath,
+		// Best-effort latch: boot ensures the file before any state is
+		// built, so only test states over fake dirs land here empty —
+		// and this constructor returns no error.
+		incarnationID:       loadIncarnationIDBestEffort(cityPath),
 		version:             version,
 		startedAt:           time.Now(),
 		adapterReg:          extmsg.NewAdapterRegistry(),
@@ -1977,6 +1985,13 @@ func (cs *controllerState) CityName() string {
 // CityPath returns the city root directory.
 func (cs *controllerState) CityPath() string {
 	return cs.cityPath
+}
+
+// CityIncarnationID returns the city's incarnation id latched at load,
+// or "" when the state was built over a dir without one. It implements
+// api.IncarnationProvider, backing the X-GC-City-Incarnation precondition.
+func (cs *controllerState) CityIncarnationID() string {
+	return cs.incarnationID
 }
 
 // Version returns the GC binary version string.

@@ -4,7 +4,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/gastownhall/gascity/internal/citylayout"
 	"github.com/gastownhall/gascity/internal/fsys"
@@ -22,6 +25,32 @@ func TestEnsureCityScaffoldFSReturnsEventLogWriteError(t *testing.T) {
 	err := EnsureCityScaffoldFS(f, "/city")
 	if !errors.Is(err, writeErr) {
 		t.Fatalf("EnsureCityScaffoldFS error = %v, want %v", err, writeErr)
+	}
+}
+
+func TestEnsureCityScaffoldFSMintsIncarnationID(t *testing.T) {
+	f := fsys.NewFake()
+	if err := EnsureCityScaffoldFS(f, "/city"); err != nil {
+		t.Fatalf("EnsureCityScaffoldFS: %v", err)
+	}
+	raw, err := f.ReadFile(filepath.Join("/city", citylayout.RuntimeRoot, "city-id"))
+	if err != nil {
+		t.Fatalf("read city-id: %v", err)
+	}
+	first := strings.TrimSpace(string(raw))
+	if _, err := uuid.Parse(first); err != nil {
+		t.Errorf("city-id %q is not a UUID: %v", first, err)
+	}
+	// A re-ensure (resume path) never rewrites the id.
+	if err := EnsureCityScaffoldFS(f, "/city"); err != nil {
+		t.Fatalf("EnsureCityScaffoldFS again: %v", err)
+	}
+	raw, err = f.ReadFile(filepath.Join("/city", citylayout.RuntimeRoot, "city-id"))
+	if err != nil {
+		t.Fatalf("read city-id again: %v", err)
+	}
+	if second := strings.TrimSpace(string(raw)); second != first {
+		t.Errorf("city-id after re-ensure = %q, want the minted %q", second, first)
 	}
 }
 

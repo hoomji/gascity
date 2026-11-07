@@ -81,11 +81,11 @@ func (h *contractHarness) expectUnread(t *testing.T, want int64) {
 func contractConfigFamily(t *testing.T, h *contractHarness) {
 	c, ctx, city := h.client, h.ctx, contractCityName
 
-	providers, err := c.GetV0CityByCityNameProvidersWithResponse(ctx, city)
+	providers, err := c.GetV0CityByCityNameProvidersWithResponse(ctx, city, nil)
 	expectStatus(t, "list providers", providers, err, http.StatusOK)
-	public, err := c.GetV0CityByCityNameProvidersPublicWithResponse(ctx, city)
+	public, err := c.GetV0CityByCityNameProvidersPublicWithResponse(ctx, city, nil)
 	expectStatus(t, "list public providers", public, err, http.StatusOK)
-	claude, err := c.GetV0CityByCityNameProviderByNameWithResponse(ctx, city, "claude")
+	claude, err := c.GetV0CityByCityNameProviderByNameWithResponse(ctx, city, "claude", nil)
 	expectStatus(t, "get provider", claude, err, http.StatusOK)
 
 	created, err := c.CreateProviderWithResponse(ctx, city, &genclient.CreateProviderParams{XGCRequest: contractCSRF},
@@ -105,12 +105,12 @@ func contractConfigFamily(t *testing.T, h *contractHarness) {
 	expectStatus(t, "put provider patch", pput, err, http.StatusOK)
 	// The patch reads back as written (composition clears [patches] from the
 	// composed config, so reads must come from the declared config).
-	plist, err := c.GetV0CityByCityNamePatchesProvidersWithResponse(ctx, city)
+	plist, err := c.GetV0CityByCityNamePatchesProvidersWithResponse(ctx, city, nil)
 	expectStatus(t, "list provider patches", plist, err, http.StatusOK)
 	if items := derefSlice(mustJSON(t, "list provider patches", plist.JSON200, plist).Items); len(items) != 1 || items[0].Name != "contract-cli" {
 		t.Fatalf("provider patches = %s, want the contract-cli patch", contractBody(plist))
 	}
-	pget, err := c.GetV0CityByCityNamePatchesProviderByNameWithResponse(ctx, city, "contract-cli")
+	pget, err := c.GetV0CityByCityNamePatchesProviderByNameWithResponse(ctx, city, "contract-cli", nil)
 	expectStatus(t, "get provider patch", pget, err, http.StatusOK)
 	if got := mustJSON(t, "get provider patch", pget.JSON200, pget).PromptMode; got == nil || *got != "none" {
 		t.Fatalf("provider patch prompt_mode = %v, want none: %s", got, contractBody(pget))
@@ -122,7 +122,7 @@ func contractConfigFamily(t *testing.T, h *contractHarness) {
 	removed, err := c.DeleteV0CityByCityNameProviderByNameWithResponse(ctx, city, "contract-cli",
 		&genclient.DeleteV0CityByCityNameProviderByNameParams{XGCRequest: contractCSRF})
 	expectStatus(t, "delete provider", removed, err, http.StatusOK)
-	gone, err := c.GetV0CityByCityNameProviderByNameWithResponse(ctx, city, "contract-cli")
+	gone, err := c.GetV0CityByCityNameProviderByNameWithResponse(ctx, city, "contract-cli", nil)
 	expectStatus(t, "get deleted provider", gone, err, http.StatusNotFound)
 
 	// Agent patches overlay the agent: suspension through a patch must show
@@ -131,23 +131,23 @@ func contractConfigFamily(t *testing.T, h *contractHarness) {
 		&genclient.PutV0CityByCityNamePatchesAgentsParams{XGCRequest: contractCSRF},
 		genclient.PutV0CityByCityNamePatchesAgentsJSONRequestBody{Name: ptr(contractAgent), Env: &map[string]string{"CONTRACT": "1"}})
 	expectStatus(t, "put agent patch", aput, err, http.StatusOK)
-	alist, err := c.GetV0CityByCityNamePatchesAgentsWithResponse(ctx, city)
+	alist, err := c.GetV0CityByCityNamePatchesAgentsWithResponse(ctx, city, nil)
 	expectStatus(t, "list agent patches", alist, err, http.StatusOK)
 	if items := derefSlice(mustJSON(t, "list agent patches", alist.JSON200, alist).Items); len(items) != 1 || items[0].Name != contractAgent {
 		t.Fatalf("agent patches = %s, want the %s patch", contractBody(alist), contractAgent)
 	}
 	// The config summary and explain count the declared patch as well.
-	counted, err := c.GetV0CityByCityNameConfigWithResponse(ctx, city)
+	counted, err := c.GetV0CityByCityNameConfigWithResponse(ctx, city, nil)
 	expectStatus(t, "config with agent patch", counted, err, http.StatusOK)
 	if p := mustJSON(t, "config with agent patch", counted.JSON200, counted).Patches; p == nil || p.AgentCount != 1 {
 		t.Fatalf("config patch counts = %+v, want 1 agent patch: %s", p, contractBody(counted))
 	}
-	explained, err := c.GetV0CityByCityNameConfigExplainWithResponse(ctx, city)
+	explained, err := c.GetV0CityByCityNameConfigExplainWithResponse(ctx, city, nil)
 	expectStatus(t, "explain with agent patch", explained, err, http.StatusOK)
 	if got := mustJSON(t, "explain with agent patch", explained.JSON200, explained).Patches.Agents; got != 1 {
 		t.Fatalf("explain agent patch count = %d, want 1: %s", got, contractBody(explained))
 	}
-	aget, err := c.GetV0CityByCityNamePatchesAgentByBaseWithResponse(ctx, city, contractAgent)
+	aget, err := c.GetV0CityByCityNamePatchesAgentByBaseWithResponse(ctx, city, contractAgent, nil)
 	expectStatus(t, "get agent patch", aget, err, http.StatusOK)
 	if env := mustJSON(t, "get agent patch", aget.JSON200, aget).Env; env == nil || (*env)["CONTRACT"] != "1" {
 		t.Fatalf("agent patch env = %v, want CONTRACT=1: %s", env, contractBody(aget))
@@ -163,21 +163,21 @@ func contractConfigFamily(t *testing.T, h *contractHarness) {
 	// agent in the merged config: the patch names a missing target, so it is
 	// rolled back and rejected as a client error, and no patch reads back.
 	expectStatus(t, "put qualified agent patch", qput, err, http.StatusBadRequest)
-	qget, err := c.GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx, city, contractRig, contractRigAgent)
+	qget, err := c.GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx, city, contractRig, contractRigAgent, nil)
 	expectStatus(t, "get qualified agent patch", qget, err, http.StatusNotFound)
 	qdel, err := c.DeleteV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx, city, contractRig, contractRigAgent,
 		&genclient.DeleteV0CityByCityNamePatchesAgentByDirByBaseParams{XGCRequest: contractCSRF})
 	expectStatus(t, "delete qualified agent patch", qdel, err, http.StatusNotFound)
 
-	packs, err := c.GetV0CityByCityNamePacksWithResponse(ctx, city)
+	packs, err := c.GetV0CityByCityNamePacksWithResponse(ctx, city, nil)
 	expectStatus(t, "list packs", packs, err, http.StatusOK)
 	nopack, err := c.DeleteV0CityByCityNamePacksByNameWithResponse(ctx, city, "no-such-pack",
 		&genclient.DeleteV0CityByCityNamePacksByNameParams{XGCRequest: contractCSRF})
 	expectStatus(t, "remove unknown pack", nopack, err, http.StatusNotFound)
 
-	services, err := c.GetV0CityByCityNameServicesWithResponse(ctx, city)
+	services, err := c.GetV0CityByCityNameServicesWithResponse(ctx, city, nil)
 	expectStatus(t, "list services", services, err, http.StatusOK)
-	nosvc, err := c.GetV0CityByCityNameServiceByNameWithResponse(ctx, city, "no-such-service")
+	nosvc, err := c.GetV0CityByCityNameServiceByNameWithResponse(ctx, city, "no-such-service", nil)
 	expectStatus(t, "get unknown service", nosvc, err, http.StatusNotFound)
 	nosvcRestart, err := c.PostV0CityByCityNameServiceByNameRestartWithResponse(ctx, city, "no-such-service",
 		&genclient.PostV0CityByCityNameServiceByNameRestartParams{XGCRequest: contractCSRF})
@@ -185,7 +185,7 @@ func contractConfigFamily(t *testing.T, h *contractHarness) {
 
 	waits, err := c.GetV0CityByCityNameWaitsWithResponse(ctx, city, nil)
 	expectStatus(t, "list waits", waits, err, http.StatusOK)
-	nowait, err := c.GetV0CityByCityNameWaitByIdWithResponse(ctx, city, "hq-nosuchwait")
+	nowait, err := c.GetV0CityByCityNameWaitByIdWithResponse(ctx, city, "hq-nosuchwait", nil)
 	expectStatus(t, "get unknown wait", nowait, err, http.StatusNotFound)
 
 	// City suspend/resume through PATCH, checked on the city read.
@@ -202,7 +202,7 @@ func contractConfigFamily(t *testing.T, h *contractHarness) {
 func (h *contractHarness) expectProviderDisplayName(t *testing.T, name, want string) {
 	t.Helper()
 	h.readAfterWrite(t, "provider "+name+" display_name="+want, func() (bool, string) {
-		got, err := h.client.GetV0CityByCityNameProviderByNameWithResponse(h.ctx, contractCityName, name)
+		got, err := h.client.GetV0CityByCityNameProviderByNameWithResponse(h.ctx, contractCityName, name, nil)
 		expectStatus(t, "get provider "+name, got, err, http.StatusOK)
 		p := mustJSON(t, "get provider "+name, got.JSON200, got)
 		return p.DisplayName != nil && *p.DisplayName == want, contractBody(got)
@@ -212,7 +212,7 @@ func (h *contractHarness) expectProviderDisplayName(t *testing.T, name, want str
 func (h *contractHarness) expectCitySuspended(t *testing.T, want bool) {
 	t.Helper()
 	h.readAfterWrite(t, "city suspended", func() (bool, string) {
-		got, err := h.client.GetV0CityByCityNameWithResponse(h.ctx, contractCityName)
+		got, err := h.client.GetV0CityByCityNameWithResponse(h.ctx, contractCityName, nil)
 		expectStatus(t, "get city", got, err, http.StatusOK)
 		return mustJSON(t, "get city", got.JSON200, got).Suspended == want, contractBody(got)
 	})

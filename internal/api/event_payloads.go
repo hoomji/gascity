@@ -60,9 +60,10 @@ const (
 
 // CityCreateSucceededPayload is emitted on request.result.city.create.
 type CityCreateSucceededPayload struct {
-	RequestID string `json:"request_id" doc:"Correlation ID from the 202 response."`
-	Name      string `json:"name" doc:"Resolved city name."`
-	Path      string `json:"path" doc:"Resolved absolute city directory path."`
+	RequestID     string `json:"request_id" doc:"Correlation ID from the 202 response."`
+	Name          string `json:"name" doc:"Resolved city name."`
+	Path          string `json:"path" doc:"Resolved absolute city directory path."`
+	IncarnationID string `json:"incarnation_id,omitempty" doc:"Incarnation id the city carries. Omitted when the emitter could not read it."`
 }
 
 // IsEventPayload marks CityCreateSucceededPayload as an events.Payload variant.
@@ -70,9 +71,10 @@ func (CityCreateSucceededPayload) IsEventPayload() {}
 
 // CityUnregisterSucceededPayload is emitted on request.result.city.unregister.
 type CityUnregisterSucceededPayload struct {
-	RequestID string `json:"request_id" doc:"Correlation ID from the 202 response."`
-	Name      string `json:"name" doc:"City name that was unregistered."`
-	Path      string `json:"path" doc:"Absolute city directory path."`
+	RequestID     string `json:"request_id" doc:"Correlation ID from the 202 response."`
+	Name          string `json:"name" doc:"City name that was unregistered."`
+	Path          string `json:"path" doc:"Absolute city directory path."`
+	IncarnationID string `json:"incarnation_id,omitempty" doc:"Incarnation id the city carried. Omitted when the emitter could not read it."`
 }
 
 // IsEventPayload marks CityUnregisterSucceededPayload as an events.Payload variant.
@@ -280,8 +282,9 @@ func (SupervisorRequestPayload) IsEventPayload() {}
 // city.unregister_requested events recorded in the per-city event log
 // during init/unregister for diagnostics.
 type CityLifecyclePayload struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name          string `json:"name"`
+	Path          string `json:"path"`
+	IncarnationID string `json:"incarnation_id,omitempty"`
 }
 
 // IsEventPayload marks CityLifecyclePayload as an events.Payload variant.

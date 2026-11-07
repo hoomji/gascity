@@ -11,9 +11,30 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gastownhall/gascity/internal/cityidentity"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/gitcred"
 )
+
+// checkReloadCityIncarnation refuses a config reload when the city on disk
+// is no longer the city this runtime booted on. A different id means the
+// directory was replaced (rm -rf + init at the same path): adopting it is
+// a restart, which builds new Server state — never a hot swap of the new
+// config into the old city's runtime. An empty booted id (directly-built
+// test runtimes) skips the check.
+func checkReloadCityIncarnation(cityPath, bootedID string) error {
+	if bootedID == "" {
+		return nil
+	}
+	current, err := cityidentity.Load(cityPath)
+	if err != nil {
+		return fmt.Errorf("city incarnation id is unreadable; reload will not run against an unidentified city; restore %s and reload again: %w", cityidentity.Path(cityPath), err)
+	}
+	if current != bootedID {
+		return fmt.Errorf("city incarnation id on disk is %s, but this runtime booted on %s: the directory holds a different city; reload will not hot-swap city identity — restart the city to adopt it as new Server state", current, bootedID)
+	}
+	return nil
+}
 
 // cityStoreBinding is the part of a city's .beads/metadata.json that says
 // which bead store the city is bound to.

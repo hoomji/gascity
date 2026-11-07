@@ -118,13 +118,18 @@ type CityRuntime struct {
 	// bootCityStore is the bd store binding the city's boot lifecycle left
 	// behind; reload refuses to run against, or adopt, any other.
 	bootCityStore cityStoreRecord
-	cityPath      string
-	cityName      string
-	configName    string
-	tomlPath      string
-	watchTargets  []config.WatchTarget
-	configRev     string
-	configDirty   *atomic.Bool
+	// bootIncarnationID is the city's incarnation id as booted; a reload
+	// that finds another id on disk is a different city, not a hot swap,
+	// and is refused (restart adopts it). Empty for directly-built test
+	// runtimes, which skip the check; boot always latches a real id.
+	bootIncarnationID string
+	cityPath          string
+	cityName          string
+	configName        string
+	tomlPath          string
+	watchTargets      []config.WatchTarget
+	configRev         string
+	configDirty       *atomic.Bool
 	// configDebounce is the config watcher's coalesce window; zero selects
 	// defaultConfigDebounce.
 	configDebounce time.Duration
@@ -550,6 +555,7 @@ func newCityRuntime(p CityRuntimeParams) (*CityRuntime, error) {
 	cr := &CityRuntime{
 		storageRoutes:           routes,
 		bootCityStore:           bootCityStoreFor(p.CityPath),
+		bootIncarnationID:       loadIncarnationIDBestEffort(p.CityPath),
 		cityPath:                p.CityPath,
 		cityName:                p.CityName,
 		configName:              configName,
@@ -2582,6 +2588,23 @@ func (cr *CityRuntime) reloadConfigTraced(
 	configName := cr.configName
 	if configName == "" {
 		configName = cr.cityName
+	}
+	// A reload that finds another incarnation id on disk is a different
+	// city (rm -rf + init at the same path), not a hot swap: refuse it
+	// before loading anything, keeping the old config. Restart adopts
+	// the replacement as new Server state.
+	if err := checkReloadCityIncarnation(cityRoot, cr.bootIncarnationID); err != nil {
+		reloadErr := fmt.Errorf("config reload: %w", err)
+		fmt.Fprintf(cr.stderr, "%s: %v (keeping old config)\n", cr.logPrefix, reloadErr) //nolint:errcheck // best-effort stderr
+		telemetry.RecordConfigReload(ctx, "", string(source), string(reloadOutcomeFailed), len(warnings), reloadErr)
+		if trace != nil {
+			trace.RecordConfigReload("", "", TraceOutcomeFailed, source, nil, nil, false, warnings, reloadErr)
+		}
+		return reloadControlReply{
+			Outcome:  reloadOutcomeFailed,
+			Error:    reloadErr.Error(),
+			Warnings: warnings,
+		}
 	}
 	result, err := cr.loadReloadCandidate(configName, cityRoot)
 	if err != nil {

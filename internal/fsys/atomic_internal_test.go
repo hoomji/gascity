@@ -120,6 +120,10 @@ func (f *identityChangingFS) MkdirAll(string, os.FileMode) error { return nil }
 
 func (f *identityChangingFS) WriteFile(string, []byte, os.FileMode) error { return nil }
 
+func (f *identityChangingFS) CreateExclusive(string, []byte, os.FileMode) error {
+	return nil
+}
+
 func (f *identityChangingFS) ReadFile(string) ([]byte, error) { return f.data, nil }
 
 func (f *identityChangingFS) Stat(string) (os.FileInfo, error) {
@@ -180,6 +184,10 @@ type noIdentitySnapshotFS struct {
 func (f *noIdentitySnapshotFS) MkdirAll(string, os.FileMode) error { return nil }
 
 func (f *noIdentitySnapshotFS) WriteFile(string, []byte, os.FileMode) error { return nil }
+
+func (f *noIdentitySnapshotFS) CreateExclusive(string, []byte, os.FileMode) error {
+	return nil
+}
 
 func (f *noIdentitySnapshotFS) ReadFile(string) ([]byte, error) { return f.data, nil }
 

@@ -21,7 +21,7 @@ func contractExtmsgFamily(t *testing.T, h *contractHarness) {
 	reg, err := c.RegisterExtmsgAdapterWithResponse(ctx, city, &genclient.RegisterExtmsgAdapterParams{XGCRequest: contractCSRF},
 		genclient.RegisterExtmsgAdapterJSONRequestBody{Provider: conv.Provider, AccountId: conv.AccountId, Name: ptr("contract-adapter")})
 	expectStatus(t, "register adapter", reg, err, http.StatusCreated)
-	adapters, err := c.GetV0CityByCityNameExtmsgAdaptersWithResponse(ctx, city)
+	adapters, err := c.GetV0CityByCityNameExtmsgAdaptersWithResponse(ctx, city, nil)
 	expectStatus(t, "list adapters", adapters, err, http.StatusOK)
 	if !strings.Contains(string(adapters.Body), "contract-adapter") {
 		t.Fatalf("adapter list missing contract-adapter: %s", adapters.Body)

@@ -92,6 +92,13 @@ var (
 	// credential before the import can proceed. Clients may connect or rotate
 	// access, wait for credential propagation, and retry the same import.
 	PackCredentialRequired = Register(ProblemType{Code: "pack-credential-required", Status: http.StatusConflict, Title: "Pack Credential Required"})
+	// CityIncarnationMismatch is a city-scoped request whose
+	// X-GC-City-Incarnation precondition names an id the running city no
+	// longer holds — typically the city directory was replaced (rm -rf +
+	// init at the same path) and the supervisor adopted the replacement.
+	// errors[0] carries the running city's current incarnation_id at
+	// location incarnation_id; the client recovers by re-reading it.
+	CityIncarnationMismatch = Register(ProblemType{Code: "city-incarnation-mismatch", Status: http.StatusPreconditionFailed, Title: "City Incarnation Mismatch"})
 
 	// Authorization / capability.
 	Forbidden      = Register(ProblemType{Code: "forbidden", Status: http.StatusForbidden, Title: "Forbidden"})

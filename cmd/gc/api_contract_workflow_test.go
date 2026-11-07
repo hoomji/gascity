@@ -35,7 +35,7 @@ func contractFormulasFamily(t *testing.T, h *contractHarness) {
 		&genclient.PostV0CityByCityNameFormulasByNameValidateParams{XGCRequest: contractCSRF},
 		"application/octet-stream", strings.NewReader(contractFormulaTOML))
 	expectStatus(t, "validate formula", validate, err, http.StatusOK)
-	source, err := c.GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx, city, contractFormula)
+	source, err := c.GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx, city, contractFormula, nil)
 	expectStatus(t, "formula source", source, err, http.StatusOK)
 	if !strings.Contains(string(source.Body), "Do contract work") {
 		t.Fatalf("formula source does not round-trip the upsert: %s", source.Body)
@@ -70,16 +70,16 @@ func contractFormulasFamily(t *testing.T, h *contractHarness) {
 	if !strings.Contains(string(runs.Body), runID) {
 		t.Fatalf("runs list missing %s: %s", runID, runs.Body)
 	}
-	census, err := c.GetV0CityByCityNameRunsCensusWithResponse(ctx, city)
+	census, err := c.GetV0CityByCityNameRunsCensusWithResponse(ctx, city, nil)
 	// The census is served from the supervisor's shared run-census source;
 	// a single-city controller mux has none and answers the documented 503.
 	expectStatus(t, "runs census", census, err, http.StatusOK, http.StatusServiceUnavailable)
-	run, err := c.GetV0CityByCityNameRunsByRunIdWithResponse(ctx, city, runID)
+	run, err := c.GetV0CityByCityNameRunsByRunIdWithResponse(ctx, city, runID, nil)
 	expectStatus(t, "get run", run, err, http.StatusOK)
 	if r := mustJSON(t, "get run", run.JSON200, run); r.RunId != runID {
 		t.Fatalf("run id = %q, want %q", r.RunId, runID)
 	}
-	steps, err := c.GetV0CityByCityNameRunsByRunIdStepsWithResponse(ctx, city, runID)
+	steps, err := c.GetV0CityByCityNameRunsByRunIdStepsWithResponse(ctx, city, runID, nil)
 	expectStatus(t, "run steps", steps, err, http.StatusOK)
 	formulaRuns, err := c.GetV0CityByCityNameFormulasByNameRunsWithResponse(ctx, city, contractFormula,
 		&genclient.GetV0CityByCityNameFormulasByNameRunsParams{ScopeKind: kind, ScopeRef: ref})
@@ -100,7 +100,7 @@ func contractFormulasFamily(t *testing.T, h *contractHarness) {
 	removed, err := c.DeleteV0CityByCityNameFormulasByNameWithResponse(ctx, city, "contract-scratch",
 		&genclient.DeleteV0CityByCityNameFormulasByNameParams{XGCRequest: contractCSRF})
 	expectStatus(t, "delete formula", removed, err, http.StatusOK)
-	gone, err := c.GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx, city, "contract-scratch")
+	gone, err := c.GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx, city, "contract-scratch", nil)
 	expectStatus(t, "deleted formula source", gone, err, http.StatusNotFound)
 }
 
@@ -168,7 +168,7 @@ func contractConvoysFamily(t *testing.T, h *contractHarness) {
 		genclient.PostV0CityByCityNameConvoyByIdRemoveJSONRequestBody{Items: &[]string{items[1]}})
 	expectStatus(t, "remove convoy item", removed, err, http.StatusOK)
 	h.expectConvoyChildren(t, convoyID, items[0])
-	check, err := c.GetV0CityByCityNameConvoyByIdCheckWithResponse(ctx, city, convoyID)
+	check, err := c.GetV0CityByCityNameConvoyByIdCheckWithResponse(ctx, city, convoyID, nil)
 	expectStatus(t, "check convoy", check, err, http.StatusOK)
 	closed, err := c.PostV0CityByCityNameConvoyByIdCloseWithResponse(ctx, city, convoyID,
 		&genclient.PostV0CityByCityNameConvoyByIdCloseParams{XGCRequest: contractCSRF})
@@ -185,13 +185,13 @@ func contractConvoysFamily(t *testing.T, h *contractHarness) {
 		&genclient.DeleteV0CityByCityNameConvoyByIdParams{XGCRequest: contractCSRF})
 	expectStatus(t, "delete convoy", deleted, err, http.StatusOK)
 	h.expectBeadStatus(t, secondID, "closed")
-	missing, err := c.GetV0CityByCityNameConvoyByIdWithResponse(ctx, city, "hq-nosuchconvoy")
+	missing, err := c.GetV0CityByCityNameConvoyByIdWithResponse(ctx, city, "hq-nosuchconvoy", nil)
 	expectStatus(t, "get missing convoy", missing, err, http.StatusNotFound)
 }
 
 func (h *contractHarness) expectConvoyChildren(t *testing.T, convoyID string, want ...string) {
 	t.Helper()
-	got, err := h.client.GetV0CityByCityNameConvoyByIdWithResponse(h.ctx, contractCityName, convoyID)
+	got, err := h.client.GetV0CityByCityNameConvoyByIdWithResponse(h.ctx, contractCityName, convoyID, nil)
 	expectStatus(t, "get convoy", got, err, http.StatusOK)
 	body := mustJSON(t, "get convoy", got.JSON200, got)
 	children := derefSlice(body.Children)
@@ -209,7 +209,7 @@ func (h *contractHarness) expectConvoyChildren(t *testing.T, convoyID string, wa
 // path is a P1-5 case in api_contract_async_test.go.
 func contractOrdersFamily(t *testing.T, h *contractHarness) {
 	c, ctx, city := h.client, h.ctx, contractCityName
-	list, err := c.GetV0CityByCityNameOrdersWithResponse(ctx, city)
+	list, err := c.GetV0CityByCityNameOrdersWithResponse(ctx, city, nil)
 	expectStatus(t, "list orders", list, err, http.StatusOK)
 	if !strings.Contains(string(list.Body), `"`+contractOrder+`"`) {
 		t.Fatalf("order list missing %q: %s", contractOrder, list.Body)
@@ -219,7 +219,7 @@ func contractOrdersFamily(t *testing.T, h *contractHarness) {
 	kind, ref := cityScope()
 	feed, err := c.GetV0CityByCityNameOrdersFeedWithResponse(ctx, city, &genclient.GetV0CityByCityNameOrdersFeedParams{ScopeKind: kind, ScopeRef: ref})
 	expectStatus(t, "orders feed", feed, err, http.StatusOK)
-	got, err := c.GetV0CityByCityNameOrderByNameWithResponse(ctx, city, contractOrder)
+	got, err := c.GetV0CityByCityNameOrderByNameWithResponse(ctx, city, contractOrder, nil)
 	expectStatus(t, "get order", got, err, http.StatusOK)
 	disabled, err := c.PostV0CityByCityNameOrderByNameDisableWithResponse(ctx, city, contractOrder,
 		&genclient.PostV0CityByCityNameOrderByNameDisableParams{XGCRequest: contractCSRF})
@@ -227,6 +227,6 @@ func contractOrdersFamily(t *testing.T, h *contractHarness) {
 	enabled, err := c.PostV0CityByCityNameOrderByNameEnableWithResponse(ctx, city, contractOrder,
 		&genclient.PostV0CityByCityNameOrderByNameEnableParams{XGCRequest: contractCSRF})
 	expectStatus(t, "enable order", enabled, err, http.StatusOK)
-	missing, err := c.GetV0CityByCityNameOrderByNameWithResponse(ctx, city, "no-such-order")
+	missing, err := c.GetV0CityByCityNameOrderByNameWithResponse(ctx, city, "no-such-order", nil)
 	expectStatus(t, "get missing order", missing, err, http.StatusNotFound)
 }

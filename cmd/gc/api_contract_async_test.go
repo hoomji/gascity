@@ -93,7 +93,7 @@ var contractAsyncCases = []contractAsyncCase{
 			resp, err := h.client.TriggerMaintenanceDoltGcWithResponse(h.ctx, contractCityName,
 				&genclient.TriggerMaintenanceDoltGcParams{XGCRequest: contractCSRF})
 			expectStatus(t, "trigger dolt gc", resp, err, http.StatusServiceUnavailable)
-			status, err := h.client.GetV0CityByCityNameMaintenanceStatusWithResponse(h.ctx, contractCityName)
+			status, err := h.client.GetV0CityByCityNameMaintenanceStatusWithResponse(h.ctx, contractCityName, nil)
 			expectStatus(t, "maintenance status", status, err, http.StatusOK, http.StatusServiceUnavailable)
 		},
 	},
@@ -113,7 +113,7 @@ var contractAsyncCases = []contractAsyncCase{
 			resp, err := h.client.PostV0CityByCityNameUnregisterWithResponse(h.ctx, contractCityName,
 				&genclient.PostV0CityByCityNameUnregisterParams{XGCRequest: contractCSRF})
 			expectStatus(t, "unregister city", resp, err, http.StatusNotImplemented)
-			city, err := h.client.GetV0CityByCityNameWithResponse(h.ctx, contractCityName)
+			city, err := h.client.GetV0CityByCityNameWithResponse(h.ctx, contractCityName, nil)
 			expectStatus(t, "city after refused unregister", city, err, http.StatusOK)
 		},
 	},
@@ -205,7 +205,7 @@ func (h *contractHarness) submitReplayAndExpectOneDelivery(t *testing.T, sess ge
 func (h *contractHarness) raisePending(t *testing.T, sess genclient.SessionResponse) {
 	t.Helper()
 	h.sp.SetPendingInteraction(sess.SessionName, &runtimePendingApproval)
-	pending, err := h.client.GetV0CityByCityNameSessionByIdPendingWithResponse(h.ctx, contractCityName, sess.Id)
+	pending, err := h.client.GetV0CityByCityNameSessionByIdPendingWithResponse(h.ctx, contractCityName, sess.Id, nil)
 	expectStatus(t, "session pending", pending, err, http.StatusOK)
 	if p := mustJSON(t, "session pending", pending.JSON200, pending); p.Pending == nil || p.Pending.RequestId != runtimePendingApproval.RequestID {
 		t.Fatalf("pending after interaction = %s", contractBody(pending))
@@ -318,7 +318,7 @@ func contractAsyncRunCancel(t *testing.T, h *contractHarness) {
 	if body.RunId != runID || body.Status != genclient.RunStatusCanceled {
 		t.Fatalf("cancel body = %s", contractBody(resp))
 	}
-	run, err := h.client.GetV0CityByCityNameRunsByRunIdWithResponse(h.ctx, contractCityName, runID)
+	run, err := h.client.GetV0CityByCityNameRunsByRunIdWithResponse(h.ctx, contractCityName, runID, nil)
 	expectStatus(t, "get canceled run", run, err, http.StatusOK)
 	if r := mustJSON(t, "get canceled run", run.JSON200, run); r.Status != genclient.RunStatusCanceled {
 		t.Fatalf("run %s status after cancel = %q", runID, r.Status)

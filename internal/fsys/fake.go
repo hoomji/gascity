@@ -280,6 +280,34 @@ func (f *Fake) WriteFile(name string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+// CreateExclusive records the call and stores the data in Files, failing
+// with os.ErrExist when the path already exists (never overwriting).
+func (f *Fake) CreateExclusive(name string, data []byte, perm os.FileMode) error {
+	f.Calls = append(f.Calls, Call{Method: "CreateExclusive", Path: name})
+	if err, ok := f.Errors[name]; ok {
+		return err
+	}
+	if f.entryKind(filepath.Dir(name)) != fakeEntryDirectory {
+		return fakePathError("open", name, fs.ErrNotExist)
+	}
+	if kind := f.entryKind(name); kind != fakeEntryMissing {
+		return fakePathError("open", name, fs.ErrExist)
+	}
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	if f.Files == nil {
+		f.Files = make(map[string][]byte)
+	}
+	if f.Modes == nil {
+		f.Modes = make(map[string]os.FileMode)
+	}
+	f.Files[name] = cp
+	f.Modes[name] = perm.Perm()
+	f.ModTimes[name] = f.nextModTime()
+	f.CTimes[name] = f.nextCTime()
+	return nil
+}
+
 // ReadFile records the call and returns the file contents from Files.
 func (f *Fake) ReadFile(name string) ([]byte, error) {
 	f.Calls = append(f.Calls, Call{Method: "ReadFile", Path: name})

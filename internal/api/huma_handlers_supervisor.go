@@ -17,6 +17,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/gastownhall/gascity/internal/api/apierr"
+	"github.com/gastownhall/gascity/internal/cityidentity"
 	"github.com/gastownhall/gascity/internal/cityinit"
 	"github.com/gastownhall/gascity/internal/citylayout"
 	"github.com/gastownhall/gascity/internal/events"
@@ -514,10 +515,14 @@ func emitCityCreateSucceeded(resolver CityResolver, requestID string, result *ci
 		}
 	}
 
+	// Best-effort: a city whose id is unreadable still reports its
+	// creation; the payload omits the field.
+	incarnationID, _ := cityidentity.Load(cityPath)
 	EmitTypedEvent(rec, events.RequestResultCityCreate, cityName, CityCreateSucceededPayload{
-		RequestID: requestID,
-		Name:      cityName,
-		Path:      cityPath,
+		RequestID:     requestID,
+		Name:          cityName,
+		Path:          cityPath,
+		IncarnationID: incarnationID,
 	})
 }
 

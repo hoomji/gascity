@@ -96,7 +96,7 @@ Several endpoints report an agent count, and each counts something different:
 
 Every operation's header contract appears in the OpenAPI spec — if a
 request header is required or a response header is promised, the
-spec describes it. The two cross-cutting headers every API client
+spec describes it. The three cross-cutting headers every API client
 should know about:
 
 - **`X-GC-Request`** (request header, required on all mutations).
@@ -114,6 +114,14 @@ should know about:
   header; the spec declares it via a `$ref` to
   `components.headers.X-GC-Request-Id`. Include its value in bug
   reports so the server's logs can be traced.
+- **`X-GC-City-Incarnation`** (request header, optional on all
+  city-scoped operations). City-incarnation precondition: when
+  present and different from the running city's current
+  `incarnation_id`, the request is refused with `412`
+  (`city-incarnation-mismatch`) before it executes. The 412's
+  `errors[0]` carries the current id at location
+  `incarnation_id`; re-read it and retry. Omit the header for
+  default behavior. See [City incarnation](#city-incarnation).
 
 SSE stream operations emit additional runtime-status headers before
 the first event frame:
@@ -128,6 +136,46 @@ the first event frame:
 
 Each header's schema is documented in the operation's
 `responses.200.headers` in the spec.
+
+## City incarnation
+
+Every city carries an incarnation id: a random UUID minted once per
+city directory (`<city>/.gc/city-id`, at `gc init` or on first load)
+and never rewritten. It lets a client prove the city it writes to is
+the city it read from. The id is exposed as `incarnation_id` on
+`GET /v0/city/{cityName}`, on `/v0/cities` entries, and on the
+`city.created`, `city.unregister_requested`,
+`request.result.city.create`, and `request.result.city.unregister`
+event payloads, so stream subscribers detect replacement without
+polling.
+
+Semantics:
+
+- Restarting a city, or restarting the supervisor, keeps the id.
+- Unregistering then re-registering the same directory keeps the id.
+- Deleting the directory and running `gc init` at the same path
+  mints a new id; requests carrying the old id are refused with
+  `412` once the supervisor adopts the replacement.
+- Copying, cloning, or restoring a city directory copies the id
+  with it: a copy is not detectable from the directory alone.
+- A config reload that finds a different id on disk is refused —
+  the directory holds a different city, so adopting it is a
+  restart, never a hot swap.
+- Concurrent first loads race to mint through an exclusive
+  create: exactly one id wins, and losers re-read the winner's.
+
+Send the id back as `X-GC-City-Incarnation` on any city-scoped
+operation (REST or SSE stream) to have the request refused with
+`412 city-incarnation-mismatch` unless the running city still
+holds it. The check runs inside the same resolution that executes
+the request, so a city replaced between the client's read and the
+request fails closed. A mismatch's `errors[0]` carries the
+running city's current id at location `incarnation_id`.
+
+Out of scope: the supervisor-level `POST
+/v0/city/{cityName}/unregister` route and the untyped
+`/v0/city/{cityName}/svc/` and `/hook/` pass-throughs do not
+read the header.
 
 ## Errors
 

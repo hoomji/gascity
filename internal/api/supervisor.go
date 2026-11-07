@@ -23,6 +23,7 @@ type CityInfo struct {
 	Name            string   `json:"name"`
 	Path            string   `json:"path"`
 	Running         bool     `json:"running"`
+	IncarnationID   string   `json:"incarnation_id,omitempty"`
 	Status          string   `json:"status,omitempty"`
 	Error           string   `json:"error,omitempty"`
 	PhasesCompleted []string `json:"phases_completed,omitempty"`
