@@ -75,11 +75,11 @@ func (e cityInitLifecycleEvents) EnsureCityLog(cityPath string) error {
 }
 
 func (e cityInitLifecycleEvents) CityCreated(cityPath, name string) error {
-	return e.record(cityPath, events.CityCreated, name, api.CityLifecyclePayload{Name: name, Path: cityPath})
+	return e.record(cityPath, events.CityCreated, name, api.CityLifecyclePayload{Name: name, Path: cityPath, IncarnationID: loadIncarnationIDBestEffort(cityPath)})
 }
 
 func (e cityInitLifecycleEvents) CityUnregisterRequested(city cityinit.RegisteredCity) error {
-	return e.record(city.Path, events.CityUnregisterRequested, city.Name, api.CityLifecyclePayload{Name: city.Name, Path: city.Path})
+	return e.record(city.Path, events.CityUnregisterRequested, city.Name, api.CityLifecyclePayload{Name: city.Name, Path: city.Path, IncarnationID: loadIncarnationIDBestEffort(city.Path)})
 }
 
 func (e cityInitLifecycleEvents) record(cityPath, eventType, subject string, payload api.CityLifecyclePayload) error {

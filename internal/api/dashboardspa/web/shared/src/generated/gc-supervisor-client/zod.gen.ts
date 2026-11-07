@@ -209,6 +209,7 @@ export const zCityCreateRequest = z.object({
 });
 
 export const zCityCreateSucceededPayload = z.object({
+    incarnation_id: z.string().optional(),
     name: z.string(),
     path: z.string(),
     request_id: z.string()
@@ -216,6 +217,7 @@ export const zCityCreateSucceededPayload = z.object({
 
 export const zCityGetResponse = z.object({
     agent_count: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    incarnation_id: z.string().optional(),
     name: z.string(),
     path: z.string(),
     provider: z.string().optional(),
@@ -228,6 +230,7 @@ export const zCityGetResponse = z.object({
 
 export const zCityInfo = z.object({
     error: z.string().optional(),
+    incarnation_id: z.string().optional(),
     name: z.string(),
     path: z.string(),
     phases_completed: z.array(z.string()).nullish(),
@@ -236,6 +239,7 @@ export const zCityInfo = z.object({
 });
 
 export const zCityLifecyclePayload = z.object({
+    incarnation_id: z.string().optional(),
     name: z.string(),
     path: z.string()
 });
@@ -251,6 +255,7 @@ export const zCityPendingEntry = z.object({
 });
 
 export const zCityUnregisterSucceededPayload = z.object({
+    incarnation_id: z.string().optional(),
     name: z.string(),
     path: z.string(),
     request_id: z.string()
@@ -1408,6 +1413,8 @@ export const zAgentPatch = z.object({
     Dir: z.string(),
     Env: z.record(z.string(), z.string()).optional(),
     EnvRemove: z.array(z.string()).nullable(),
+    FallbackOptionDefaults: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+    FallbackProviders: z.array(z.string()).nullable(),
     HooksInstalled: z.boolean().nullable(),
     IdleTimeout: z.string().nullable(),
     InjectAssignedSkills: z.boolean().nullable(),
@@ -8891,6 +8898,10 @@ export const zPostV0CityHeaders = z.object({
  */
 export const zPostV0CityResponse = zAsyncAcceptedResponse;
 
+export const zGetV0CityByCityNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -8903,7 +8914,8 @@ export const zGetV0CityByCityNameResponse = zCityGetResponse;
 export const zPatchV0CityByCityNameBody = zCityPatchInputBody;
 
 export const zPatchV0CityByCityNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPatchV0CityByCityNamePath = z.object({
@@ -8916,7 +8928,8 @@ export const zPatchV0CityByCityNamePath = z.object({
 export const zPatchV0CityByCityNameResponse = zOkResponseBody;
 
 export const zDeleteV0CityByCityNameAgentByBaseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameAgentByBasePath = z.object({
@@ -8928,6 +8941,10 @@ export const zDeleteV0CityByCityNameAgentByBasePath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameAgentByBaseResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameAgentByBaseHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameAgentByBasePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -8942,7 +8959,8 @@ export const zGetV0CityByCityNameAgentByBaseResponse = zAgentResponse;
 export const zPatchV0CityByCityNameAgentByBaseBody = zAgentUpdateInputBody;
 
 export const zPatchV0CityByCityNameAgentByBaseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPatchV0CityByCityNameAgentByBasePath = z.object({
@@ -8954,6 +8972,10 @@ export const zPatchV0CityByCityNameAgentByBasePath = z.object({
  * OK
  */
 export const zPatchV0CityByCityNameAgentByBaseResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameAgentByBaseOutputHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameAgentByBaseOutputPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -8969,6 +8991,10 @@ export const zGetV0CityByCityNameAgentByBaseOutputQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameAgentByBaseOutputResponse = zAgentOutputResponse;
+
+export const zStreamAgentOutputHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zStreamAgentOutputPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -8993,7 +9019,8 @@ export const zStreamAgentOutputResponse = z.array(z.union([z.object({
     })]));
 
 export const zPostV0CityByCityNameAgentByBaseByActionHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameAgentByBaseByActionPath = z.object({
@@ -9008,7 +9035,8 @@ export const zPostV0CityByCityNameAgentByBaseByActionPath = z.object({
 export const zPostV0CityByCityNameAgentByBaseByActionResponse = zOkResponseBody;
 
 export const zDeleteV0CityByCityNameAgentByDirByBaseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameAgentByDirByBasePath = z.object({
@@ -9021,6 +9049,10 @@ export const zDeleteV0CityByCityNameAgentByDirByBasePath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameAgentByDirByBaseResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameAgentByDirByBaseHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameAgentByDirByBasePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9036,7 +9068,8 @@ export const zGetV0CityByCityNameAgentByDirByBaseResponse = zAgentResponse;
 export const zPatchV0CityByCityNameAgentByDirByBaseBody = zAgentUpdateQualifiedInputBody;
 
 export const zPatchV0CityByCityNameAgentByDirByBaseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPatchV0CityByCityNameAgentByDirByBasePath = z.object({
@@ -9049,6 +9082,10 @@ export const zPatchV0CityByCityNameAgentByDirByBasePath = z.object({
  * OK
  */
 export const zPatchV0CityByCityNameAgentByDirByBaseResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameAgentByDirByBaseOutputHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameAgentByDirByBaseOutputPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9065,6 +9102,10 @@ export const zGetV0CityByCityNameAgentByDirByBaseOutputQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameAgentByDirByBaseOutputResponse = zAgentOutputResponse;
+
+export const zStreamAgentOutputQualifiedHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zStreamAgentOutputQualifiedPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9090,7 +9131,8 @@ export const zStreamAgentOutputQualifiedResponse = z.array(z.union([z.object({
     })]));
 
 export const zPostV0CityByCityNameAgentByDirByBaseByActionHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameAgentByDirByBaseByActionPath = z.object({
@@ -9104,6 +9146,10 @@ export const zPostV0CityByCityNameAgentByDirByBaseByActionPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameAgentByDirByBaseByActionResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameAgentsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameAgentsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9127,6 +9173,7 @@ export const zCreateAgentBody = zAgentCreateInputBody;
 
 export const zCreateAgentHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -9140,7 +9187,8 @@ export const zCreateAgentPath = z.object({
 export const zCreateAgentResponse = zAgentCreatedOutputBody;
 
 export const zDeleteV0CityByCityNameBeadByIdHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameBeadByIdPath = z.object({
@@ -9152,6 +9200,10 @@ export const zDeleteV0CityByCityNameBeadByIdPath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameBeadByIdResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameBeadByIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameBeadByIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9166,7 +9218,8 @@ export const zGetV0CityByCityNameBeadByIdResponse = zBead;
 export const zPatchV0CityByCityNameBeadByIdBody = zBeadUpdateBody;
 
 export const zPatchV0CityByCityNameBeadByIdHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPatchV0CityByCityNameBeadByIdPath = z.object({
@@ -9182,7 +9235,8 @@ export const zPatchV0CityByCityNameBeadByIdResponse = zOkResponseBody;
 export const zPostV0CityByCityNameBeadByIdAssignBody = zBeadAssignInputBody;
 
 export const zPostV0CityByCityNameBeadByIdAssignHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameBeadByIdAssignPath = z.object({
@@ -9198,7 +9252,8 @@ export const zPostV0CityByCityNameBeadByIdAssignResponse = z.record(z.string(), 
 export const zPostV0CityByCityNameBeadByIdCloseBody = zBeadCloseBody;
 
 export const zPostV0CityByCityNameBeadByIdCloseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameBeadByIdClosePath = z.object({
@@ -9211,6 +9266,10 @@ export const zPostV0CityByCityNameBeadByIdClosePath = z.object({
  */
 export const zPostV0CityByCityNameBeadByIdCloseResponse = zOkResponseBody;
 
+export const zGetV0CityByCityNameBeadByIdDepsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameBeadByIdDepsPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     id: z.string()
@@ -9222,7 +9281,8 @@ export const zGetV0CityByCityNameBeadByIdDepsPath = z.object({
 export const zGetV0CityByCityNameBeadByIdDepsResponse = zBeadDepsResponse;
 
 export const zPostV0CityByCityNameBeadByIdReopenHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameBeadByIdReopenPath = z.object({
@@ -9238,7 +9298,8 @@ export const zPostV0CityByCityNameBeadByIdReopenResponse = zOkResponseBody;
 export const zPostV0CityByCityNameBeadByIdUpdateBody = zBeadUpdateBody;
 
 export const zPostV0CityByCityNameBeadByIdUpdateHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameBeadByIdUpdatePath = z.object({
@@ -9250,6 +9311,10 @@ export const zPostV0CityByCityNameBeadByIdUpdatePath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameBeadByIdUpdateResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameBeadsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameBeadsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9277,6 +9342,7 @@ export const zCreateBeadBody = zBeadCreateInputBody;
 
 export const zCreateBeadHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -9289,6 +9355,10 @@ export const zCreateBeadPath = z.object({
  */
 export const zCreateBeadResponse = zBead;
 
+export const zGetV0CityByCityNameBeadsGraphByRootIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameBeadsGraphByRootIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     rootID: z.string()
@@ -9298,6 +9368,10 @@ export const zGetV0CityByCityNameBeadsGraphByRootIdPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameBeadsGraphByRootIdResponse = zBeadGraphResponse;
+
+export const zGetV0CityByCityNameBeadsReadyHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameBeadsReadyPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9313,6 +9387,10 @@ export const zGetV0CityByCityNameBeadsReadyQuery = z.object({
  */
 export const zGetV0CityByCityNameBeadsReadyResponse = zListBodyBead;
 
+export const zGetV0CityByCityNameConfigHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameConfigPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -9321,6 +9399,10 @@ export const zGetV0CityByCityNameConfigPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameConfigResponse = zConfigResponse;
+
+export const zGetV0CityByCityNameConfigDefaultsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameConfigDefaultsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9331,6 +9413,10 @@ export const zGetV0CityByCityNameConfigDefaultsPath = z.object({
  */
 export const zGetV0CityByCityNameConfigDefaultsResponse = zConfigResponse;
 
+export const zGetV0CityByCityNameConfigExplainHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameConfigExplainPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -9339,6 +9425,10 @@ export const zGetV0CityByCityNameConfigExplainPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameConfigExplainResponse = zConfigExplainResponse;
+
+export const zGetV0CityByCityNameConfigValidateHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameConfigValidatePath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9350,7 +9440,8 @@ export const zGetV0CityByCityNameConfigValidatePath = z.object({
 export const zGetV0CityByCityNameConfigValidateResponse = zConfigValidateOutputBody;
 
 export const zDeleteV0CityByCityNameConvoyByIdHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameConvoyByIdPath = z.object({
@@ -9362,6 +9453,10 @@ export const zDeleteV0CityByCityNameConvoyByIdPath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameConvoyByIdResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameConvoyByIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameConvoyByIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9376,7 +9471,8 @@ export const zGetV0CityByCityNameConvoyByIdResponse = zConvoyGetResponse;
 export const zPostV0CityByCityNameConvoyByIdAddBody = zConvoyAddInputBody;
 
 export const zPostV0CityByCityNameConvoyByIdAddHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameConvoyByIdAddPath = z.object({
@@ -9389,6 +9485,10 @@ export const zPostV0CityByCityNameConvoyByIdAddPath = z.object({
  */
 export const zPostV0CityByCityNameConvoyByIdAddResponse = zOkResponseBody;
 
+export const zGetV0CityByCityNameConvoyByIdCheckHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameConvoyByIdCheckPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     id: z.string()
@@ -9400,7 +9500,8 @@ export const zGetV0CityByCityNameConvoyByIdCheckPath = z.object({
 export const zGetV0CityByCityNameConvoyByIdCheckResponse = zConvoyCheckResponse;
 
 export const zPostV0CityByCityNameConvoyByIdCloseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameConvoyByIdClosePath = z.object({
@@ -9416,7 +9517,8 @@ export const zPostV0CityByCityNameConvoyByIdCloseResponse = zOkResponseBody;
 export const zPostV0CityByCityNameConvoyByIdRemoveBody = zConvoyRemoveInputBody;
 
 export const zPostV0CityByCityNameConvoyByIdRemoveHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameConvoyByIdRemovePath = z.object({
@@ -9428,6 +9530,10 @@ export const zPostV0CityByCityNameConvoyByIdRemovePath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameConvoyByIdRemoveResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameConvoysHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameConvoysPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9449,6 +9555,7 @@ export const zCreateConvoyBody = zConvoyCreateInputBody;
 
 export const zCreateConvoyHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -9460,6 +9567,10 @@ export const zCreateConvoyPath = z.object({
  * Created
  */
 export const zCreateConvoyResponse = zBead;
+
+export const zGetV0CityByCityNameEventsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameEventsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9484,6 +9595,7 @@ export const zEmitEventBody = zEventEmitRequest;
 
 export const zEmitEventHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -9497,7 +9609,8 @@ export const zEmitEventPath = z.object({
 export const zEmitEventResponse = zEventEmitOutputBody;
 
 export const zRotateEventsHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zRotateEventsPath = z.object({
@@ -9514,6 +9627,7 @@ export const zRotateEventsQuery = z.object({
 export const zRotateEventsResponse = zEventRotateResponse;
 
 export const zStreamEventsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional(),
     'Last-Event-ID': z.string().optional()
 });
 
@@ -9545,7 +9659,8 @@ export const zStreamEventsResponse = z.array(z.union([z.object({
 export const zDeleteV0CityByCityNameExtmsgAdaptersBody = zExtMsgAdapterUnregisterInputBody;
 
 export const zDeleteV0CityByCityNameExtmsgAdaptersHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameExtmsgAdaptersPath = z.object({
@@ -9556,6 +9671,10 @@ export const zDeleteV0CityByCityNameExtmsgAdaptersPath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameExtmsgAdaptersResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameExtmsgAdaptersHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameExtmsgAdaptersPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9570,6 +9689,7 @@ export const zRegisterExtmsgAdapterBody = zExtMsgAdapterRegisterInputBody;
 
 export const zRegisterExtmsgAdapterHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -9585,7 +9705,8 @@ export const zRegisterExtmsgAdapterResponse = zExtMsgAdapterRegisterOutputBody;
 export const zPostV0CityByCityNameExtmsgBindBody = zExtMsgBindInputBody;
 
 export const zPostV0CityByCityNameExtmsgBindHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameExtmsgBindPath = z.object({
@@ -9596,6 +9717,10 @@ export const zPostV0CityByCityNameExtmsgBindPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameExtmsgBindResponse = zSessionBindingRecord;
+
+export const zGetV0CityByCityNameExtmsgBindingsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameExtmsgBindingsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9609,6 +9734,10 @@ export const zGetV0CityByCityNameExtmsgBindingsQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameExtmsgBindingsResponse = zListBodySessionBindingRecord;
+
+export const zGetV0CityByCityNameExtmsgGroupsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameExtmsgGroupsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9630,7 +9759,8 @@ export const zGetV0CityByCityNameExtmsgGroupsResponse = zConversationGroupRecord
 export const zEnsureExtmsgGroupBody = zExtMsgGroupEnsureInputBody;
 
 export const zEnsureExtmsgGroupHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zEnsureExtmsgGroupPath = z.object({
@@ -9645,7 +9775,8 @@ export const zEnsureExtmsgGroupResponse = zConversationGroupRecord;
 export const zPostV0CityByCityNameExtmsgInboundBody = zExtMsgInboundInputBody;
 
 export const zPostV0CityByCityNameExtmsgInboundHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameExtmsgInboundPath = z.object({
@@ -9660,7 +9791,8 @@ export const zPostV0CityByCityNameExtmsgInboundResponse = zInboundResult;
 export const zPostV0CityByCityNameExtmsgOutboundBody = zExtMsgOutboundInputBody;
 
 export const zPostV0CityByCityNameExtmsgOutboundHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameExtmsgOutboundPath = z.object({
@@ -9675,7 +9807,8 @@ export const zPostV0CityByCityNameExtmsgOutboundResponse = zOutboundResult;
 export const zDeleteV0CityByCityNameExtmsgParticipantsBody = zExtMsgParticipantRemoveInputBody;
 
 export const zDeleteV0CityByCityNameExtmsgParticipantsHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameExtmsgParticipantsPath = z.object({
@@ -9690,7 +9823,8 @@ export const zDeleteV0CityByCityNameExtmsgParticipantsResponse = zOkResponseBody
 export const zPostV0CityByCityNameExtmsgParticipantsBody = zExtMsgParticipantUpsertInputBody;
 
 export const zPostV0CityByCityNameExtmsgParticipantsHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameExtmsgParticipantsPath = z.object({
@@ -9701,6 +9835,10 @@ export const zPostV0CityByCityNameExtmsgParticipantsPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameExtmsgParticipantsResponse = zConversationGroupParticipant;
+
+export const zGetV0CityByCityNameExtmsgTranscriptHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameExtmsgTranscriptPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9726,7 +9864,8 @@ export const zGetV0CityByCityNameExtmsgTranscriptResponse = zListBodyConversatio
 export const zPostV0CityByCityNameExtmsgTranscriptAckBody = zExtMsgTranscriptAckInputBody;
 
 export const zPostV0CityByCityNameExtmsgTranscriptAckHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameExtmsgTranscriptAckPath = z.object({
@@ -9741,7 +9880,8 @@ export const zPostV0CityByCityNameExtmsgTranscriptAckResponse = zOkResponseBody;
 export const zPostV0CityByCityNameExtmsgUnbindBody = zExtMsgUnbindInputBody;
 
 export const zPostV0CityByCityNameExtmsgUnbindHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameExtmsgUnbindPath = z.object({
@@ -9752,6 +9892,10 @@ export const zPostV0CityByCityNameExtmsgUnbindPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameExtmsgUnbindResponse = zExtMsgUnbindBody;
+
+export const zGetV0CityByCityNameFormulaByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameFormulaByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9769,6 +9913,10 @@ export const zGetV0CityByCityNameFormulaByNameQuery = z.object({
  */
 export const zGetV0CityByCityNameFormulaByNameResponse = zFormulaDetailResponse;
 
+export const zGetV0CityByCityNameFormulasHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameFormulasPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -9782,6 +9930,10 @@ export const zGetV0CityByCityNameFormulasQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameFormulasResponse = zFormulaListBody;
+
+export const zGetV0CityByCityNameFormulasFeedHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameFormulasFeedPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9799,7 +9951,8 @@ export const zGetV0CityByCityNameFormulasFeedQuery = z.object({
 export const zGetV0CityByCityNameFormulasFeedResponse = zFormulaFeedBody;
 
 export const zDeleteV0CityByCityNameFormulasByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameFormulasByNamePath = z.object({
@@ -9811,6 +9964,10 @@ export const zDeleteV0CityByCityNameFormulasByNamePath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameFormulasByNameResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameFormulasByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameFormulasByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9831,7 +9988,8 @@ export const zGetV0CityByCityNameFormulasByNameResponse = zFormulaDetailResponse
 export const zPutV0CityByCityNameFormulasByNameBody = z.string();
 
 export const zPutV0CityByCityNameFormulasByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPutV0CityByCityNameFormulasByNamePath = z.object({
@@ -9847,7 +10005,8 @@ export const zPutV0CityByCityNameFormulasByNameResponse = zOkResponseBody;
 export const zPostV0CityByCityNameFormulasByNamePreviewBody = zFormulaPreviewBody;
 
 export const zPostV0CityByCityNameFormulasByNamePreviewHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameFormulasByNamePreviewPath = z.object({
@@ -9859,6 +10018,10 @@ export const zPostV0CityByCityNameFormulasByNamePreviewPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameFormulasByNamePreviewResponse = zFormulaDetailResponse;
+
+export const zGetV0CityByCityNameFormulasByNameRunsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameFormulasByNameRunsPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9876,6 +10039,10 @@ export const zGetV0CityByCityNameFormulasByNameRunsQuery = z.object({
  */
 export const zGetV0CityByCityNameFormulasByNameRunsResponse = zFormulaRunsResponse;
 
+export const zGetV0CityByCityNameFormulasByNameSourceHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameFormulasByNameSourcePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     name: z.string().min(1).regex(/\S/)
@@ -9889,7 +10056,8 @@ export const zGetV0CityByCityNameFormulasByNameSourceResponse = zFormulaSourceOu
 export const zPostV0CityByCityNameFormulasByNameValidateBody = z.string();
 
 export const zPostV0CityByCityNameFormulasByNameValidateHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameFormulasByNameValidatePath = z.object({
@@ -9902,6 +10070,10 @@ export const zPostV0CityByCityNameFormulasByNameValidatePath = z.object({
  */
 export const zPostV0CityByCityNameFormulasByNameValidateResponse = zFormulaValidateOutputBody;
 
+export const zGetV0CityByCityNameHealthHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameHealthPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -9910,6 +10082,10 @@ export const zGetV0CityByCityNameHealthPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameHealthResponse = zHealthOutputBody;
+
+export const zGetV0CityByCityNameMailHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameMailPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9934,6 +10110,7 @@ export const zSendMailBody = zMailSendInputBody;
 
 export const zSendMailHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -9945,6 +10122,10 @@ export const zSendMailPath = z.object({
  * Created
  */
 export const zSendMailResponse = zMessage;
+
+export const zGetV0CityByCityNameMailCountHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameMailCountPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -9959,6 +10140,10 @@ export const zGetV0CityByCityNameMailCountQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameMailCountResponse = zMailCountOutputBody;
+
+export const zGetV0CityByCityNameMailThreadByIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameMailThreadByIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -9975,7 +10160,8 @@ export const zGetV0CityByCityNameMailThreadByIdQuery = z.object({
 export const zGetV0CityByCityNameMailThreadByIdResponse = zMailListBody;
 
 export const zDeleteV0CityByCityNameMailByIdHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameMailByIdPath = z.object({
@@ -9992,6 +10178,10 @@ export const zDeleteV0CityByCityNameMailByIdQuery = z.object({
  */
 export const zDeleteV0CityByCityNameMailByIdResponse = zOkResponseBody;
 
+export const zGetV0CityByCityNameMailByIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameMailByIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     id: z.string()
@@ -10007,7 +10197,8 @@ export const zGetV0CityByCityNameMailByIdQuery = z.object({
 export const zGetV0CityByCityNameMailByIdResponse = zMessage;
 
 export const zPostV0CityByCityNameMailByIdArchiveHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameMailByIdArchivePath = z.object({
@@ -10025,7 +10216,8 @@ export const zPostV0CityByCityNameMailByIdArchiveQuery = z.object({
 export const zPostV0CityByCityNameMailByIdArchiveResponse = zOkResponseBody;
 
 export const zPostV0CityByCityNameMailByIdMarkUnreadHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameMailByIdMarkUnreadPath = z.object({
@@ -10043,7 +10235,8 @@ export const zPostV0CityByCityNameMailByIdMarkUnreadQuery = z.object({
 export const zPostV0CityByCityNameMailByIdMarkUnreadResponse = zOkResponseBody;
 
 export const zPostV0CityByCityNameMailByIdReadHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameMailByIdReadPath = z.object({
@@ -10064,6 +10257,7 @@ export const zReplyMailBody = zMailReplyInputBody;
 
 export const zReplyMailHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10082,7 +10276,8 @@ export const zReplyMailQuery = z.object({
 export const zReplyMailResponse = zMessage;
 
 export const zTriggerMaintenanceDoltGcHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zTriggerMaintenanceDoltGcPath = z.object({
@@ -10098,6 +10293,10 @@ export const zTriggerMaintenanceDoltGcQuery = z.object({
  */
 export const zTriggerMaintenanceDoltGcResponse = zMaintenanceTriggerBody;
 
+export const zGetV0CityByCityNameMaintenanceStatusHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameMaintenanceStatusPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10106,6 +10305,10 @@ export const zGetV0CityByCityNameMaintenanceStatusPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameMaintenanceStatusResponse = zMaintenanceStatusBody;
+
+export const zGetV0CityByCityNameOrderHistoryByBeadIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameOrderHistoryByBeadIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10121,6 +10324,10 @@ export const zGetV0CityByCityNameOrderHistoryByBeadIdQuery = z.object({
  */
 export const zGetV0CityByCityNameOrderHistoryByBeadIdResponse = zOrderHistoryDetailResponse;
 
+export const zGetV0CityByCityNameOrderByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameOrderByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     name: z.string()
@@ -10132,7 +10339,8 @@ export const zGetV0CityByCityNameOrderByNamePath = z.object({
 export const zGetV0CityByCityNameOrderByNameResponse = zOrderResponse;
 
 export const zPostV0CityByCityNameOrderByNameDisableHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameOrderByNameDisablePath = z.object({
@@ -10146,7 +10354,8 @@ export const zPostV0CityByCityNameOrderByNameDisablePath = z.object({
 export const zPostV0CityByCityNameOrderByNameDisableResponse = zOkResponseBody;
 
 export const zPostV0CityByCityNameOrderByNameEnableHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameOrderByNameEnablePath = z.object({
@@ -10162,7 +10371,8 @@ export const zPostV0CityByCityNameOrderByNameEnableResponse = zOkResponseBody;
 export const zPostV0CityByCityNameOrderByNameRunBody = zOrderRunInputBody;
 
 export const zPostV0CityByCityNameOrderByNameRunHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameOrderByNameRunPath = z.object({
@@ -10175,6 +10385,10 @@ export const zPostV0CityByCityNameOrderByNameRunPath = z.object({
  */
 export const zPostV0CityByCityNameOrderByNameRunResponse = zOrderRunOutputBody;
 
+export const zGetV0CityByCityNameOrdersHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameOrdersPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10183,6 +10397,10 @@ export const zGetV0CityByCityNameOrdersPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameOrdersResponse = zOrderListBody;
+
+export const zGetV0CityByCityNameOrdersCheckHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameOrdersCheckPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10196,6 +10414,10 @@ export const zGetV0CityByCityNameOrdersCheckQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameOrdersCheckResponse = zOrderCheckListBody;
+
+export const zGetV0CityByCityNameOrdersFeedHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameOrdersFeedPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10212,6 +10434,10 @@ export const zGetV0CityByCityNameOrdersFeedQuery = z.object({
  */
 export const zGetV0CityByCityNameOrdersFeedResponse = zOrdersFeedBody;
 
+export const zGetV0CityByCityNameOrdersHistoryHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameOrdersHistoryPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10227,6 +10453,10 @@ export const zGetV0CityByCityNameOrdersHistoryQuery = z.object({
  */
 export const zGetV0CityByCityNameOrdersHistoryResponse = zOrderHistoryListBody;
 
+export const zGetV0CityByCityNamePacksHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNamePacksPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10240,6 +10470,7 @@ export const zAddPackBody = zPackAddInputBody;
 
 export const zAddPackHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10253,7 +10484,8 @@ export const zAddPackPath = z.object({
 export const zAddPackResponse = zPackAddedOutputBody;
 
 export const zDeleteV0CityByCityNamePacksByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNamePacksByNamePath = z.object({
@@ -10267,7 +10499,8 @@ export const zDeleteV0CityByCityNamePacksByNamePath = z.object({
 export const zDeleteV0CityByCityNamePacksByNameResponse = zPackRemovedOutputBody;
 
 export const zDeleteV0CityByCityNamePatchesAgentByBaseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNamePatchesAgentByBasePath = z.object({
@@ -10280,6 +10513,10 @@ export const zDeleteV0CityByCityNamePatchesAgentByBasePath = z.object({
  */
 export const zDeleteV0CityByCityNamePatchesAgentByBaseResponse = zPatchDeletedResponseBody;
 
+export const zGetV0CityByCityNamePatchesAgentByBaseHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNamePatchesAgentByBasePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     base: z.string()
@@ -10291,7 +10528,8 @@ export const zGetV0CityByCityNamePatchesAgentByBasePath = z.object({
 export const zGetV0CityByCityNamePatchesAgentByBaseResponse = zAgentPatch;
 
 export const zDeleteV0CityByCityNamePatchesAgentByDirByBaseHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNamePatchesAgentByDirByBasePath = z.object({
@@ -10305,6 +10543,10 @@ export const zDeleteV0CityByCityNamePatchesAgentByDirByBasePath = z.object({
  */
 export const zDeleteV0CityByCityNamePatchesAgentByDirByBaseResponse = zPatchDeletedResponseBody;
 
+export const zGetV0CityByCityNamePatchesAgentByDirByBaseHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNamePatchesAgentByDirByBasePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     dir: z.string(),
@@ -10315,6 +10557,10 @@ export const zGetV0CityByCityNamePatchesAgentByDirByBasePath = z.object({
  * OK
  */
 export const zGetV0CityByCityNamePatchesAgentByDirByBaseResponse = zAgentPatch;
+
+export const zGetV0CityByCityNamePatchesAgentsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNamePatchesAgentsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10328,7 +10574,8 @@ export const zGetV0CityByCityNamePatchesAgentsResponse = zListBodyAgentPatch;
 export const zPutV0CityByCityNamePatchesAgentsBody = zAgentPatchSetInputBody;
 
 export const zPutV0CityByCityNamePatchesAgentsHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPutV0CityByCityNamePatchesAgentsPath = z.object({
@@ -10341,7 +10588,8 @@ export const zPutV0CityByCityNamePatchesAgentsPath = z.object({
 export const zPutV0CityByCityNamePatchesAgentsResponse = zPatchOkResponseBody;
 
 export const zDeleteV0CityByCityNamePatchesProviderByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNamePatchesProviderByNamePath = z.object({
@@ -10354,6 +10602,10 @@ export const zDeleteV0CityByCityNamePatchesProviderByNamePath = z.object({
  */
 export const zDeleteV0CityByCityNamePatchesProviderByNameResponse = zPatchDeletedResponseBody;
 
+export const zGetV0CityByCityNamePatchesProviderByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNamePatchesProviderByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     name: z.string()
@@ -10363,6 +10615,10 @@ export const zGetV0CityByCityNamePatchesProviderByNamePath = z.object({
  * OK
  */
 export const zGetV0CityByCityNamePatchesProviderByNameResponse = zProviderPatch;
+
+export const zGetV0CityByCityNamePatchesProvidersHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNamePatchesProvidersPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10376,7 +10632,8 @@ export const zGetV0CityByCityNamePatchesProvidersResponse = zListBodyProviderPat
 export const zPutV0CityByCityNamePatchesProvidersBody = zProviderPatchSetInputBody;
 
 export const zPutV0CityByCityNamePatchesProvidersHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPutV0CityByCityNamePatchesProvidersPath = z.object({
@@ -10389,7 +10646,8 @@ export const zPutV0CityByCityNamePatchesProvidersPath = z.object({
 export const zPutV0CityByCityNamePatchesProvidersResponse = zPatchOkResponseBody;
 
 export const zDeleteV0CityByCityNamePatchesRigByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNamePatchesRigByNamePath = z.object({
@@ -10402,6 +10660,10 @@ export const zDeleteV0CityByCityNamePatchesRigByNamePath = z.object({
  */
 export const zDeleteV0CityByCityNamePatchesRigByNameResponse = zPatchDeletedResponseBody;
 
+export const zGetV0CityByCityNamePatchesRigByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNamePatchesRigByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     name: z.string()
@@ -10411,6 +10673,10 @@ export const zGetV0CityByCityNamePatchesRigByNamePath = z.object({
  * OK
  */
 export const zGetV0CityByCityNamePatchesRigByNameResponse = zRigPatch;
+
+export const zGetV0CityByCityNamePatchesRigsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNamePatchesRigsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10424,7 +10690,8 @@ export const zGetV0CityByCityNamePatchesRigsResponse = zListBodyRigPatch;
 export const zPutV0CityByCityNamePatchesRigsBody = zRigPatchSetInputBody;
 
 export const zPutV0CityByCityNamePatchesRigsHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPutV0CityByCityNamePatchesRigsPath = z.object({
@@ -10436,6 +10703,10 @@ export const zPutV0CityByCityNamePatchesRigsPath = z.object({
  */
 export const zPutV0CityByCityNamePatchesRigsResponse = zPatchOkResponseBody;
 
+export const zGetV0CityByCityNamePendingHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNamePendingPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10444,6 +10715,10 @@ export const zGetV0CityByCityNamePendingPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNamePendingResponse = zListBodyCityPendingEntry;
+
+export const zGetV0CityByCityNameProviderReadinessHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameProviderReadinessPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10460,7 +10735,8 @@ export const zGetV0CityByCityNameProviderReadinessQuery = z.object({
 export const zGetV0CityByCityNameProviderReadinessResponse = zProviderReadinessResponse;
 
 export const zDeleteV0CityByCityNameProviderByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameProviderByNamePath = z.object({
@@ -10472,6 +10748,10 @@ export const zDeleteV0CityByCityNameProviderByNamePath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameProviderByNameResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameProviderByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameProviderByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10486,7 +10766,8 @@ export const zGetV0CityByCityNameProviderByNameResponse = zProviderResponse;
 export const zPatchV0CityByCityNameProviderByNameBody = zProviderUpdateInputBody;
 
 export const zPatchV0CityByCityNameProviderByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPatchV0CityByCityNameProviderByNamePath = z.object({
@@ -10498,6 +10779,10 @@ export const zPatchV0CityByCityNameProviderByNamePath = z.object({
  * OK
  */
 export const zPatchV0CityByCityNameProviderByNameResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameProvidersHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameProvidersPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10512,6 +10797,7 @@ export const zCreateProviderBody = zProviderCreateInputBody;
 
 export const zCreateProviderHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10524,6 +10810,10 @@ export const zCreateProviderPath = z.object({
  */
 export const zCreateProviderResponse = zProviderCreatedOutputBody;
 
+export const zGetV0CityByCityNameProvidersPublicHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameProvidersPublicPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10532,6 +10822,10 @@ export const zGetV0CityByCityNameProvidersPublicPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameProvidersPublicResponse = zProviderPublicListBody;
+
+export const zGetV0CityByCityNameReadinessHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameReadinessPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10546,6 +10840,10 @@ export const zGetV0CityByCityNameReadinessQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameReadinessResponse = zReadinessResponse;
+
+export const zGetRequestOutcomeHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetRequestOutcomePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10562,7 +10860,8 @@ export const zGetRequestOutcomeQuery = z.object({
 export const zGetRequestOutcomeResponse = zRequestOutcome;
 
 export const zDeleteV0CityByCityNameRigByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameRigByNamePath = z.object({
@@ -10574,6 +10873,10 @@ export const zDeleteV0CityByCityNameRigByNamePath = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameRigByNameResponse = zOkResponseBody;
+
+export const zGetV0CityByCityNameRigByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameRigByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10592,7 +10895,8 @@ export const zGetV0CityByCityNameRigByNameResponse = zRigResponse;
 export const zPatchV0CityByCityNameRigByNameBody = zRigUpdateInputBody;
 
 export const zPatchV0CityByCityNameRigByNameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPatchV0CityByCityNameRigByNamePath = z.object({
@@ -10606,7 +10910,8 @@ export const zPatchV0CityByCityNameRigByNamePath = z.object({
 export const zPatchV0CityByCityNameRigByNameResponse = zOkResponseBody;
 
 export const zPostV0CityByCityNameRigByNameByActionHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameRigByNameByActionPath = z.object({
@@ -10623,6 +10928,10 @@ export const zPostV0CityByCityNameRigByNameByActionPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameRigByNameByActionResponse = zRigActionBody;
+
+export const zGetV0CityByCityNameRigsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameRigsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10643,6 +10952,7 @@ export const zCreateRigBody = zRigCreateBody;
 
 export const zCreateRigHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10654,6 +10964,10 @@ export const zCreateRigPath = z.object({
  * Rig already exists — idempotent request_id replay of a succeeded async create.
  */
 export const zCreateRigResponse = zRigCreateResponseBody;
+
+export const zGetV0CityByCityNameRunsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameRunsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -10668,6 +10982,10 @@ export const zGetV0CityByCityNameRunsQuery = z.object({
  */
 export const zGetV0CityByCityNameRunsResponse = zRunsListOutputBody;
 
+export const zGetV0CityByCityNameRunsCensusHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameRunsCensusPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10676,6 +10994,10 @@ export const zGetV0CityByCityNameRunsCensusPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameRunsCensusResponse = zRunsCensusOutputBody;
+
+export const zGetV0CityByCityNameRunsByRunIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameRunsByRunIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10688,7 +11010,8 @@ export const zGetV0CityByCityNameRunsByRunIdPath = z.object({
 export const zGetV0CityByCityNameRunsByRunIdResponse = zRun;
 
 export const zPostV0CityByCityNameRunsByRunIdCancelHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameRunsByRunIdCancelPath = z.object({
@@ -10701,6 +11024,10 @@ export const zPostV0CityByCityNameRunsByRunIdCancelPath = z.object({
  */
 export const zPostV0CityByCityNameRunsByRunIdCancelResponse = zRunCancelOutputBody;
 
+export const zGetV0CityByCityNameRunsByRunIdStepsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameRunsByRunIdStepsPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     run_id: z.string().min(1).regex(/\S/)
@@ -10710,6 +11037,10 @@ export const zGetV0CityByCityNameRunsByRunIdStepsPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameRunsByRunIdStepsResponse = zRunStepsOutputBody;
+
+export const zGetV0CityByCityNameServiceByNameHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameServiceByNamePath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10722,7 +11053,8 @@ export const zGetV0CityByCityNameServiceByNamePath = z.object({
 export const zGetV0CityByCityNameServiceByNameResponse = zStatus;
 
 export const zPostV0CityByCityNameServiceByNameRestartHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameServiceByNameRestartPath = z.object({
@@ -10735,6 +11067,10 @@ export const zPostV0CityByCityNameServiceByNameRestartPath = z.object({
  */
 export const zPostV0CityByCityNameServiceByNameRestartResponse = zServiceRestartOutputBody;
 
+export const zGetV0CityByCityNameServicesHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameServicesPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -10743,6 +11079,10 @@ export const zGetV0CityByCityNameServicesPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameServicesResponse = zListBodyStatus;
+
+export const zGetV0CityByCityNameSessionByIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameSessionByIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10763,7 +11103,8 @@ export const zGetV0CityByCityNameSessionByIdResponse = zSessionResponse;
 export const zPatchV0CityByCityNameSessionByIdBody = zSessionPatchBody;
 
 export const zPatchV0CityByCityNameSessionByIdHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPatchV0CityByCityNameSessionByIdPath = z.object({
@@ -10776,6 +11117,10 @@ export const zPatchV0CityByCityNameSessionByIdPath = z.object({
  */
 export const zPatchV0CityByCityNameSessionByIdResponse = zSessionResponse;
 
+export const zGetV0CityByCityNameSessionByIdAgentsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameSessionByIdAgentsPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     id: z.string()
@@ -10785,6 +11130,10 @@ export const zGetV0CityByCityNameSessionByIdAgentsPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameSessionByIdAgentsResponse = zSessionAgentListResponse;
+
+export const zGetV0CityByCityNameSessionByIdAgentsByAgentIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameSessionByIdAgentsByAgentIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10799,6 +11148,7 @@ export const zGetV0CityByCityNameSessionByIdAgentsByAgentIdResponse = zSessionAg
 
 export const zPostV0CityByCityNameSessionByIdCloseHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10818,6 +11168,7 @@ export const zPostV0CityByCityNameSessionByIdCloseResponse = zSessionCommandStat
 
 export const zPostV0CityByCityNameSessionByIdKillHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10839,6 +11190,7 @@ export const zSendSessionMessageBody = zSessionMessageInputBody;
 
 export const zSendSessionMessageHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10851,6 +11203,10 @@ export const zSendSessionMessagePath = z.object({
  * Accepted
  */
 export const zSendSessionMessageResponse = zAsyncAcceptedBody;
+
+export const zListSessionOpsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zListSessionOpsPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10866,6 +11222,7 @@ export const zProposeSessionOpBody = zConversationOpProposeBody;
 
 export const zProposeSessionOpHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10878,6 +11235,10 @@ export const zProposeSessionOpPath = z.object({
  * The same request was proposed before: the stored operation, with created false.
  */
 export const zProposeSessionOpResponse = zConversationOpProposeResult;
+
+export const zGetSessionOpHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetSessionOpPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10893,7 +11254,8 @@ export const zGetSessionOpResponse = zConversationOp;
 export const zCancelSessionOpBody = zConversationOpCancelBody;
 
 export const zCancelSessionOpHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zCancelSessionOpPath = z.object({
@@ -10906,6 +11268,10 @@ export const zCancelSessionOpPath = z.object({
  * OK
  */
 export const zCancelSessionOpResponse = zConversationOpCancelResult;
+
+export const zGetV0CityByCityNameSessionByIdPendingHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameSessionByIdPendingPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -10920,7 +11286,8 @@ export const zGetV0CityByCityNameSessionByIdPendingResponse = zSessionPendingRes
 export const zPostV0CityByCityNameSessionByIdPermissionModeBody = zSessionPermissionModeBody;
 
 export const zPostV0CityByCityNameSessionByIdPermissionModeHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameSessionByIdPermissionModePath = z.object({
@@ -10934,7 +11301,8 @@ export const zPostV0CityByCityNameSessionByIdPermissionModePath = z.object({
 export const zPostV0CityByCityNameSessionByIdPermissionModeResponse = zSessionResponse;
 
 export const zPostV0CityByCityNameSessionByIdPinHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameSessionByIdPinPath = z.object({
@@ -10950,7 +11318,8 @@ export const zPostV0CityByCityNameSessionByIdPinResponse = zSessionResponse;
 export const zPostV0CityByCityNameSessionByIdRenameBody = zSessionRenameInputBody;
 
 export const zPostV0CityByCityNameSessionByIdRenameHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameSessionByIdRenamePath = z.object({
@@ -10965,6 +11334,7 @@ export const zPostV0CityByCityNameSessionByIdRenameResponse = zSessionResponse;
 
 export const zPostV0CityByCityNameSessionByIdResetHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10982,6 +11352,7 @@ export const zRespondSessionBody = zSessionRespondInputBody;
 
 export const zRespondSessionHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -10999,6 +11370,7 @@ export const zPostV0CityByCityNameSessionByIdStopBody = zSessionStopBody;
 
 export const zPostV0CityByCityNameSessionByIdStopHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -11013,6 +11385,7 @@ export const zPostV0CityByCityNameSessionByIdStopPath = z.object({
 export const zPostV0CityByCityNameSessionByIdStopResponse = zOkWithIdResponseBody;
 
 export const zStreamSessionHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional(),
     'Last-Event-ID': z.string().max(2048).optional()
 });
 
@@ -11085,6 +11458,7 @@ export const zSubmitSessionBody = zSessionSubmitInputBody;
 
 export const zSubmitSessionHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -11100,6 +11474,7 @@ export const zSubmitSessionResponse = zAsyncAcceptedBody;
 
 export const zPostV0CityByCityNameSessionByIdSuspendHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -11112,6 +11487,10 @@ export const zPostV0CityByCityNameSessionByIdSuspendPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameSessionByIdSuspendResponse = zSessionCommandStatusBody;
+
+export const zGetV0CityByCityNameSessionByIdTranscriptHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameSessionByIdTranscriptPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
@@ -11135,6 +11514,10 @@ export const zGetV0CityByCityNameSessionByIdTranscriptQuery = z.object({
  */
 export const zGetV0CityByCityNameSessionByIdTranscriptResponse = zSessionTranscriptGetResponse;
 
+export const zGetV0CityByCityNameSessionByIdTurnHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameSessionByIdTurnPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     id: z.string()
@@ -11146,7 +11529,8 @@ export const zGetV0CityByCityNameSessionByIdTurnPath = z.object({
 export const zGetV0CityByCityNameSessionByIdTurnResponse = zSessionTurnResponse;
 
 export const zPostV0CityByCityNameSessionByIdUnpinHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameSessionByIdUnpinPath = z.object({
@@ -11161,6 +11545,7 @@ export const zPostV0CityByCityNameSessionByIdUnpinResponse = zSessionResponse;
 
 export const zPostV0CityByCityNameSessionByIdWakeHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -11173,6 +11558,10 @@ export const zPostV0CityByCityNameSessionByIdWakePath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameSessionByIdWakeResponse = zOkWithIdResponseBody;
+
+export const zGetV0CityByCityNameSessionsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameSessionsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -11195,6 +11584,7 @@ export const zCreateSessionBody = zSessionCreateBody;
 
 export const zCreateSessionHeaders = z.object({
     'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional(),
     'Idempotency-Key': z.string().optional()
 });
 
@@ -11210,7 +11600,8 @@ export const zCreateSessionResponse = zAsyncAcceptedBody;
 export const zPostV0CityByCityNameSlingBody = zSlingInputBody;
 
 export const zPostV0CityByCityNameSlingHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zPostV0CityByCityNameSlingPath = z.object({
@@ -11221,6 +11612,10 @@ export const zPostV0CityByCityNameSlingPath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameSlingResponse = zSlingResponse;
+
+export const zGetV0CityByCityNameStatusHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameStatusPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -11250,6 +11645,10 @@ export const zPostV0CityByCityNameUnregisterPath = z.object({
  */
 export const zPostV0CityByCityNameUnregisterResponse = zAsyncAcceptedResponse;
 
+export const zGetV0CityByCityNameUsageHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameUsagePath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -11263,6 +11662,10 @@ export const zGetV0CityByCityNameUsageQuery = z.object({
  */
 export const zGetV0CityByCityNameUsageResponse = zUsageBody;
 
+export const zGetV0CityByCityNameWaitByIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameWaitByIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),
     id: z.string()
@@ -11272,6 +11675,10 @@ export const zGetV0CityByCityNameWaitByIdPath = z.object({
  * OK
  */
 export const zGetV0CityByCityNameWaitByIdResponse = zWaitView;
+
+export const zGetV0CityByCityNameWaitsHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameWaitsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -11287,6 +11694,10 @@ export const zGetV0CityByCityNameWaitsQuery = z.object({
  */
 export const zGetV0CityByCityNameWaitsResponse = zWaitListBody;
 
+export const zGetV0CityByCityNameWorkActiveStepHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
+
 export const zGetV0CityByCityNameWorkActiveStepPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
 });
@@ -11300,6 +11711,10 @@ export const zGetV0CityByCityNameWorkActiveStepQuery = z.object({
  * OK
  */
 export const zGetV0CityByCityNameWorkActiveStepResponse = zWorkActiveStepBody;
+
+export const zGetV0CityByCityNameWorkReadyHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameWorkReadyPath = z.object({
     cityName: z.string().min(1).regex(/\S/)
@@ -11327,7 +11742,8 @@ export const zGetV0CityByCityNameWorkReadyQuery = z.object({
 export const zGetV0CityByCityNameWorkReadyResponse = zWorkReadyBody;
 
 export const zDeleteV0CityByCityNameWorkflowByWorkflowIdHeaders = z.object({
-    'X-GC-Request': z.string().min(1)
+    'X-GC-Request': z.string().min(1),
+    'X-GC-City-Incarnation': z.string().optional()
 });
 
 export const zDeleteV0CityByCityNameWorkflowByWorkflowIdPath = z.object({
@@ -11345,6 +11761,10 @@ export const zDeleteV0CityByCityNameWorkflowByWorkflowIdQuery = z.object({
  * OK
  */
 export const zDeleteV0CityByCityNameWorkflowByWorkflowIdResponse = zWorkflowDeleteResponse;
+
+export const zGetV0CityByCityNameWorkflowByWorkflowIdHeaders = z.object({
+    'X-GC-City-Incarnation': z.string().optional()
+});
 
 export const zGetV0CityByCityNameWorkflowByWorkflowIdPath = z.object({
     cityName: z.string().min(1).regex(/\S/),

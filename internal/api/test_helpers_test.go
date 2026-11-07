@@ -48,9 +48,10 @@ type stateCityResolver struct {
 
 func (r *stateCityResolver) ListCities() []CityInfo {
 	return []CityInfo{{
-		Name:    r.state.CityName(),
-		Path:    r.state.CityPath(),
-		Running: true,
+		Name:          r.state.CityName(),
+		Path:          r.state.CityPath(),
+		Running:       true,
+		IncarnationID: StateIncarnationID(r.state),
 	}}
 }
 

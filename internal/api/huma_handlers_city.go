@@ -17,6 +17,7 @@ func (s *Server) humaHandleCityGet(_ context.Context, _ *CityGetInput) (*struct{
 		Name:            s.state.CityName(),
 		Path:            s.state.CityPath(),
 		Version:         s.state.Version(),
+		IncarnationID:   StateIncarnationID(s.state),
 		Suspended:       suspensionstate.EffectiveCitySuspended(citySt, cfg.Workspace.EffectiveSuspendedOnStart()),
 		Provider:        cfg.Workspace.Provider,
 		SessionTemplate: cfg.Workspace.SessionTemplate,

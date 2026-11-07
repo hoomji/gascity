@@ -20,12 +20,12 @@ func contractAgentsFamily(t *testing.T, h *contractHarness) {
 	if !contractAgentListed(t, h, contractAgent) {
 		t.Fatalf("agent list missing %q: %s", contractAgent, contractBody(list))
 	}
-	got, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, contractAgent)
+	got, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, contractAgent, nil)
 	expectStatus(t, "get agent", got, err, http.StatusOK)
 	output, err := c.GetV0CityByCityNameAgentByBaseOutputWithResponse(ctx, city, contractAgent, nil)
 	expectStatus(t, "agent output", output, err, http.StatusOK, http.StatusNotFound)
 	h.openStreamOrStatus(t, "agent output stream", func(ctx context.Context) (*http.Response, error) {
-		return c.StreamAgentOutput(ctx, city, contractAgent)
+		return c.StreamAgentOutput(ctx, city, contractAgent, nil)
 	}, http.StatusNotFound)
 
 	// A provider missing from the city's provider catalog is a client error:
@@ -33,7 +33,7 @@ func contractAgentsFamily(t *testing.T, h *contractHarness) {
 	badProvider, err := c.CreateAgentWithResponse(ctx, city, &genclient.CreateAgentParams{XGCRequest: contractCSRF},
 		genclient.CreateAgentJSONRequestBody{Name: "orphan", Provider: "no-such-provider"})
 	expectStatus(t, "create agent with unknown provider", badProvider, err, http.StatusBadRequest)
-	orphan, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "orphan")
+	orphan, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "orphan", nil)
 	expectStatus(t, "get rejected agent", orphan, err, http.StatusNotFound)
 
 	// City-scoped CRUD.
@@ -44,7 +44,7 @@ func contractAgentsFamily(t *testing.T, h *contractHarness) {
 	// sessions yet, so it has no entry in the list read; the list cache's
 	// config-swap invalidation is owned by
 	// internal/api TestHandleAgentListCacheMissesAfterConfigSwap.
-	helper, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "helper")
+	helper, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "helper", nil)
 	expectStatus(t, "get created agent", helper, err, http.StatusOK)
 	dup, err := c.CreateAgentWithResponse(ctx, city, &genclient.CreateAgentParams{XGCRequest: contractCSRF},
 		genclient.CreateAgentJSONRequestBody{Name: "helper", Provider: "claude"})
@@ -62,7 +62,7 @@ func contractAgentsFamily(t *testing.T, h *contractHarness) {
 	deleted, err := c.DeleteV0CityByCityNameAgentByBaseWithResponse(ctx, city, "helper",
 		&genclient.DeleteV0CityByCityNameAgentByBaseParams{XGCRequest: contractCSRF})
 	expectStatus(t, "delete agent", deleted, err, http.StatusOK)
-	gone, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "helper")
+	gone, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "helper", nil)
 	expectStatus(t, "get deleted agent", gone, err, http.StatusNotFound)
 
 	// Rig-qualified routes. Schema-2 cities declare rig-scoped agents in pack
@@ -71,12 +71,12 @@ func contractAgentsFamily(t *testing.T, h *contractHarness) {
 	rigCreated, err := c.CreateAgentWithResponse(ctx, city, &genclient.CreateAgentParams{XGCRequest: contractCSRF},
 		genclient.CreateAgentJSONRequestBody{Name: "rigtwo", Provider: "claude", Dir: ptr(contractRig)})
 	expectStatus(t, "create rig agent", rigCreated, err, http.StatusBadRequest)
-	rigGot, err := c.GetV0CityByCityNameAgentByDirByBaseWithResponse(ctx, city, contractRig, contractRigAgent)
+	rigGot, err := c.GetV0CityByCityNameAgentByDirByBaseWithResponse(ctx, city, contractRig, contractRigAgent, nil)
 	expectStatus(t, "get rig agent", rigGot, err, http.StatusOK)
 	rigOutput, err := c.GetV0CityByCityNameAgentByDirByBaseOutputWithResponse(ctx, city, contractRig, contractRigAgent, nil)
 	expectStatus(t, "rig agent output", rigOutput, err, http.StatusOK, http.StatusNotFound)
 	h.openStreamOrStatus(t, "rig agent output stream", func(ctx context.Context) (*http.Response, error) {
-		return c.StreamAgentOutputQualified(ctx, city, contractRig, contractRigAgent)
+		return c.StreamAgentOutputQualified(ctx, city, contractRig, contractRigAgent, nil)
 	}, http.StatusNotFound)
 	// alpha/rigbot is alpha's instance of the generic scope="rig" template
 	// rigbot, which serves omega too. The instance has no config of its own,
@@ -127,7 +127,7 @@ func contractAgentsFamily(t *testing.T, h *contractHarness) {
 	h.expectRigAgentSuspended(t, contractRig, false)
 	h.expectRigAgentSuspended(t, contractOtherRig, false)
 
-	missing, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "no-such-agent")
+	missing, err := c.GetV0CityByCityNameAgentByBaseWithResponse(ctx, city, "no-such-agent", nil)
 	expectStatus(t, "get missing agent", missing, err, http.StatusNotFound)
 }
 
@@ -146,7 +146,7 @@ func contractAgentListed(t *testing.T, h *contractHarness, name string) bool {
 func (h *contractHarness) expectRigAgentSuspended(t *testing.T, rig string, want bool) {
 	t.Helper()
 	h.expectAgentSuspendedAt(t, rig+"/"+contractRigAgent, want, func() (contractResponse, *genclient.AgentResponse, error) {
-		r, err := h.client.GetV0CityByCityNameAgentByDirByBaseWithResponse(h.ctx, contractCityName, rig, contractRigAgent)
+		r, err := h.client.GetV0CityByCityNameAgentByDirByBaseWithResponse(h.ctx, contractCityName, rig, contractRigAgent, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -157,7 +157,7 @@ func (h *contractHarness) expectRigAgentSuspended(t *testing.T, rig string, want
 func (h *contractHarness) expectAgentSuspended(t *testing.T, name string, want bool) {
 	t.Helper()
 	h.expectAgentSuspendedAt(t, name, want, func() (contractResponse, *genclient.AgentResponse, error) {
-		r, err := h.client.GetV0CityByCityNameAgentByBaseWithResponse(h.ctx, contractCityName, name)
+		r, err := h.client.GetV0CityByCityNameAgentByBaseWithResponse(h.ctx, contractCityName, name, nil)
 		if err != nil {
 			return nil, nil, err
 		}

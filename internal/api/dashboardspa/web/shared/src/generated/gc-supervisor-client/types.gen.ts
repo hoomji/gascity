@@ -86,6 +86,12 @@ export type AgentPatch = {
         [key: string]: string;
     };
     EnvRemove: Array<string> | null;
+    FallbackOptionDefaults?: {
+        [key: string]: {
+            [key: string]: string;
+        };
+    };
+    FallbackProviders: Array<string> | null;
     HooksInstalled: boolean | null;
     IdleTimeout: string | null;
     InjectAssignedSkills: boolean | null;
@@ -563,6 +569,10 @@ export type CityCreateRequest = {
 
 export type CityCreateSucceededPayload = {
     /**
+     * Incarnation id the city carries. Omitted when the emitter could not read it.
+     */
+    incarnation_id?: string;
+    /**
      * Resolved city name.
      */
     name: string;
@@ -578,6 +588,7 @@ export type CityCreateSucceededPayload = {
 
 export type CityGetResponse = {
     agent_count: number;
+    incarnation_id?: string;
     name: string;
     path: string;
     provider?: string;
@@ -590,6 +601,7 @@ export type CityGetResponse = {
 
 export type CityInfo = {
     error?: string;
+    incarnation_id?: string;
     name: string;
     path: string;
     phases_completed?: Array<string> | null;
@@ -598,6 +610,7 @@ export type CityInfo = {
 };
 
 export type CityLifecyclePayload = {
+    incarnation_id?: string;
     name: string;
     path: string;
 };
@@ -625,6 +638,10 @@ export type CityPendingEntry = {
 };
 
 export type CityUnregisterSucceededPayload = {
+    /**
+     * Incarnation id the city carried. Omitted when the emitter could not read it.
+     */
+    incarnation_id?: string;
     /**
      * City name that was unregistered.
      */
@@ -11976,6 +11993,12 @@ export type PostV0CityResponse = PostV0CityResponses[keyof PostV0CityResponses];
 
 export type GetV0CityByCityNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -11991,6 +12014,10 @@ export type GetV0CityByCityNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -12019,6 +12046,10 @@ export type PatchV0CityByCityNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -12047,6 +12078,10 @@ export type PatchV0CityByCityNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -12079,6 +12114,10 @@ export type DeleteV0CityByCityNameAgentByBaseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -12116,6 +12155,10 @@ export type DeleteV0CityByCityNameAgentByBaseErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12142,6 +12185,12 @@ export type DeleteV0CityByCityNameAgentByBaseResponse = DeleteV0CityByCityNameAg
 
 export type GetV0CityByCityNameAgentByBaseData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -12161,6 +12210,10 @@ export type GetV0CityByCityNameAgentByBaseErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -12189,6 +12242,10 @@ export type PatchV0CityByCityNameAgentByBaseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -12226,6 +12283,10 @@ export type PatchV0CityByCityNameAgentByBaseErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12252,6 +12313,12 @@ export type PatchV0CityByCityNameAgentByBaseResponse = PatchV0CityByCityNameAgen
 
 export type GetV0CityByCityNameAgentByBaseOutputData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -12281,6 +12348,10 @@ export type GetV0CityByCityNameAgentByBaseOutputErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12303,6 +12374,12 @@ export type GetV0CityByCityNameAgentByBaseOutputResponse = GetV0CityByCityNameAg
 
 export type StreamAgentOutputData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -12372,6 +12449,10 @@ export type PostV0CityByCityNameAgentByBaseByActionData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -12413,6 +12494,10 @@ export type PostV0CityByCityNameAgentByBaseByActionErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12444,6 +12529,10 @@ export type DeleteV0CityByCityNameAgentByDirByBaseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -12485,6 +12574,10 @@ export type DeleteV0CityByCityNameAgentByDirByBaseErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12511,6 +12604,12 @@ export type DeleteV0CityByCityNameAgentByDirByBaseResponse = DeleteV0CityByCityN
 
 export type GetV0CityByCityNameAgentByDirByBaseData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -12534,6 +12633,10 @@ export type GetV0CityByCityNameAgentByDirByBaseErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -12562,6 +12665,10 @@ export type PatchV0CityByCityNameAgentByDirByBaseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -12603,6 +12710,10 @@ export type PatchV0CityByCityNameAgentByDirByBaseErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12629,6 +12740,12 @@ export type PatchV0CityByCityNameAgentByDirByBaseResponse = PatchV0CityByCityNam
 
 export type GetV0CityByCityNameAgentByDirByBaseOutputData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -12662,6 +12779,10 @@ export type GetV0CityByCityNameAgentByDirByBaseOutputErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12684,6 +12805,12 @@ export type GetV0CityByCityNameAgentByDirByBaseOutputResponse = GetV0CityByCityN
 
 export type StreamAgentOutputQualifiedData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -12757,6 +12884,10 @@ export type PostV0CityByCityNameAgentByDirByBaseByActionData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -12802,6 +12933,10 @@ export type PostV0CityByCityNameAgentByDirByBaseByActionErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12828,6 +12963,12 @@ export type PostV0CityByCityNameAgentByDirByBaseByActionResponse = PostV0CityByC
 
 export type GetV0CityByCityNameAgentsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -12869,6 +13010,10 @@ export type GetV0CityByCityNameAgentsErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -12896,6 +13041,10 @@ export type CreateAgentData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -12932,6 +13081,10 @@ export type CreateAgentErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -12972,6 +13125,10 @@ export type DeleteV0CityByCityNameBeadByIdData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13005,6 +13162,10 @@ export type DeleteV0CityByCityNameBeadByIdErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13027,6 +13188,12 @@ export type DeleteV0CityByCityNameBeadByIdResponse = DeleteV0CityByCityNameBeadB
 
 export type GetV0CityByCityNameBeadByIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13046,6 +13213,10 @@ export type GetV0CityByCityNameBeadByIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13078,6 +13249,10 @@ export type PatchV0CityByCityNameBeadByIdData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13115,6 +13290,10 @@ export type PatchV0CityByCityNameBeadByIdErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13150,6 +13329,10 @@ export type PostV0CityByCityNameBeadByIdAssignData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13187,6 +13370,10 @@ export type PostV0CityByCityNameBeadByIdAssignErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13216,6 +13403,10 @@ export type PostV0CityByCityNameBeadByIdCloseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13249,6 +13440,10 @@ export type PostV0CityByCityNameBeadByIdCloseErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13271,6 +13466,12 @@ export type PostV0CityByCityNameBeadByIdCloseResponse = PostV0CityByCityNameBead
 
 export type GetV0CityByCityNameBeadByIdDepsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13290,6 +13491,10 @@ export type GetV0CityByCityNameBeadByIdDepsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13318,6 +13523,10 @@ export type PostV0CityByCityNameBeadByIdReopenData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13351,6 +13560,10 @@ export type PostV0CityByCityNameBeadByIdReopenErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13378,6 +13591,10 @@ export type PostV0CityByCityNameBeadByIdUpdateData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13415,6 +13632,10 @@ export type PostV0CityByCityNameBeadByIdUpdateErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13445,6 +13666,12 @@ export type PostV0CityByCityNameBeadByIdUpdateResponse = PostV0CityByCityNameBea
 
 export type GetV0CityByCityNameBeadsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13506,6 +13733,10 @@ export type GetV0CityByCityNameBeadsErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13537,6 +13768,10 @@ export type CreateBeadData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -13574,6 +13809,10 @@ export type CreateBeadErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13596,6 +13835,12 @@ export type CreateBeadResponse = CreateBeadResponses[keyof CreateBeadResponses];
 
 export type GetV0CityByCityNameBeadsGraphByRootIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13615,6 +13860,10 @@ export type GetV0CityByCityNameBeadsGraphByRootIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13638,6 +13887,12 @@ export type GetV0CityByCityNameBeadsGraphByRootIdResponse = GetV0CityByCityNameB
 
 export type GetV0CityByCityNameBeadsReadyData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13662,6 +13917,10 @@ export type GetV0CityByCityNameBeadsReadyErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13689,6 +13948,12 @@ export type GetV0CityByCityNameBeadsReadyResponse = GetV0CityByCityNameBeadsRead
 
 export type GetV0CityByCityNameConfigData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13704,6 +13969,10 @@ export type GetV0CityByCityNameConfigErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13727,6 +13996,12 @@ export type GetV0CityByCityNameConfigResponse = GetV0CityByCityNameConfigRespons
 
 export type GetV0CityByCityNameConfigDefaultsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13742,6 +14017,10 @@ export type GetV0CityByCityNameConfigDefaultsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13765,6 +14044,12 @@ export type GetV0CityByCityNameConfigDefaultsResponse = GetV0CityByCityNameConfi
 
 export type GetV0CityByCityNameConfigExplainData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13780,6 +14065,10 @@ export type GetV0CityByCityNameConfigExplainErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13803,6 +14092,12 @@ export type GetV0CityByCityNameConfigExplainResponse = GetV0CityByCityNameConfig
 
 export type GetV0CityByCityNameConfigValidateData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13818,6 +14113,10 @@ export type GetV0CityByCityNameConfigValidateErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13846,6 +14145,10 @@ export type DeleteV0CityByCityNameConvoyByIdData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13879,6 +14182,10 @@ export type DeleteV0CityByCityNameConvoyByIdErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -13901,6 +14208,12 @@ export type DeleteV0CityByCityNameConvoyByIdResponse = DeleteV0CityByCityNameCon
 
 export type GetV0CityByCityNameConvoyByIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -13920,6 +14233,10 @@ export type GetV0CityByCityNameConvoyByIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -13952,6 +14269,10 @@ export type PostV0CityByCityNameConvoyByIdAddData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -13985,6 +14306,10 @@ export type PostV0CityByCityNameConvoyByIdAddErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14007,6 +14332,12 @@ export type PostV0CityByCityNameConvoyByIdAddResponse = PostV0CityByCityNameConv
 
 export type GetV0CityByCityNameConvoyByIdCheckData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -14030,6 +14361,10 @@ export type GetV0CityByCityNameConvoyByIdCheckErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -14062,6 +14397,10 @@ export type PostV0CityByCityNameConvoyByIdCloseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -14095,6 +14434,10 @@ export type PostV0CityByCityNameConvoyByIdCloseErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14122,6 +14465,10 @@ export type PostV0CityByCityNameConvoyByIdRemoveData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -14155,6 +14502,10 @@ export type PostV0CityByCityNameConvoyByIdRemoveErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14177,6 +14528,12 @@ export type PostV0CityByCityNameConvoyByIdRemoveResponse = PostV0CityByCityNameC
 
 export type GetV0CityByCityNameConvoysData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -14214,6 +14571,10 @@ export type GetV0CityByCityNameConvoysErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14245,6 +14606,10 @@ export type CreateConvoyData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -14282,6 +14647,10 @@ export type CreateConvoyErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14304,6 +14673,12 @@ export type CreateConvoyResponse = CreateConvoyResponses[keyof CreateConvoyRespo
 
 export type GetV0CityByCityNameEventsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -14353,6 +14728,10 @@ export type GetV0CityByCityNameEventsErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14380,6 +14759,10 @@ export type EmitEventData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -14413,6 +14796,10 @@ export type EmitEventErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14444,6 +14831,10 @@ export type RotateEventsData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -14478,6 +14869,10 @@ export type RotateEventsErrors = {
      */
     405: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14501,6 +14896,10 @@ export type RotateEventsResponse = RotateEventsResponses[keyof RotateEventsRespo
 export type StreamEventsData = {
     body?: never;
     headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * SSE reconnect position from the last received event ID. Omit Last-Event-ID and after_seq to start at the current city event head.
          */
@@ -14576,6 +14975,10 @@ export type DeleteV0CityByCityNameExtmsgAdaptersData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -14600,6 +15003,10 @@ export type DeleteV0CityByCityNameExtmsgAdaptersErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -14627,6 +15034,12 @@ export type DeleteV0CityByCityNameExtmsgAdaptersResponse = DeleteV0CityByCityNam
 
 export type GetV0CityByCityNameExtmsgAdaptersData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -14642,6 +15055,10 @@ export type GetV0CityByCityNameExtmsgAdaptersErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -14675,6 +15092,10 @@ export type RegisterExtmsgAdapterData = {
          */
         'X-GC-Request': string;
         /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+        /**
          * Idempotency key for safe retries.
          */
         'Idempotency-Key'?: string;
@@ -14707,6 +15128,10 @@ export type RegisterExtmsgAdapterErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14738,6 +15163,10 @@ export type PostV0CityByCityNameExtmsgBindData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -14771,6 +15200,10 @@ export type PostV0CityByCityNameExtmsgBindErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14797,6 +15230,12 @@ export type PostV0CityByCityNameExtmsgBindResponse = PostV0CityByCityNameExtmsgB
 
 export type GetV0CityByCityNameExtmsgBindingsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -14821,6 +15260,10 @@ export type GetV0CityByCityNameExtmsgBindingsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -14848,6 +15291,12 @@ export type GetV0CityByCityNameExtmsgBindingsResponse = GetV0CityByCityNameExtms
 
 export type GetV0CityByCityNameExtmsgGroupsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -14885,6 +15334,10 @@ export type GetV0CityByCityNameExtmsgGroupsErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -14916,6 +15369,10 @@ export type EnsureExtmsgGroupData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -14940,6 +15397,10 @@ export type EnsureExtmsgGroupErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -14972,6 +15433,10 @@ export type PostV0CityByCityNameExtmsgInboundData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15000,6 +15465,10 @@ export type PostV0CityByCityNameExtmsgInboundErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -15032,6 +15501,10 @@ export type PostV0CityByCityNameExtmsgOutboundData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15056,6 +15529,10 @@ export type PostV0CityByCityNameExtmsgOutboundErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -15088,6 +15565,10 @@ export type DeleteV0CityByCityNameExtmsgParticipantsData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15112,6 +15593,10 @@ export type DeleteV0CityByCityNameExtmsgParticipantsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -15144,6 +15629,10 @@ export type PostV0CityByCityNameExtmsgParticipantsData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15168,6 +15657,10 @@ export type PostV0CityByCityNameExtmsgParticipantsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -15195,6 +15688,12 @@ export type PostV0CityByCityNameExtmsgParticipantsResponse = PostV0CityByCityNam
 
 export type GetV0CityByCityNameExtmsgTranscriptData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -15248,6 +15747,10 @@ export type GetV0CityByCityNameExtmsgTranscriptErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15279,6 +15782,10 @@ export type PostV0CityByCityNameExtmsgTranscriptAckData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15303,6 +15810,10 @@ export type PostV0CityByCityNameExtmsgTranscriptAckErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -15335,6 +15846,10 @@ export type PostV0CityByCityNameExtmsgUnbindData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15364,6 +15879,10 @@ export type PostV0CityByCityNameExtmsgUnbindErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15390,6 +15909,12 @@ export type PostV0CityByCityNameExtmsgUnbindResponse = PostV0CityByCityNameExtms
 
 export type GetV0CityByCityNameFormulaByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -15427,6 +15952,10 @@ export type GetV0CityByCityNameFormulaByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15453,6 +15982,12 @@ export type GetV0CityByCityNameFormulaByNameResponse = GetV0CityByCityNameFormul
 
 export type GetV0CityByCityNameFormulasData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -15482,6 +16017,10 @@ export type GetV0CityByCityNameFormulasErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15508,6 +16047,12 @@ export type GetV0CityByCityNameFormulasResponse = GetV0CityByCityNameFormulasRes
 
 export type GetV0CityByCityNameFormulasFeedData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -15541,6 +16086,10 @@ export type GetV0CityByCityNameFormulasFeedErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15572,6 +16121,10 @@ export type DeleteV0CityByCityNameFormulasByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15605,6 +16158,10 @@ export type DeleteV0CityByCityNameFormulasByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15631,6 +16188,12 @@ export type DeleteV0CityByCityNameFormulasByNameResponse = DeleteV0CityByCityNam
 
 export type GetV0CityByCityNameFormulasByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -15668,6 +16231,10 @@ export type GetV0CityByCityNameFormulasByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15699,6 +16266,10 @@ export type PutV0CityByCityNameFormulasByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15731,6 +16302,10 @@ export type PutV0CityByCityNameFormulasByNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Request Entity Too Large
      */
@@ -15767,6 +16342,10 @@ export type PostV0CityByCityNameFormulasByNamePreviewData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15800,6 +16379,10 @@ export type PostV0CityByCityNameFormulasByNamePreviewErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15826,6 +16409,12 @@ export type PostV0CityByCityNameFormulasByNamePreviewResponse = PostV0CityByCity
 
 export type GetV0CityByCityNameFormulasByNameRunsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -15863,6 +16452,10 @@ export type GetV0CityByCityNameFormulasByNameRunsErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -15889,6 +16482,12 @@ export type GetV0CityByCityNameFormulasByNameRunsResponse = GetV0CityByCityNameF
 
 export type GetV0CityByCityNameFormulasByNameSourceData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -15912,6 +16511,10 @@ export type GetV0CityByCityNameFormulasByNameSourceErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -15944,6 +16547,10 @@ export type PostV0CityByCityNameFormulasByNameValidateData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -15973,6 +16580,10 @@ export type PostV0CityByCityNameFormulasByNameValidateErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Request Entity Too Large
      */
     413: ErrorModel;
@@ -15999,6 +16610,12 @@ export type PostV0CityByCityNameFormulasByNameValidateResponse = PostV0CityByCit
 
 export type GetV0CityByCityNameHealthData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16014,6 +16631,10 @@ export type GetV0CityByCityNameHealthErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16037,6 +16658,12 @@ export type GetV0CityByCityNameHealthResponse = GetV0CityByCityNameHealthRespons
 
 export type GetV0CityByCityNameMailData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16086,6 +16713,10 @@ export type GetV0CityByCityNameMailErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16117,6 +16748,10 @@ export type SendMailData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -16154,6 +16789,10 @@ export type SendMailErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16176,6 +16815,12 @@ export type SendMailResponse = SendMailResponses[keyof SendMailResponses];
 
 export type GetV0CityByCityNameMailCountData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16200,6 +16845,10 @@ export type GetV0CityByCityNameMailCountErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16227,6 +16876,12 @@ export type GetV0CityByCityNameMailCountResponse = GetV0CityByCityNameMailCountR
 
 export type GetV0CityByCityNameMailThreadByIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16251,6 +16906,10 @@ export type GetV0CityByCityNameMailThreadByIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16283,6 +16942,10 @@ export type DeleteV0CityByCityNameMailByIdData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -16317,6 +16980,10 @@ export type DeleteV0CityByCityNameMailByIdErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16339,6 +17006,12 @@ export type DeleteV0CityByCityNameMailByIdResponse = DeleteV0CityByCityNameMailB
 
 export type GetV0CityByCityNameMailByIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16363,6 +17036,10 @@ export type GetV0CityByCityNameMailByIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16395,6 +17072,10 @@ export type PostV0CityByCityNameMailByIdArchiveData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -16429,6 +17110,10 @@ export type PostV0CityByCityNameMailByIdArchiveErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16456,6 +17141,10 @@ export type PostV0CityByCityNameMailByIdMarkUnreadData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -16490,6 +17179,10 @@ export type PostV0CityByCityNameMailByIdMarkUnreadErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16517,6 +17210,10 @@ export type PostV0CityByCityNameMailByIdReadData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -16551,6 +17248,10 @@ export type PostV0CityByCityNameMailByIdReadErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16578,6 +17279,10 @@ export type ReplyMailData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -16620,6 +17325,10 @@ export type ReplyMailErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16647,6 +17356,10 @@ export type TriggerMaintenanceDoltGcData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -16681,6 +17394,10 @@ export type TriggerMaintenanceDoltGcErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16707,6 +17424,12 @@ export type TriggerMaintenanceDoltGcResponse = TriggerMaintenanceDoltGcResponses
 
 export type GetV0CityByCityNameMaintenanceStatusData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16722,6 +17445,10 @@ export type GetV0CityByCityNameMaintenanceStatusErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16749,6 +17476,12 @@ export type GetV0CityByCityNameMaintenanceStatusResponse = GetV0CityByCityNameMa
 
 export type GetV0CityByCityNameOrderHistoryByBeadIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16773,6 +17506,10 @@ export type GetV0CityByCityNameOrderHistoryByBeadIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16800,6 +17537,12 @@ export type GetV0CityByCityNameOrderHistoryByBeadIdResponse = GetV0CityByCityNam
 
 export type GetV0CityByCityNameOrderByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -16823,6 +17566,10 @@ export type GetV0CityByCityNameOrderByNameErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16851,6 +17598,10 @@ export type PostV0CityByCityNameOrderByNameDisableData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -16888,6 +17639,10 @@ export type PostV0CityByCityNameOrderByNameDisableErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16919,6 +17674,10 @@ export type PostV0CityByCityNameOrderByNameEnableData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -16956,6 +17715,10 @@ export type PostV0CityByCityNameOrderByNameEnableErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -16987,6 +17750,10 @@ export type PostV0CityByCityNameOrderByNameRunData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17016,6 +17783,10 @@ export type PostV0CityByCityNameOrderByNameRunErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17042,6 +17813,12 @@ export type PostV0CityByCityNameOrderByNameRunResponse = PostV0CityByCityNameOrd
 
 export type GetV0CityByCityNameOrdersData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17057,6 +17834,10 @@ export type GetV0CityByCityNameOrdersErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17080,6 +17861,12 @@ export type GetV0CityByCityNameOrdersResponse = GetV0CityByCityNameOrdersRespons
 
 export type GetV0CityByCityNameOrdersCheckData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17100,6 +17887,10 @@ export type GetV0CityByCityNameOrdersCheckErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17123,6 +17914,12 @@ export type GetV0CityByCityNameOrdersCheckResponse = GetV0CityByCityNameOrdersCh
 
 export type GetV0CityByCityNameOrdersFeedData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17156,6 +17953,10 @@ export type GetV0CityByCityNameOrdersFeedErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17178,6 +17979,12 @@ export type GetV0CityByCityNameOrdersFeedResponse = GetV0CityByCityNameOrdersFee
 
 export type GetV0CityByCityNameOrdersHistoryData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17211,6 +18018,10 @@ export type GetV0CityByCityNameOrdersHistoryErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17237,6 +18048,12 @@ export type GetV0CityByCityNameOrdersHistoryResponse = GetV0CityByCityNameOrders
 
 export type GetV0CityByCityNamePacksData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17256,6 +18073,10 @@ export type GetV0CityByCityNamePacksErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17284,6 +18105,10 @@ export type AddPackData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -17321,6 +18146,10 @@ export type AddPackErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17352,6 +18181,10 @@ export type DeleteV0CityByCityNamePacksByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17385,6 +18218,10 @@ export type DeleteV0CityByCityNamePacksByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17412,6 +18249,10 @@ export type DeleteV0CityByCityNamePatchesAgentByBaseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17445,6 +18286,10 @@ export type DeleteV0CityByCityNamePatchesAgentByBaseErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17471,6 +18316,12 @@ export type DeleteV0CityByCityNamePatchesAgentByBaseResponse = DeleteV0CityByCit
 
 export type GetV0CityByCityNamePatchesAgentByBaseData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17490,6 +18341,10 @@ export type GetV0CityByCityNamePatchesAgentByBaseErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17518,6 +18373,10 @@ export type DeleteV0CityByCityNamePatchesAgentByDirByBaseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17555,6 +18414,10 @@ export type DeleteV0CityByCityNamePatchesAgentByDirByBaseErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17581,6 +18444,12 @@ export type DeleteV0CityByCityNamePatchesAgentByDirByBaseResponse = DeleteV0City
 
 export type GetV0CityByCityNamePatchesAgentByDirByBaseData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17605,6 +18474,10 @@ export type GetV0CityByCityNamePatchesAgentByDirByBaseErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17627,6 +18500,12 @@ export type GetV0CityByCityNamePatchesAgentByDirByBaseResponse = GetV0CityByCity
 
 export type GetV0CityByCityNamePatchesAgentsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17642,6 +18521,10 @@ export type GetV0CityByCityNamePatchesAgentsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17670,6 +18553,10 @@ export type PutV0CityByCityNamePatchesAgentsData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17698,6 +18585,10 @@ export type PutV0CityByCityNamePatchesAgentsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17730,6 +18621,10 @@ export type DeleteV0CityByCityNamePatchesProviderByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17763,6 +18658,10 @@ export type DeleteV0CityByCityNamePatchesProviderByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17789,6 +18688,12 @@ export type DeleteV0CityByCityNamePatchesProviderByNameResponse = DeleteV0CityBy
 
 export type GetV0CityByCityNamePatchesProviderByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17808,6 +18713,10 @@ export type GetV0CityByCityNamePatchesProviderByNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17831,6 +18740,12 @@ export type GetV0CityByCityNamePatchesProviderByNameResponse = GetV0CityByCityNa
 
 export type GetV0CityByCityNamePatchesProvidersData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -17846,6 +18761,10 @@ export type GetV0CityByCityNamePatchesProvidersErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17874,6 +18793,10 @@ export type PutV0CityByCityNamePatchesProvidersData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17902,6 +18825,10 @@ export type PutV0CityByCityNamePatchesProvidersErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -17934,6 +18861,10 @@ export type DeleteV0CityByCityNamePatchesRigByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -17967,6 +18898,10 @@ export type DeleteV0CityByCityNamePatchesRigByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -17993,6 +18928,12 @@ export type DeleteV0CityByCityNamePatchesRigByNameResponse = DeleteV0CityByCityN
 
 export type GetV0CityByCityNamePatchesRigByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18012,6 +18953,10 @@ export type GetV0CityByCityNamePatchesRigByNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18035,6 +18980,12 @@ export type GetV0CityByCityNamePatchesRigByNameResponse = GetV0CityByCityNamePat
 
 export type GetV0CityByCityNamePatchesRigsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18050,6 +19001,10 @@ export type GetV0CityByCityNamePatchesRigsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18078,6 +19033,10 @@ export type PutV0CityByCityNamePatchesRigsData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -18107,6 +19066,10 @@ export type PutV0CityByCityNamePatchesRigsErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18133,6 +19096,12 @@ export type PutV0CityByCityNamePatchesRigsResponse = PutV0CityByCityNamePatchesR
 
 export type GetV0CityByCityNamePendingData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18148,6 +19117,10 @@ export type GetV0CityByCityNamePendingErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18175,6 +19148,12 @@ export type GetV0CityByCityNamePendingResponse = GetV0CityByCityNamePendingRespo
 
 export type GetV0CityByCityNameProviderReadinessData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18204,6 +19183,10 @@ export type GetV0CityByCityNameProviderReadinessErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18231,6 +19214,10 @@ export type DeleteV0CityByCityNameProviderByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -18268,6 +19255,10 @@ export type DeleteV0CityByCityNameProviderByNameErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18294,6 +19285,12 @@ export type DeleteV0CityByCityNameProviderByNameResponse = DeleteV0CityByCityNam
 
 export type GetV0CityByCityNameProviderByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18313,6 +19310,10 @@ export type GetV0CityByCityNameProviderByNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18341,6 +19342,10 @@ export type PatchV0CityByCityNameProviderByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -18378,6 +19383,10 @@ export type PatchV0CityByCityNameProviderByNameErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18404,6 +19413,12 @@ export type PatchV0CityByCityNameProviderByNameResponse = PatchV0CityByCityNameP
 
 export type GetV0CityByCityNameProvidersData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18419,6 +19434,10 @@ export type GetV0CityByCityNameProvidersErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18447,6 +19466,10 @@ export type CreateProviderData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -18484,6 +19507,10 @@ export type CreateProviderErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18510,6 +19537,12 @@ export type CreateProviderResponse = CreateProviderResponses[keyof CreateProvide
 
 export type GetV0CityByCityNameProvidersPublicData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18525,6 +19558,10 @@ export type GetV0CityByCityNameProvidersPublicErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18548,6 +19585,12 @@ export type GetV0CityByCityNameProvidersPublicResponse = GetV0CityByCityNameProv
 
 export type GetV0CityByCityNameReadinessData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18577,6 +19620,10 @@ export type GetV0CityByCityNameReadinessErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18599,6 +19646,12 @@ export type GetV0CityByCityNameReadinessResponse = GetV0CityByCityNameReadinessR
 
 export type GetRequestOutcomeData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18623,6 +19676,10 @@ export type GetRequestOutcomeErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18655,6 +19712,10 @@ export type DeleteV0CityByCityNameRigByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -18688,6 +19749,10 @@ export type DeleteV0CityByCityNameRigByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18714,6 +19779,12 @@ export type DeleteV0CityByCityNameRigByNameResponse = DeleteV0CityByCityNameRigB
 
 export type GetV0CityByCityNameRigByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18738,6 +19809,10 @@ export type GetV0CityByCityNameRigByNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18766,6 +19841,10 @@ export type PatchV0CityByCityNameRigByNameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -18799,6 +19878,10 @@ export type PatchV0CityByCityNameRigByNameErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18830,6 +19913,10 @@ export type PostV0CityByCityNameRigByNameByActionData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -18863,6 +19950,10 @@ export type PostV0CityByCityNameRigByNameByActionErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -18889,6 +19980,12 @@ export type PostV0CityByCityNameRigByNameByActionResponse = PostV0CityByCityName
 
 export type GetV0CityByCityNameRigsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -18917,6 +20014,10 @@ export type GetV0CityByCityNameRigsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -18950,6 +20051,10 @@ export type CreateRigData = {
          */
         'X-GC-Request': string;
         /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+        /**
          * Idempotency key for safe retries (synchronous create).
          */
         'Idempotency-Key'?: string;
@@ -18965,6 +20070,18 @@ export type CreateRigData = {
 };
 
 export type CreateRigErrors = {
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
     /**
      * Error
      */
@@ -18992,6 +20109,12 @@ export type CreateRigResponse = CreateRigResponses[keyof CreateRigResponses];
 
 export type GetV0CityByCityNameRunsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19008,6 +20131,10 @@ export type GetV0CityByCityNameRunsData = {
 };
 
 export type GetV0CityByCityNameRunsErrors = {
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19035,6 +20162,12 @@ export type GetV0CityByCityNameRunsResponse = GetV0CityByCityNameRunsResponses[k
 
 export type GetV0CityByCityNameRunsCensusData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19046,6 +20179,10 @@ export type GetV0CityByCityNameRunsCensusData = {
 };
 
 export type GetV0CityByCityNameRunsCensusErrors = {
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19073,6 +20210,12 @@ export type GetV0CityByCityNameRunsCensusResponse = GetV0CityByCityNameRunsCensu
 
 export type GetV0CityByCityNameRunsByRunIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19092,6 +20235,10 @@ export type GetV0CityByCityNameRunsByRunIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19124,6 +20271,10 @@ export type PostV0CityByCityNameRunsByRunIdCancelData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -19148,6 +20299,10 @@ export type PostV0CityByCityNameRunsByRunIdCancelErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19175,6 +20330,12 @@ export type PostV0CityByCityNameRunsByRunIdCancelResponse = PostV0CityByCityName
 
 export type GetV0CityByCityNameRunsByRunIdStepsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19194,6 +20355,10 @@ export type GetV0CityByCityNameRunsByRunIdStepsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19221,6 +20386,12 @@ export type GetV0CityByCityNameRunsByRunIdStepsResponse = GetV0CityByCityNameRun
 
 export type GetV0CityByCityNameServiceByNameData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19240,6 +20411,10 @@ export type GetV0CityByCityNameServiceByNameErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19268,6 +20443,10 @@ export type PostV0CityByCityNameServiceByNameRestartData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -19297,6 +20476,10 @@ export type PostV0CityByCityNameServiceByNameRestartErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19319,6 +20502,12 @@ export type PostV0CityByCityNameServiceByNameRestartResponse = PostV0CityByCityN
 
 export type GetV0CityByCityNameServicesData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19334,6 +20523,10 @@ export type GetV0CityByCityNameServicesErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19357,6 +20550,12 @@ export type GetV0CityByCityNameServicesResponse = GetV0CityByCityNameServicesRes
 
 export type GetV0CityByCityNameSessionByIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19394,6 +20593,10 @@ export type GetV0CityByCityNameSessionByIdErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19425,6 +20628,10 @@ export type PatchV0CityByCityNameSessionByIdData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -19462,6 +20669,10 @@ export type PatchV0CityByCityNameSessionByIdErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19488,6 +20699,12 @@ export type PatchV0CityByCityNameSessionByIdResponse = PatchV0CityByCityNameSess
 
 export type GetV0CityByCityNameSessionByIdAgentsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19511,6 +20728,10 @@ export type GetV0CityByCityNameSessionByIdAgentsErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19538,6 +20759,12 @@ export type GetV0CityByCityNameSessionByIdAgentsResponse = GetV0CityByCityNameSe
 
 export type GetV0CityByCityNameSessionByIdAgentsByAgentIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19570,6 +20797,10 @@ export type GetV0CityByCityNameSessionByIdAgentsByAgentIdErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19601,6 +20832,10 @@ export type PostV0CityByCityNameSessionByIdCloseData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -19643,6 +20878,10 @@ export type PostV0CityByCityNameSessionByIdCloseErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19674,6 +20913,10 @@ export type PostV0CityByCityNameSessionByIdKillData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -19716,6 +20959,10 @@ export type PostV0CityByCityNameSessionByIdKillErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19747,6 +20994,10 @@ export type SendSessionMessageData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -19784,6 +21035,10 @@ export type SendSessionMessageErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19810,6 +21065,12 @@ export type SendSessionMessageResponse = SendSessionMessageResponses[keyof SendS
 
 export type ListSessionOpsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19833,6 +21094,10 @@ export type ListSessionOpsErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19865,6 +21130,10 @@ export type ProposeSessionOpData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * The client key, when the body does not carry one.
          */
@@ -19902,6 +21171,10 @@ export type ProposeSessionOpErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -19932,6 +21205,12 @@ export type ProposeSessionOpResponse = ProposeSessionOpResponses[keyof ProposeSe
 
 export type GetSessionOpData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -19959,6 +21238,10 @@ export type GetSessionOpErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -19991,6 +21274,10 @@ export type CancelSessionOpData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -20028,6 +21315,10 @@ export type CancelSessionOpErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20054,6 +21345,12 @@ export type CancelSessionOpResponse = CancelSessionOpResponses[keyof CancelSessi
 
 export type GetV0CityByCityNameSessionByIdPendingData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -20077,6 +21374,10 @@ export type GetV0CityByCityNameSessionByIdPendingErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -20109,6 +21410,10 @@ export type PostV0CityByCityNameSessionByIdPermissionModeData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -20146,6 +21451,10 @@ export type PostV0CityByCityNameSessionByIdPermissionModeErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20181,6 +21490,10 @@ export type PostV0CityByCityNameSessionByIdPinData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -20218,6 +21531,10 @@ export type PostV0CityByCityNameSessionByIdPinErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20249,6 +21566,10 @@ export type PostV0CityByCityNameSessionByIdRenameData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -20286,6 +21607,10 @@ export type PostV0CityByCityNameSessionByIdRenameErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20317,6 +21642,10 @@ export type PostV0CityByCityNameSessionByIdResetData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -20354,6 +21683,10 @@ export type PostV0CityByCityNameSessionByIdResetErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20385,6 +21718,10 @@ export type RespondSessionData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -20422,6 +21759,10 @@ export type RespondSessionErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20457,6 +21798,10 @@ export type PostV0CityByCityNameSessionByIdStopData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -20494,6 +21839,10 @@ export type PostV0CityByCityNameSessionByIdStopErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20525,6 +21874,10 @@ export type PostV0CityByCityNameSessionByIdStopResponse = PostV0CityByCityNameSe
 export type StreamSessionData = {
     body?: never;
     headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Opaque structured transcript resume cursor from the last received SSE frame. Takes precedence over after_cursor.
          */
@@ -20683,6 +22036,10 @@ export type SubmitSessionData = {
          */
         'X-GC-Request': string;
         /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+        /**
          * Idempotency key for safe retries.
          */
         'Idempotency-Key'?: string;
@@ -20719,6 +22076,10 @@ export type SubmitSessionErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20750,6 +22111,10 @@ export type PostV0CityByCityNameSessionByIdSuspendData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -20787,6 +22152,10 @@ export type PostV0CityByCityNameSessionByIdSuspendErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20813,6 +22182,12 @@ export type PostV0CityByCityNameSessionByIdSuspendResponse = PostV0CityByCityNam
 
 export type GetV0CityByCityNameSessionByIdTranscriptData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -20858,6 +22233,10 @@ export type GetV0CityByCityNameSessionByIdTranscriptErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -20884,6 +22263,12 @@ export type GetV0CityByCityNameSessionByIdTranscriptResponse = GetV0CityByCityNa
 
 export type GetV0CityByCityNameSessionByIdTurnData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -20907,6 +22292,10 @@ export type GetV0CityByCityNameSessionByIdTurnErrors = {
      * Conflict
      */
     409: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -20939,6 +22328,10 @@ export type PostV0CityByCityNameSessionByIdUnpinData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -20976,6 +22369,10 @@ export type PostV0CityByCityNameSessionByIdUnpinErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21007,6 +22404,10 @@ export type PostV0CityByCityNameSessionByIdWakeData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -21048,6 +22449,10 @@ export type PostV0CityByCityNameSessionByIdWakeErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21074,6 +22479,12 @@ export type PostV0CityByCityNameSessionByIdWakeResponse = PostV0CityByCityNameSe
 
 export type GetV0CityByCityNameSessionsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21115,6 +22526,10 @@ export type GetV0CityByCityNameSessionsErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21146,6 +22561,10 @@ export type CreateSessionData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
         /**
          * Idempotency key for safe retries.
          */
@@ -21183,6 +22602,10 @@ export type CreateSessionErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21214,6 +22637,10 @@ export type PostV0CityByCityNameSlingData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -21247,6 +22674,10 @@ export type PostV0CityByCityNameSlingErrors = {
      */
     409: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21269,6 +22700,12 @@ export type PostV0CityByCityNameSlingResponse = PostV0CityByCityNameSlingRespons
 
 export type GetV0CityByCityNameStatusData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21297,6 +22734,10 @@ export type GetV0CityByCityNameStatusErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -21360,6 +22801,12 @@ export type PostV0CityByCityNameUnregisterResponse = PostV0CityByCityNameUnregis
 
 export type GetV0CityByCityNameUsageData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21380,6 +22827,10 @@ export type GetV0CityByCityNameUsageErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -21407,6 +22858,12 @@ export type GetV0CityByCityNameUsageResponse = GetV0CityByCityNameUsageResponses
 
 export type GetV0CityByCityNameWaitByIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21426,6 +22883,10 @@ export type GetV0CityByCityNameWaitByIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -21453,6 +22914,12 @@ export type GetV0CityByCityNameWaitByIdResponse = GetV0CityByCityNameWaitByIdRes
 
 export type GetV0CityByCityNameWaitsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21477,6 +22944,10 @@ export type GetV0CityByCityNameWaitsErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -21504,6 +22975,12 @@ export type GetV0CityByCityNameWaitsResponse = GetV0CityByCityNameWaitsResponses
 
 export type GetV0CityByCityNameWorkActiveStepData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21533,6 +23010,10 @@ export type GetV0CityByCityNameWorkActiveStepErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21559,6 +23040,12 @@ export type GetV0CityByCityNameWorkActiveStepResponse = GetV0CityByCityNameWorkA
 
 export type GetV0CityByCityNameWorkReadyData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21612,6 +23099,10 @@ export type GetV0CityByCityNameWorkReadyErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21643,6 +23134,10 @@ export type DeleteV0CityByCityNameWorkflowByWorkflowIdData = {
          * Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
          */
         'X-GC-Request': string;
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
     };
     path: {
         /**
@@ -21689,6 +23184,10 @@ export type DeleteV0CityByCityNameWorkflowByWorkflowIdErrors = {
      */
     404: ErrorModel;
     /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
+    /**
      * Unprocessable Entity
      */
     422: ErrorModel;
@@ -21711,6 +23210,12 @@ export type DeleteV0CityByCityNameWorkflowByWorkflowIdResponse = DeleteV0CityByC
 
 export type GetV0CityByCityNameWorkflowByWorkflowIdData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+         */
+        'X-GC-City-Incarnation'?: string;
+    };
     path: {
         /**
          * City name.
@@ -21743,6 +23248,10 @@ export type GetV0CityByCityNameWorkflowByWorkflowIdErrors = {
      * Not Found
      */
     404: ErrorModel;
+    /**
+     * Precondition Failed
+     */
+    412: ErrorModel;
     /**
      * Unprocessable Entity
      */

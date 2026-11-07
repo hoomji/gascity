@@ -340,6 +340,26 @@ type OpsCrashPointsProvider interface {
 	OpsCrashPoints() legacyop.CrashPointFunc
 }
 
+// IncarnationProvider is an optional State capability: the city's
+// incarnation id (internal/cityidentity), latched when the city loaded.
+// cmd/gc's controllerState answers the id minted for its city dir; a
+// State without it (test fakes) carries no identity, and the
+// X-GC-City-Incarnation precondition is not enforced for it.
+type IncarnationProvider interface {
+	// CityIncarnationID returns the city's incarnation id, or "" when
+	// the state carries none.
+	CityIncarnationID() string
+}
+
+// StateIncarnationID returns the city's incarnation id when state
+// carries one (IncarnationProvider), or "" when it does not.
+func StateIncarnationID(s State) string {
+	if p, ok := s.(IncarnationProvider); ok {
+		return p.CityIncarnationID()
+	}
+	return ""
+}
+
 // AgentVisibilityWaiter is an optional capability for states whose Config()
 // snapshot may briefly lag a successful agent mutation. Callers that need
 // strict read-after-write semantics for agent target resolution can type-assert

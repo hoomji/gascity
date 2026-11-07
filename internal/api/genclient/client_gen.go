@@ -1808,60 +1808,62 @@ type AgentOutputResponse struct {
 
 // AgentPatch defines model for AgentPatch.
 type AgentPatch struct {
-	AppendFragments         *[]string          `json:"AppendFragments"`
-	Args                    *[]string          `json:"Args"`
-	AssignedWorkDeferLimit  *int64             `json:"AssignedWorkDeferLimit"`
-	Attach                  *bool              `json:"Attach"`
-	AutoReclaimStaleClaims  *bool              `json:"AutoReclaimStaleClaims"`
-	ContextAdvisory         *ContextAdvisory   `json:"ContextAdvisory,omitempty"`
-	DefaultSlingFormula     *string            `json:"DefaultSlingFormula"`
-	DependsOn               *[]string          `json:"DependsOn"`
-	Dir                     string             `json:"Dir"`
-	Env                     *map[string]string `json:"Env,omitempty"`
-	EnvRemove               *[]string          `json:"EnvRemove"`
-	HooksInstalled          *bool              `json:"HooksInstalled"`
-	IdleTimeout             *string            `json:"IdleTimeout"`
-	InjectAssignedSkills    *bool              `json:"InjectAssignedSkills"`
-	InjectFragments         *[]string          `json:"InjectFragments"`
-	InjectFragmentsAppend   *[]string          `json:"InjectFragmentsAppend"`
-	InstallAgentHooks       *[]string          `json:"InstallAgentHooks"`
-	InstallAgentHooksAppend *[]string          `json:"InstallAgentHooksAppend"`
-	Lifecycle               *string            `json:"Lifecycle"`
-	MCP                     *[]string          `json:"MCP"`
-	MCPAppend               *[]string          `json:"MCPAppend"`
-	MaxActiveSessions       *int64             `json:"MaxActiveSessions"`
-	MaxSessionAge           *string            `json:"MaxSessionAge"`
-	MaxSessionAgeJitter     *string            `json:"MaxSessionAgeJitter"`
-	MinActiveSessions       *int64             `json:"MinActiveSessions"`
-	MouseMode               *string            `json:"MouseMode"`
-	Name                    string             `json:"Name"`
-	Nudge                   *string            `json:"Nudge"`
-	OptionDefaults          *map[string]string `json:"OptionDefaults,omitempty"`
-	OverlayDir              *string            `json:"OverlayDir"`
-	Pool                    *PoolOverride      `json:"Pool,omitempty"`
-	PreStart                *[]string          `json:"PreStart"`
-	PreStartAppend          *[]string          `json:"PreStartAppend"`
-	PromptTemplate          *string            `json:"PromptTemplate"`
-	Provider                *string            `json:"Provider"`
-	ResumeCommand           *string            `json:"ResumeCommand"`
-	Rig                     string             `json:"Rig"`
-	ScaleCheck              *string            `json:"ScaleCheck"`
-	Scope                   *string            `json:"Scope"`
-	Session                 *string            `json:"Session"`
-	SessionLive             *[]string          `json:"SessionLive"`
-	SessionLiveAppend       *[]string          `json:"SessionLiveAppend"`
-	SessionSetup            *[]string          `json:"SessionSetup"`
-	SessionSetupAppend      *[]string          `json:"SessionSetupAppend"`
-	SessionSetupScript      *string            `json:"SessionSetupScript"`
-	Skills                  *[]string          `json:"Skills"`
-	SkillsAppend            *[]string          `json:"SkillsAppend"`
-	SleepAfterIdle          *string            `json:"SleepAfterIdle"`
-	StartCommand            *string            `json:"StartCommand"`
-	Suspended               *bool              `json:"Suspended"`
-	TmuxAlias               *string            `json:"TmuxAlias"`
-	Upstream                *string            `json:"Upstream"`
-	WakeMode                *string            `json:"WakeMode"`
-	WorkDir                 *string            `json:"WorkDir"`
+	AppendFragments         *[]string                     `json:"AppendFragments"`
+	Args                    *[]string                     `json:"Args"`
+	AssignedWorkDeferLimit  *int64                        `json:"AssignedWorkDeferLimit"`
+	Attach                  *bool                         `json:"Attach"`
+	AutoReclaimStaleClaims  *bool                         `json:"AutoReclaimStaleClaims"`
+	ContextAdvisory         *ContextAdvisory              `json:"ContextAdvisory,omitempty"`
+	DefaultSlingFormula     *string                       `json:"DefaultSlingFormula"`
+	DependsOn               *[]string                     `json:"DependsOn"`
+	Dir                     string                        `json:"Dir"`
+	Env                     *map[string]string            `json:"Env,omitempty"`
+	EnvRemove               *[]string                     `json:"EnvRemove"`
+	FallbackOptionDefaults  *map[string]map[string]string `json:"FallbackOptionDefaults,omitempty"`
+	FallbackProviders       *[]string                     `json:"FallbackProviders"`
+	HooksInstalled          *bool                         `json:"HooksInstalled"`
+	IdleTimeout             *string                       `json:"IdleTimeout"`
+	InjectAssignedSkills    *bool                         `json:"InjectAssignedSkills"`
+	InjectFragments         *[]string                     `json:"InjectFragments"`
+	InjectFragmentsAppend   *[]string                     `json:"InjectFragmentsAppend"`
+	InstallAgentHooks       *[]string                     `json:"InstallAgentHooks"`
+	InstallAgentHooksAppend *[]string                     `json:"InstallAgentHooksAppend"`
+	Lifecycle               *string                       `json:"Lifecycle"`
+	MCP                     *[]string                     `json:"MCP"`
+	MCPAppend               *[]string                     `json:"MCPAppend"`
+	MaxActiveSessions       *int64                        `json:"MaxActiveSessions"`
+	MaxSessionAge           *string                       `json:"MaxSessionAge"`
+	MaxSessionAgeJitter     *string                       `json:"MaxSessionAgeJitter"`
+	MinActiveSessions       *int64                        `json:"MinActiveSessions"`
+	MouseMode               *string                       `json:"MouseMode"`
+	Name                    string                        `json:"Name"`
+	Nudge                   *string                       `json:"Nudge"`
+	OptionDefaults          *map[string]string            `json:"OptionDefaults,omitempty"`
+	OverlayDir              *string                       `json:"OverlayDir"`
+	Pool                    *PoolOverride                 `json:"Pool,omitempty"`
+	PreStart                *[]string                     `json:"PreStart"`
+	PreStartAppend          *[]string                     `json:"PreStartAppend"`
+	PromptTemplate          *string                       `json:"PromptTemplate"`
+	Provider                *string                       `json:"Provider"`
+	ResumeCommand           *string                       `json:"ResumeCommand"`
+	Rig                     string                        `json:"Rig"`
+	ScaleCheck              *string                       `json:"ScaleCheck"`
+	Scope                   *string                       `json:"Scope"`
+	Session                 *string                       `json:"Session"`
+	SessionLive             *[]string                     `json:"SessionLive"`
+	SessionLiveAppend       *[]string                     `json:"SessionLiveAppend"`
+	SessionSetup            *[]string                     `json:"SessionSetup"`
+	SessionSetupAppend      *[]string                     `json:"SessionSetupAppend"`
+	SessionSetupScript      *string                       `json:"SessionSetupScript"`
+	Skills                  *[]string                     `json:"Skills"`
+	SkillsAppend            *[]string                     `json:"SkillsAppend"`
+	SleepAfterIdle          *string                       `json:"SleepAfterIdle"`
+	StartCommand            *string                       `json:"StartCommand"`
+	Suspended               *bool                         `json:"Suspended"`
+	TmuxAlias               *string                       `json:"TmuxAlias"`
+	Upstream                *string                       `json:"Upstream"`
+	WakeMode                *string                       `json:"WakeMode"`
+	WorkDir                 *string                       `json:"WorkDir"`
 }
 
 // AgentPatchSetInputBody defines model for AgentPatchSetInputBody.
@@ -2244,6 +2246,9 @@ type CityCreateRequestBootstrapProfile string
 
 // CityCreateSucceededPayload defines model for CityCreateSucceededPayload.
 type CityCreateSucceededPayload struct {
+	// IncarnationId Incarnation id the city carries. Omitted when the emitter could not read it.
+	IncarnationId *string `json:"incarnation_id,omitempty"`
+
 	// Name Resolved city name.
 	Name string `json:"name"`
 
@@ -2257,6 +2262,7 @@ type CityCreateSucceededPayload struct {
 // CityGetResponse defines model for CityGetResponse.
 type CityGetResponse struct {
 	AgentCount      int64   `json:"agent_count"`
+	IncarnationId   *string `json:"incarnation_id,omitempty"`
 	Name            string  `json:"name"`
 	Path            string  `json:"path"`
 	Provider        *string `json:"provider,omitempty"`
@@ -2270,6 +2276,7 @@ type CityGetResponse struct {
 // CityInfo defines model for CityInfo.
 type CityInfo struct {
 	Error           *string   `json:"error,omitempty"`
+	IncarnationId   *string   `json:"incarnation_id,omitempty"`
 	Name            string    `json:"name"`
 	Path            string    `json:"path"`
 	PhasesCompleted *[]string `json:"phases_completed,omitempty"`
@@ -2279,8 +2286,9 @@ type CityInfo struct {
 
 // CityLifecyclePayload defines model for CityLifecyclePayload.
 type CityLifecyclePayload struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	IncarnationId *string `json:"incarnation_id,omitempty"`
+	Name          string  `json:"name"`
+	Path          string  `json:"path"`
 }
 
 // CityPatchInputBody defines model for CityPatchInputBody.
@@ -2303,6 +2311,9 @@ type CityPendingEntry struct {
 
 // CityUnregisterSucceededPayload defines model for CityUnregisterSucceededPayload.
 type CityUnregisterSucceededPayload struct {
+	// IncarnationId Incarnation id the city carried. Omitted when the emitter could not read it.
+	IncarnationId *string `json:"incarnation_id,omitempty"`
+
 	// Name City name that was unregistered.
 	Name string `json:"name"`
 
@@ -11584,22 +11595,43 @@ type PostV0CityParams struct {
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
 
+// GetV0CityByCityNameParams defines parameters for GetV0CityByCityName.
+type GetV0CityByCityNameParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
 // PatchV0CityByCityNameParams defines parameters for PatchV0CityByCityName.
 type PatchV0CityByCityNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNameAgentByBaseParams defines parameters for DeleteV0CityByCityNameAgentByBase.
 type DeleteV0CityByCityNameAgentByBaseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameAgentByBaseParams defines parameters for GetV0CityByCityNameAgentByBase.
+type GetV0CityByCityNameAgentByBaseParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PatchV0CityByCityNameAgentByBaseParams defines parameters for PatchV0CityByCityNameAgentByBase.
 type PatchV0CityByCityNameAgentByBaseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameAgentByBaseOutputParams defines parameters for GetV0CityByCityNameAgentByBaseOutput.
@@ -11609,12 +11641,24 @@ type GetV0CityByCityNameAgentByBaseOutputParams struct {
 
 	// Before Message UUID cursor for loading older messages.
 	Before *string `form:"before,omitempty" json:"before,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// StreamAgentOutputParams defines parameters for StreamAgentOutput.
+type StreamAgentOutputParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameAgentByBaseByActionParams defines parameters for PostV0CityByCityNameAgentByBaseByAction.
 type PostV0CityByCityNameAgentByBaseByActionParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameAgentByBaseByActionParamsAction defines parameters for PostV0CityByCityNameAgentByBaseByAction.
@@ -11624,12 +11668,24 @@ type PostV0CityByCityNameAgentByBaseByActionParamsAction string
 type DeleteV0CityByCityNameAgentByDirByBaseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameAgentByDirByBaseParams defines parameters for GetV0CityByCityNameAgentByDirByBase.
+type GetV0CityByCityNameAgentByDirByBaseParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PatchV0CityByCityNameAgentByDirByBaseParams defines parameters for PatchV0CityByCityNameAgentByDirByBase.
 type PatchV0CityByCityNameAgentByDirByBaseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameAgentByDirByBaseOutputParams defines parameters for GetV0CityByCityNameAgentByDirByBaseOutput.
@@ -11639,12 +11695,24 @@ type GetV0CityByCityNameAgentByDirByBaseOutputParams struct {
 
 	// Before Message UUID cursor for loading older messages.
 	Before *string `form:"before,omitempty" json:"before,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// StreamAgentOutputQualifiedParams defines parameters for StreamAgentOutputQualified.
+type StreamAgentOutputQualifiedParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameAgentByDirByBaseByActionParams defines parameters for PostV0CityByCityNameAgentByDirByBaseByAction.
 type PostV0CityByCityNameAgentByDirByBaseByActionParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameAgentByDirByBaseByActionParamsAction defines parameters for PostV0CityByCityNameAgentByDirByBaseByAction.
@@ -11669,6 +11737,9 @@ type GetV0CityByCityNameAgentsParams struct {
 
 	// Peek Include last output preview.
 	Peek *bool `form:"peek,omitempty" json:"peek,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameAgentsParamsRunning defines parameters for GetV0CityByCityNameAgents.
@@ -11679,6 +11750,9 @@ type CreateAgentParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
@@ -11687,36 +11761,66 @@ type CreateAgentParams struct {
 type DeleteV0CityByCityNameBeadByIdParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameBeadByIdParams defines parameters for GetV0CityByCityNameBeadById.
+type GetV0CityByCityNameBeadByIdParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PatchV0CityByCityNameBeadByIdParams defines parameters for PatchV0CityByCityNameBeadById.
 type PatchV0CityByCityNameBeadByIdParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameBeadByIdAssignParams defines parameters for PostV0CityByCityNameBeadByIdAssign.
 type PostV0CityByCityNameBeadByIdAssignParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameBeadByIdCloseParams defines parameters for PostV0CityByCityNameBeadByIdClose.
 type PostV0CityByCityNameBeadByIdCloseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameBeadByIdDepsParams defines parameters for GetV0CityByCityNameBeadByIdDeps.
+type GetV0CityByCityNameBeadByIdDepsParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameBeadByIdReopenParams defines parameters for PostV0CityByCityNameBeadByIdReopen.
 type PostV0CityByCityNameBeadByIdReopenParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameBeadByIdUpdateParams defines parameters for PostV0CityByCityNameBeadByIdUpdate.
 type PostV0CityByCityNameBeadByIdUpdateParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameBeadsParams defines parameters for GetV0CityByCityNameBeads.
@@ -11750,6 +11854,9 @@ type GetV0CityByCityNameBeadsParams struct {
 
 	// All Include closed beads.
 	All *bool `form:"all,omitempty" json:"all,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // CreateBeadParams defines parameters for CreateBead.
@@ -11757,8 +11864,17 @@ type CreateBeadParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// GetV0CityByCityNameBeadsGraphByRootIdParams defines parameters for GetV0CityByCityNameBeadsGraphByRootId.
+type GetV0CityByCityNameBeadsGraphByRootIdParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameBeadsReadyParams defines parameters for GetV0CityByCityNameBeadsReady.
@@ -11768,30 +11884,81 @@ type GetV0CityByCityNameBeadsReadyParams struct {
 
 	// Wait How long to block waiting for changes (Go duration string, e.g. 30s). Default 30s, max 5m.
 	Wait *string `form:"wait,omitempty" json:"wait,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameConfigParams defines parameters for GetV0CityByCityNameConfig.
+type GetV0CityByCityNameConfigParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameConfigDefaultsParams defines parameters for GetV0CityByCityNameConfigDefaults.
+type GetV0CityByCityNameConfigDefaultsParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameConfigExplainParams defines parameters for GetV0CityByCityNameConfigExplain.
+type GetV0CityByCityNameConfigExplainParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameConfigValidateParams defines parameters for GetV0CityByCityNameConfigValidate.
+type GetV0CityByCityNameConfigValidateParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNameConvoyByIdParams defines parameters for DeleteV0CityByCityNameConvoyById.
 type DeleteV0CityByCityNameConvoyByIdParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameConvoyByIdParams defines parameters for GetV0CityByCityNameConvoyById.
+type GetV0CityByCityNameConvoyByIdParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameConvoyByIdAddParams defines parameters for PostV0CityByCityNameConvoyByIdAdd.
 type PostV0CityByCityNameConvoyByIdAddParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameConvoyByIdCheckParams defines parameters for GetV0CityByCityNameConvoyByIdCheck.
+type GetV0CityByCityNameConvoyByIdCheckParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameConvoyByIdCloseParams defines parameters for PostV0CityByCityNameConvoyByIdClose.
 type PostV0CityByCityNameConvoyByIdCloseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameConvoyByIdRemoveParams defines parameters for PostV0CityByCityNameConvoyByIdRemove.
 type PostV0CityByCityNameConvoyByIdRemoveParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameConvoysParams defines parameters for GetV0CityByCityNameConvoys.
@@ -11807,12 +11974,18 @@ type GetV0CityByCityNameConvoysParams struct {
 
 	// Limit Maximum number of results to return. Omitted or 0 = server default (100). Values above 1000 are rejected.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // CreateConvoyParams defines parameters for CreateConvoy.
 type CreateConvoyParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -11840,12 +12013,18 @@ type GetV0CityByCityNameEventsParams struct {
 
 	// Since Filter events since duration ago (Go duration string, e.g. 5m).
 	Since *string `form:"since,omitempty" json:"since,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // EmitEventParams defines parameters for EmitEvent.
 type EmitEventParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -11858,12 +12037,18 @@ type RotateEventsParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // StreamEventsParams defines parameters for StreamEvents.
 type StreamEventsParams struct {
 	// AfterSeq Reconnect position: only deliver events after this sequence number. Omit after_seq and Last-Event-ID to start at the current city event head.
 	AfterSeq *string `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// LastEventID SSE reconnect position from the last received event ID. Omit Last-Event-ID and after_seq to start at the current city event head.
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
@@ -11873,12 +12058,24 @@ type StreamEventsParams struct {
 type DeleteV0CityByCityNameExtmsgAdaptersParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameExtmsgAdaptersParams defines parameters for GetV0CityByCityNameExtmsgAdapters.
+type GetV0CityByCityNameExtmsgAdaptersParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // RegisterExtmsgAdapterParams defines parameters for RegisterExtmsgAdapter.
 type RegisterExtmsgAdapterParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -11888,12 +12085,18 @@ type RegisterExtmsgAdapterParams struct {
 type PostV0CityByCityNameExtmsgBindParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameExtmsgBindingsParams defines parameters for GetV0CityByCityNameExtmsgBindings.
 type GetV0CityByCityNameExtmsgBindingsParams struct {
 	// SessionId Session ID to list bindings for.
 	SessionId *string `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameExtmsgGroupsParams defines parameters for GetV0CityByCityNameExtmsgGroups.
@@ -11912,36 +12115,54 @@ type GetV0CityByCityNameExtmsgGroupsParams struct {
 
 	// Kind Conversation kind.
 	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // EnsureExtmsgGroupParams defines parameters for EnsureExtmsgGroup.
 type EnsureExtmsgGroupParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameExtmsgInboundParams defines parameters for PostV0CityByCityNameExtmsgInbound.
 type PostV0CityByCityNameExtmsgInboundParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameExtmsgOutboundParams defines parameters for PostV0CityByCityNameExtmsgOutbound.
 type PostV0CityByCityNameExtmsgOutboundParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNameExtmsgParticipantsParams defines parameters for DeleteV0CityByCityNameExtmsgParticipants.
 type DeleteV0CityByCityNameExtmsgParticipantsParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameExtmsgParticipantsParams defines parameters for PostV0CityByCityNameExtmsgParticipants.
 type PostV0CityByCityNameExtmsgParticipantsParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameExtmsgTranscriptParams defines parameters for GetV0CityByCityNameExtmsgTranscript.
@@ -11972,6 +12193,9 @@ type GetV0CityByCityNameExtmsgTranscriptParams struct {
 
 	// Order Sort order by sequence: asc (oldest-first, default) or desc (newest-first).
 	Order *GetV0CityByCityNameExtmsgTranscriptParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameExtmsgTranscriptParamsOrder defines parameters for GetV0CityByCityNameExtmsgTranscript.
@@ -11981,12 +12205,18 @@ type GetV0CityByCityNameExtmsgTranscriptParamsOrder string
 type PostV0CityByCityNameExtmsgTranscriptAckParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameExtmsgUnbindParams defines parameters for PostV0CityByCityNameExtmsgUnbind.
 type PostV0CityByCityNameExtmsgUnbindParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameFormulaByNameParams defines parameters for GetV0CityByCityNameFormulaByName.
@@ -11999,6 +12229,9 @@ type GetV0CityByCityNameFormulaByNameParams struct {
 
 	// Target Preview target: a bead or convoy ID, or a configured agent identity (for example a workflow root's gc.routed_to value).
 	Target string `form:"target" json:"target"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameFormulasParams defines parameters for GetV0CityByCityNameFormulas.
@@ -12008,6 +12241,9 @@ type GetV0CityByCityNameFormulasParams struct {
 
 	// ScopeRef Scope reference.
 	ScopeRef *string `form:"scope_ref,omitempty" json:"scope_ref,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameFormulasFeedParams defines parameters for GetV0CityByCityNameFormulasFeed.
@@ -12020,12 +12256,18 @@ type GetV0CityByCityNameFormulasFeedParams struct {
 
 	// Limit Maximum number of feed items to return. 0 = default.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNameFormulasByNameParams defines parameters for DeleteV0CityByCityNameFormulasByName.
 type DeleteV0CityByCityNameFormulasByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameFormulasByNameParams defines parameters for GetV0CityByCityNameFormulasByName.
@@ -12038,18 +12280,27 @@ type GetV0CityByCityNameFormulasByNameParams struct {
 
 	// Target Preview target: a bead or convoy ID, or a configured agent identity (for example a workflow root's gc.routed_to value).
 	Target string `form:"target" json:"target"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PutV0CityByCityNameFormulasByNameParams defines parameters for PutV0CityByCityNameFormulasByName.
 type PutV0CityByCityNameFormulasByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameFormulasByNamePreviewParams defines parameters for PostV0CityByCityNameFormulasByNamePreview.
 type PostV0CityByCityNameFormulasByNamePreviewParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameFormulasByNameRunsParams defines parameters for GetV0CityByCityNameFormulasByNameRuns.
@@ -12062,12 +12313,30 @@ type GetV0CityByCityNameFormulasByNameRunsParams struct {
 
 	// Limit Maximum number of recent runs to return. 0 = default.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameFormulasByNameSourceParams defines parameters for GetV0CityByCityNameFormulasByNameSource.
+type GetV0CityByCityNameFormulasByNameSourceParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameFormulasByNameValidateParams defines parameters for PostV0CityByCityNameFormulasByNameValidate.
 type PostV0CityByCityNameFormulasByNameValidateParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameHealthParams defines parameters for GetV0CityByCityNameHealth.
+type GetV0CityByCityNameHealthParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameMailParams defines parameters for GetV0CityByCityNameMail.
@@ -12092,12 +12361,18 @@ type GetV0CityByCityNameMailParams struct {
 
 	// Rig Filter by rig name.
 	Rig *string `form:"rig,omitempty" json:"rig,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // SendMailParams defines parameters for SendMail.
 type SendMailParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12110,12 +12385,18 @@ type GetV0CityByCityNameMailCountParams struct {
 
 	// Rig Filter by rig name.
 	Rig *string `form:"rig,omitempty" json:"rig,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameMailThreadByIdParams defines parameters for GetV0CityByCityNameMailThreadById.
 type GetV0CityByCityNameMailThreadByIdParams struct {
 	// Rig Filter by rig.
 	Rig *string `form:"rig,omitempty" json:"rig,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNameMailByIdParams defines parameters for DeleteV0CityByCityNameMailById.
@@ -12125,12 +12406,18 @@ type DeleteV0CityByCityNameMailByIdParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameMailByIdParams defines parameters for GetV0CityByCityNameMailById.
 type GetV0CityByCityNameMailByIdParams struct {
 	// Rig Rig hint for O(1) lookup.
 	Rig *string `form:"rig,omitempty" json:"rig,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameMailByIdArchiveParams defines parameters for PostV0CityByCityNameMailByIdArchive.
@@ -12140,6 +12427,9 @@ type PostV0CityByCityNameMailByIdArchiveParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameMailByIdMarkUnreadParams defines parameters for PostV0CityByCityNameMailByIdMarkUnread.
@@ -12149,6 +12439,9 @@ type PostV0CityByCityNameMailByIdMarkUnreadParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameMailByIdReadParams defines parameters for PostV0CityByCityNameMailByIdRead.
@@ -12158,6 +12451,9 @@ type PostV0CityByCityNameMailByIdReadParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // ReplyMailParams defines parameters for ReplyMail.
@@ -12167,6 +12463,9 @@ type ReplyMailParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12179,36 +12478,72 @@ type TriggerMaintenanceDoltGcParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameMaintenanceStatusParams defines parameters for GetV0CityByCityNameMaintenanceStatus.
+type GetV0CityByCityNameMaintenanceStatusParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameOrderHistoryByBeadIdParams defines parameters for GetV0CityByCityNameOrderHistoryByBeadId.
 type GetV0CityByCityNameOrderHistoryByBeadIdParams struct {
 	// StoreRef Store reference for disambiguating store-local bead IDs.
 	StoreRef *string `form:"store_ref,omitempty" json:"store_ref,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameOrderByNameParams defines parameters for GetV0CityByCityNameOrderByName.
+type GetV0CityByCityNameOrderByNameParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameOrderByNameDisableParams defines parameters for PostV0CityByCityNameOrderByNameDisable.
 type PostV0CityByCityNameOrderByNameDisableParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameOrderByNameEnableParams defines parameters for PostV0CityByCityNameOrderByNameEnable.
 type PostV0CityByCityNameOrderByNameEnableParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameOrderByNameRunParams defines parameters for PostV0CityByCityNameOrderByNameRun.
 type PostV0CityByCityNameOrderByNameRunParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameOrdersParams defines parameters for GetV0CityByCityNameOrders.
+type GetV0CityByCityNameOrdersParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameOrdersCheckParams defines parameters for GetV0CityByCityNameOrdersCheck.
 type GetV0CityByCityNameOrdersCheckParams struct {
 	// Fresh Bypass cached order-check responses and cached order history.
 	Fresh *bool `form:"fresh,omitempty" json:"fresh,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameOrdersFeedParams defines parameters for GetV0CityByCityNameOrdersFeed.
@@ -12221,6 +12556,9 @@ type GetV0CityByCityNameOrdersFeedParams struct {
 
 	// Limit Maximum number of feed items to return.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameOrdersHistoryParams defines parameters for GetV0CityByCityNameOrdersHistory.
@@ -12233,12 +12571,24 @@ type GetV0CityByCityNameOrdersHistoryParams struct {
 
 	// Before Return entries before this RFC3339 timestamp.
 	Before *string `form:"before,omitempty" json:"before,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePacksParams defines parameters for GetV0CityByCityNamePacks.
+type GetV0CityByCityNamePacksParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // AddPackParams defines parameters for AddPack.
 type AddPackParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12248,48 +12598,120 @@ type AddPackParams struct {
 type DeleteV0CityByCityNamePacksByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNamePatchesAgentByBaseParams defines parameters for DeleteV0CityByCityNamePatchesAgentByBase.
 type DeleteV0CityByCityNamePatchesAgentByBaseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePatchesAgentByBaseParams defines parameters for GetV0CityByCityNamePatchesAgentByBase.
+type GetV0CityByCityNamePatchesAgentByBaseParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNamePatchesAgentByDirByBaseParams defines parameters for DeleteV0CityByCityNamePatchesAgentByDirByBase.
 type DeleteV0CityByCityNamePatchesAgentByDirByBaseParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePatchesAgentByDirByBaseParams defines parameters for GetV0CityByCityNamePatchesAgentByDirByBase.
+type GetV0CityByCityNamePatchesAgentByDirByBaseParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePatchesAgentsParams defines parameters for GetV0CityByCityNamePatchesAgents.
+type GetV0CityByCityNamePatchesAgentsParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PutV0CityByCityNamePatchesAgentsParams defines parameters for PutV0CityByCityNamePatchesAgents.
 type PutV0CityByCityNamePatchesAgentsParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNamePatchesProviderByNameParams defines parameters for DeleteV0CityByCityNamePatchesProviderByName.
 type DeleteV0CityByCityNamePatchesProviderByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePatchesProviderByNameParams defines parameters for GetV0CityByCityNamePatchesProviderByName.
+type GetV0CityByCityNamePatchesProviderByNameParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePatchesProvidersParams defines parameters for GetV0CityByCityNamePatchesProviders.
+type GetV0CityByCityNamePatchesProvidersParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PutV0CityByCityNamePatchesProvidersParams defines parameters for PutV0CityByCityNamePatchesProviders.
 type PutV0CityByCityNamePatchesProvidersParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNamePatchesRigByNameParams defines parameters for DeleteV0CityByCityNamePatchesRigByName.
 type DeleteV0CityByCityNamePatchesRigByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePatchesRigByNameParams defines parameters for GetV0CityByCityNamePatchesRigByName.
+type GetV0CityByCityNamePatchesRigByNameParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePatchesRigsParams defines parameters for GetV0CityByCityNamePatchesRigs.
+type GetV0CityByCityNamePatchesRigsParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PutV0CityByCityNamePatchesRigsParams defines parameters for PutV0CityByCityNamePatchesRigs.
 type PutV0CityByCityNamePatchesRigsParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNamePendingParams defines parameters for GetV0CityByCityNamePending.
+type GetV0CityByCityNamePendingParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameProviderReadinessParams defines parameters for GetV0CityByCityNameProviderReadiness.
@@ -12299,18 +12721,39 @@ type GetV0CityByCityNameProviderReadinessParams struct {
 
 	// Fresh Force fresh probe, bypassing cache.
 	Fresh *bool `form:"fresh,omitempty" json:"fresh,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNameProviderByNameParams defines parameters for DeleteV0CityByCityNameProviderByName.
 type DeleteV0CityByCityNameProviderByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameProviderByNameParams defines parameters for GetV0CityByCityNameProviderByName.
+type GetV0CityByCityNameProviderByNameParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PatchV0CityByCityNameProviderByNameParams defines parameters for PatchV0CityByCityNameProviderByName.
 type PatchV0CityByCityNameProviderByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameProvidersParams defines parameters for GetV0CityByCityNameProviders.
+type GetV0CityByCityNameProvidersParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // CreateProviderParams defines parameters for CreateProvider.
@@ -12318,8 +12761,17 @@ type CreateProviderParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// GetV0CityByCityNameProvidersPublicParams defines parameters for GetV0CityByCityNameProvidersPublic.
+type GetV0CityByCityNameProvidersPublicParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameReadinessParams defines parameters for GetV0CityByCityNameReadiness.
@@ -12329,36 +12781,54 @@ type GetV0CityByCityNameReadinessParams struct {
 
 	// Fresh Force fresh probe, bypassing cache.
 	Fresh *bool `form:"fresh,omitempty" json:"fresh,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetRequestOutcomeParams defines parameters for GetRequestOutcome.
 type GetRequestOutcomeParams struct {
 	// AfterSeq The event_cursor from the same 202 response. The request's request.accepted marker and terminal event both follow it, so the lookup reads only the events after it.
 	AfterSeq string `form:"after_seq" json:"after_seq"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // DeleteV0CityByCityNameRigByNameParams defines parameters for DeleteV0CityByCityNameRigByName.
 type DeleteV0CityByCityNameRigByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameRigByNameParams defines parameters for GetV0CityByCityNameRigByName.
 type GetV0CityByCityNameRigByNameParams struct {
 	// Git Include git status.
 	Git *bool `form:"git,omitempty" json:"git,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PatchV0CityByCityNameRigByNameParams defines parameters for PatchV0CityByCityNameRigByName.
 type PatchV0CityByCityNameRigByNameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameRigByNameByActionParams defines parameters for PostV0CityByCityNameRigByNameByAction.
 type PostV0CityByCityNameRigByNameByActionParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameRigByNameByActionParamsAction defines parameters for PostV0CityByCityNameRigByNameByAction.
@@ -12374,12 +12844,18 @@ type GetV0CityByCityNameRigsParams struct {
 
 	// Git Include git status.
 	Git *bool `form:"git,omitempty" json:"git,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // CreateRigParams defines parameters for CreateRig.
 type CreateRigParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries (synchronous create).
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12389,18 +12865,57 @@ type CreateRigParams struct {
 type GetV0CityByCityNameRunsParams struct {
 	// Limit Maximum runs to return (0 uses the server default).
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameRunsCensusParams defines parameters for GetV0CityByCityNameRunsCensus.
+type GetV0CityByCityNameRunsCensusParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameRunsByRunIdParams defines parameters for GetV0CityByCityNameRunsByRunId.
+type GetV0CityByCityNameRunsByRunIdParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameRunsByRunIdCancelParams defines parameters for PostV0CityByCityNameRunsByRunIdCancel.
 type PostV0CityByCityNameRunsByRunIdCancelParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameRunsByRunIdStepsParams defines parameters for GetV0CityByCityNameRunsByRunIdSteps.
+type GetV0CityByCityNameRunsByRunIdStepsParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameServiceByNameParams defines parameters for GetV0CityByCityNameServiceByName.
+type GetV0CityByCityNameServiceByNameParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameServiceByNameRestartParams defines parameters for PostV0CityByCityNameServiceByNameRestart.
 type PostV0CityByCityNameServiceByNameRestartParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameServicesParams defines parameters for GetV0CityByCityNameServices.
+type GetV0CityByCityNameServicesParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameSessionByIdParams defines parameters for GetV0CityByCityNameSessionById.
@@ -12413,12 +12928,30 @@ type GetV0CityByCityNameSessionByIdParams struct {
 
 	// ExactId Resolve {id} as an exact session bead id only: a single point read that also finds closed sessions and answers 404 when no bead has that id. Skips the alias, runtime session_name, configured-name and closed-session name lookups. For callers holding a durable id.
 	ExactId *bool `form:"exact_id,omitempty" json:"exact_id,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PatchV0CityByCityNameSessionByIdParams defines parameters for PatchV0CityByCityNameSessionById.
 type PatchV0CityByCityNameSessionByIdParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameSessionByIdAgentsParams defines parameters for GetV0CityByCityNameSessionByIdAgents.
+type GetV0CityByCityNameSessionByIdAgentsParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameSessionByIdAgentsByAgentIdParams defines parameters for GetV0CityByCityNameSessionByIdAgentsByAgentId.
+type GetV0CityByCityNameSessionByIdAgentsByAgentIdParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameSessionByIdCloseParams defines parameters for PostV0CityByCityNameSessionByIdClose.
@@ -12428,6 +12961,9 @@ type PostV0CityByCityNameSessionByIdCloseParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12441,6 +12977,9 @@ type PostV0CityByCityNameSessionByIdKillParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
@@ -12450,8 +12989,17 @@ type SendSessionMessageParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// ListSessionOpsParams defines parameters for ListSessionOps.
+type ListSessionOpsParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // ProposeSessionOpParams defines parameters for ProposeSessionOp.
@@ -12459,38 +13007,68 @@ type ProposeSessionOpParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey The client key, when the body does not carry one.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// GetSessionOpParams defines parameters for GetSessionOp.
+type GetSessionOpParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // CancelSessionOpParams defines parameters for CancelSessionOp.
 type CancelSessionOpParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameSessionByIdPendingParams defines parameters for GetV0CityByCityNameSessionByIdPending.
+type GetV0CityByCityNameSessionByIdPendingParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameSessionByIdPermissionModeParams defines parameters for PostV0CityByCityNameSessionByIdPermissionMode.
 type PostV0CityByCityNameSessionByIdPermissionModeParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameSessionByIdPinParams defines parameters for PostV0CityByCityNameSessionByIdPin.
 type PostV0CityByCityNameSessionByIdPinParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameSessionByIdRenameParams defines parameters for PostV0CityByCityNameSessionByIdRename.
 type PostV0CityByCityNameSessionByIdRenameParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameSessionByIdResetParams defines parameters for PostV0CityByCityNameSessionByIdReset.
 type PostV0CityByCityNameSessionByIdResetParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12501,6 +13079,9 @@ type RespondSessionParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
@@ -12509,6 +13090,9 @@ type RespondSessionParams struct {
 type PostV0CityByCityNameSessionByIdStopParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12525,6 +13109,9 @@ type StreamSessionParams struct {
 	// AfterCursor Opaque structured transcript resume cursor from the REST snapshot. Last-Event-ID takes precedence on automatic SSE reconnect.
 	AfterCursor *string `form:"after_cursor,omitempty" json:"after_cursor,omitempty"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// LastEventID Opaque structured transcript resume cursor from the last received SSE frame. Takes precedence over after_cursor.
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
@@ -12537,6 +13124,9 @@ type SubmitSessionParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
 
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
@@ -12545,6 +13135,9 @@ type SubmitSessionParams struct {
 type PostV0CityByCityNameSessionByIdSuspendParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12566,21 +13159,36 @@ type GetV0CityByCityNameSessionByIdTranscriptParams struct {
 
 	// After Pagination cursor: return entries after this stable transcript entry ID.
 	After *string `form:"after,omitempty" json:"after,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameSessionByIdTranscriptParamsFormat defines parameters for GetV0CityByCityNameSessionByIdTranscript.
 type GetV0CityByCityNameSessionByIdTranscriptParamsFormat string
 
+// GetV0CityByCityNameSessionByIdTurnParams defines parameters for GetV0CityByCityNameSessionByIdTurn.
+type GetV0CityByCityNameSessionByIdTurnParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
 // PostV0CityByCityNameSessionByIdUnpinParams defines parameters for PostV0CityByCityNameSessionByIdUnpin.
 type PostV0CityByCityNameSessionByIdUnpinParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameSessionByIdWakeParams defines parameters for PostV0CityByCityNameSessionByIdWake.
 type PostV0CityByCityNameSessionByIdWakeParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12602,12 +13210,18 @@ type GetV0CityByCityNameSessionsParams struct {
 
 	// Peek Include last output preview.
 	Peek *bool `form:"peek,omitempty" json:"peek,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // CreateSessionParams defines parameters for CreateSession.
 type CreateSessionParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
@@ -12617,6 +13231,9 @@ type CreateSessionParams struct {
 type PostV0CityByCityNameSlingParams struct {
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameStatusParams defines parameters for GetV0CityByCityNameStatus.
@@ -12629,6 +13246,9 @@ type GetV0CityByCityNameStatusParams struct {
 
 	// Lite When true, omit the expensive store-health, session-count, and work-count blocks for low-cost dashboard polls.
 	Lite *bool `form:"lite,omitempty" json:"lite,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // PostV0CityByCityNameUnregisterParams defines parameters for PostV0CityByCityNameUnregister.
@@ -12641,6 +13261,15 @@ type PostV0CityByCityNameUnregisterParams struct {
 type GetV0CityByCityNameUsageParams struct {
 	// AggregateOnly Omit the per-session breakdown and return city-level totals only.
 	AggregateOnly *bool `form:"aggregate_only,omitempty" json:"aggregate_only,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
+}
+
+// GetV0CityByCityNameWaitByIdParams defines parameters for GetV0CityByCityNameWaitById.
+type GetV0CityByCityNameWaitByIdParams struct {
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameWaitsParams defines parameters for GetV0CityByCityNameWaits.
@@ -12650,6 +13279,9 @@ type GetV0CityByCityNameWaitsParams struct {
 
 	// Session Filter by session ID.
 	Session *string `form:"session,omitempty" json:"session,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameWorkActiveStepParams defines parameters for GetV0CityByCityNameWorkActiveStep.
@@ -12659,6 +13291,9 @@ type GetV0CityByCityNameWorkActiveStepParams struct {
 
 	// ScopeRoot Directory of the work scope the session's work lives in, its rig root. Omitted or empty is the city.
 	ScopeRoot *string `form:"scope_root,omitempty" json:"scope_root,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameWorkReadyParams defines parameters for GetV0CityByCityNameWorkReady.
@@ -12686,6 +13321,9 @@ type GetV0CityByCityNameWorkReadyParams struct {
 
 	// Status List beads in this status instead of ready work.
 	Status *GetV0CityByCityNameWorkReadyParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameWorkReadyParamsSort defines parameters for GetV0CityByCityNameWorkReady.
@@ -12707,6 +13345,9 @@ type DeleteV0CityByCityNameWorkflowByWorkflowIdParams struct {
 
 	// XGCRequest Anti-CSRF header required on mutation requests. Any non-empty value is accepted; the header's presence is what the server checks.
 	XGCRequest string `json:"X-GC-Request"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0CityByCityNameWorkflowByWorkflowIdParams defines parameters for GetV0CityByCityNameWorkflowByWorkflowId.
@@ -12716,6 +13357,9 @@ type GetV0CityByCityNameWorkflowByWorkflowIdParams struct {
 
 	// ScopeRef Scope reference.
 	ScopeRef *string `form:"scope_ref,omitempty" json:"scope_ref,omitempty"`
+
+	// XGCCityIncarnation Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior.
+	XGCCityIncarnation *string `json:"X-GC-City-Incarnation,omitempty"`
 }
 
 // GetV0EventsParams defines parameters for GetV0Events.
@@ -23867,7 +24511,7 @@ type ClientInterface interface {
 	PostV0City(ctx context.Context, params *PostV0CityParams, body PostV0CityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityName request
-	GetV0CityByCityName(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityName(ctx context.Context, cityName string, params *GetV0CityByCityNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchV0CityByCityNameWithBody request with any body
 	PatchV0CityByCityNameWithBody(ctx context.Context, cityName string, params *PatchV0CityByCityNameParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23878,7 +24522,7 @@ type ClientInterface interface {
 	DeleteV0CityByCityNameAgentByBase(ctx context.Context, cityName string, base string, params *DeleteV0CityByCityNameAgentByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameAgentByBase request
-	GetV0CityByCityNameAgentByBase(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameAgentByBase(ctx context.Context, cityName string, base string, params *GetV0CityByCityNameAgentByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchV0CityByCityNameAgentByBaseWithBody request with any body
 	PatchV0CityByCityNameAgentByBaseWithBody(ctx context.Context, cityName string, base string, params *PatchV0CityByCityNameAgentByBaseParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23889,7 +24533,7 @@ type ClientInterface interface {
 	GetV0CityByCityNameAgentByBaseOutput(ctx context.Context, cityName string, base string, params *GetV0CityByCityNameAgentByBaseOutputParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StreamAgentOutput request
-	StreamAgentOutput(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	StreamAgentOutput(ctx context.Context, cityName string, base string, params *StreamAgentOutputParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameAgentByBaseByAction request
 	PostV0CityByCityNameAgentByBaseByAction(ctx context.Context, cityName string, base string, action PostV0CityByCityNameAgentByBaseByActionParamsAction, params *PostV0CityByCityNameAgentByBaseByActionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23898,7 +24542,7 @@ type ClientInterface interface {
 	DeleteV0CityByCityNameAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, params *DeleteV0CityByCityNameAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameAgentByDirByBase request
-	GetV0CityByCityNameAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNameAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchV0CityByCityNameAgentByDirByBaseWithBody request with any body
 	PatchV0CityByCityNameAgentByDirByBaseWithBody(ctx context.Context, cityName string, dir string, base string, params *PatchV0CityByCityNameAgentByDirByBaseParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23909,7 +24553,7 @@ type ClientInterface interface {
 	GetV0CityByCityNameAgentByDirByBaseOutput(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNameAgentByDirByBaseOutputParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StreamAgentOutputQualified request
-	StreamAgentOutputQualified(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	StreamAgentOutputQualified(ctx context.Context, cityName string, dir string, base string, params *StreamAgentOutputQualifiedParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameAgentByDirByBaseByAction request
 	PostV0CityByCityNameAgentByDirByBaseByAction(ctx context.Context, cityName string, dir string, base string, action PostV0CityByCityNameAgentByDirByBaseByActionParamsAction, params *PostV0CityByCityNameAgentByDirByBaseByActionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23926,7 +24570,7 @@ type ClientInterface interface {
 	DeleteV0CityByCityNameBeadById(ctx context.Context, cityName string, id string, params *DeleteV0CityByCityNameBeadByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameBeadById request
-	GetV0CityByCityNameBeadById(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameBeadById(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchV0CityByCityNameBeadByIdWithBody request with any body
 	PatchV0CityByCityNameBeadByIdWithBody(ctx context.Context, cityName string, id string, params *PatchV0CityByCityNameBeadByIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23944,7 +24588,7 @@ type ClientInterface interface {
 	PostV0CityByCityNameBeadByIdClose(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameBeadByIdCloseParams, body PostV0CityByCityNameBeadByIdCloseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameBeadByIdDeps request
-	GetV0CityByCityNameBeadByIdDeps(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameBeadByIdDeps(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdDepsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameBeadByIdReopen request
 	PostV0CityByCityNameBeadByIdReopen(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameBeadByIdReopenParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23963,28 +24607,28 @@ type ClientInterface interface {
 	CreateBead(ctx context.Context, cityName string, params *CreateBeadParams, body CreateBeadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameBeadsGraphByRootId request
-	GetV0CityByCityNameBeadsGraphByRootId(ctx context.Context, cityName string, rootID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameBeadsGraphByRootId(ctx context.Context, cityName string, rootID string, params *GetV0CityByCityNameBeadsGraphByRootIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameBeadsReady request
 	GetV0CityByCityNameBeadsReady(ctx context.Context, cityName string, params *GetV0CityByCityNameBeadsReadyParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameConfig request
-	GetV0CityByCityNameConfig(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameConfig(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameConfigDefaults request
-	GetV0CityByCityNameConfigDefaults(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameConfigDefaults(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigDefaultsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameConfigExplain request
-	GetV0CityByCityNameConfigExplain(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameConfigExplain(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigExplainParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameConfigValidate request
-	GetV0CityByCityNameConfigValidate(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameConfigValidate(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigValidateParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteV0CityByCityNameConvoyById request
 	DeleteV0CityByCityNameConvoyById(ctx context.Context, cityName string, id string, params *DeleteV0CityByCityNameConvoyByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameConvoyById request
-	GetV0CityByCityNameConvoyById(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameConvoyById(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameConvoyByIdAddWithBody request with any body
 	PostV0CityByCityNameConvoyByIdAddWithBody(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameConvoyByIdAddParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -23992,7 +24636,7 @@ type ClientInterface interface {
 	PostV0CityByCityNameConvoyByIdAdd(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameConvoyByIdAddParams, body PostV0CityByCityNameConvoyByIdAddJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameConvoyByIdCheck request
-	GetV0CityByCityNameConvoyByIdCheck(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameConvoyByIdCheck(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdCheckParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameConvoyByIdClose request
 	PostV0CityByCityNameConvoyByIdClose(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameConvoyByIdCloseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24030,7 +24674,7 @@ type ClientInterface interface {
 	DeleteV0CityByCityNameExtmsgAdapters(ctx context.Context, cityName string, params *DeleteV0CityByCityNameExtmsgAdaptersParams, body DeleteV0CityByCityNameExtmsgAdaptersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameExtmsgAdapters request
-	GetV0CityByCityNameExtmsgAdapters(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameExtmsgAdapters(ctx context.Context, cityName string, params *GetV0CityByCityNameExtmsgAdaptersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RegisterExtmsgAdapterWithBody request with any body
 	RegisterExtmsgAdapterWithBody(ctx context.Context, cityName string, params *RegisterExtmsgAdapterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24113,13 +24757,13 @@ type ClientInterface interface {
 	GetV0CityByCityNameFormulasByNameRuns(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameFormulasByNameRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameFormulasByNameSource request
-	GetV0CityByCityNameFormulasByNameSource(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameFormulasByNameSource(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameFormulasByNameSourceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameFormulasByNameValidateWithBody request with any body
 	PostV0CityByCityNameFormulasByNameValidateWithBody(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameFormulasByNameValidateParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameHealth request
-	GetV0CityByCityNameHealth(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameHealth(ctx context.Context, cityName string, params *GetV0CityByCityNameHealthParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameMail request
 	GetV0CityByCityNameMail(ctx context.Context, cityName string, params *GetV0CityByCityNameMailParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24159,13 +24803,13 @@ type ClientInterface interface {
 	TriggerMaintenanceDoltGc(ctx context.Context, cityName string, params *TriggerMaintenanceDoltGcParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameMaintenanceStatus request
-	GetV0CityByCityNameMaintenanceStatus(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameMaintenanceStatus(ctx context.Context, cityName string, params *GetV0CityByCityNameMaintenanceStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameOrderHistoryByBeadId request
 	GetV0CityByCityNameOrderHistoryByBeadId(ctx context.Context, cityName string, beadId string, params *GetV0CityByCityNameOrderHistoryByBeadIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameOrderByName request
-	GetV0CityByCityNameOrderByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameOrderByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameOrderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameOrderByNameDisable request
 	PostV0CityByCityNameOrderByNameDisable(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameOrderByNameDisableParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24179,7 +24823,7 @@ type ClientInterface interface {
 	PostV0CityByCityNameOrderByNameRun(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameOrderByNameRunParams, body PostV0CityByCityNameOrderByNameRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameOrders request
-	GetV0CityByCityNameOrders(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameOrders(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameOrdersCheck request
 	GetV0CityByCityNameOrdersCheck(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersCheckParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24191,7 +24835,7 @@ type ClientInterface interface {
 	GetV0CityByCityNameOrdersHistory(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePacks request
-	GetV0CityByCityNamePacks(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePacks(ctx context.Context, cityName string, params *GetV0CityByCityNamePacksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AddPackWithBody request with any body
 	AddPackWithBody(ctx context.Context, cityName string, params *AddPackParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24205,16 +24849,16 @@ type ClientInterface interface {
 	DeleteV0CityByCityNamePatchesAgentByBase(ctx context.Context, cityName string, base string, params *DeleteV0CityByCityNamePatchesAgentByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePatchesAgentByBase request
-	GetV0CityByCityNamePatchesAgentByBase(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePatchesAgentByBase(ctx context.Context, cityName string, base string, params *GetV0CityByCityNamePatchesAgentByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteV0CityByCityNamePatchesAgentByDirByBase request
 	DeleteV0CityByCityNamePatchesAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, params *DeleteV0CityByCityNamePatchesAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePatchesAgentByDirByBase request
-	GetV0CityByCityNamePatchesAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePatchesAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNamePatchesAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePatchesAgents request
-	GetV0CityByCityNamePatchesAgents(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePatchesAgents(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PutV0CityByCityNamePatchesAgentsWithBody request with any body
 	PutV0CityByCityNamePatchesAgentsWithBody(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesAgentsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24225,10 +24869,10 @@ type ClientInterface interface {
 	DeleteV0CityByCityNamePatchesProviderByName(ctx context.Context, cityName string, name string, params *DeleteV0CityByCityNamePatchesProviderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePatchesProviderByName request
-	GetV0CityByCityNamePatchesProviderByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePatchesProviderByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesProviderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePatchesProviders request
-	GetV0CityByCityNamePatchesProviders(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePatchesProviders(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesProvidersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PutV0CityByCityNamePatchesProvidersWithBody request with any body
 	PutV0CityByCityNamePatchesProvidersWithBody(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesProvidersParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24239,10 +24883,10 @@ type ClientInterface interface {
 	DeleteV0CityByCityNamePatchesRigByName(ctx context.Context, cityName string, name string, params *DeleteV0CityByCityNamePatchesRigByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePatchesRigByName request
-	GetV0CityByCityNamePatchesRigByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePatchesRigByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesRigByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePatchesRigs request
-	GetV0CityByCityNamePatchesRigs(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePatchesRigs(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesRigsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PutV0CityByCityNamePatchesRigsWithBody request with any body
 	PutV0CityByCityNamePatchesRigsWithBody(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesRigsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24250,7 +24894,7 @@ type ClientInterface interface {
 	PutV0CityByCityNamePatchesRigs(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesRigsParams, body PutV0CityByCityNamePatchesRigsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNamePending request
-	GetV0CityByCityNamePending(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNamePending(ctx context.Context, cityName string, params *GetV0CityByCityNamePendingParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameProviderReadiness request
 	GetV0CityByCityNameProviderReadiness(ctx context.Context, cityName string, params *GetV0CityByCityNameProviderReadinessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24259,7 +24903,7 @@ type ClientInterface interface {
 	DeleteV0CityByCityNameProviderByName(ctx context.Context, cityName string, name string, params *DeleteV0CityByCityNameProviderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameProviderByName request
-	GetV0CityByCityNameProviderByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameProviderByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameProviderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchV0CityByCityNameProviderByNameWithBody request with any body
 	PatchV0CityByCityNameProviderByNameWithBody(ctx context.Context, cityName string, name string, params *PatchV0CityByCityNameProviderByNameParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24267,7 +24911,7 @@ type ClientInterface interface {
 	PatchV0CityByCityNameProviderByName(ctx context.Context, cityName string, name string, params *PatchV0CityByCityNameProviderByNameParams, body PatchV0CityByCityNameProviderByNameJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameProviders request
-	GetV0CityByCityNameProviders(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameProviders(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateProviderWithBody request with any body
 	CreateProviderWithBody(ctx context.Context, cityName string, params *CreateProviderParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24275,7 +24919,7 @@ type ClientInterface interface {
 	CreateProvider(ctx context.Context, cityName string, params *CreateProviderParams, body CreateProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameProvidersPublic request
-	GetV0CityByCityNameProvidersPublic(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameProvidersPublic(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersPublicParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameReadiness request
 	GetV0CityByCityNameReadiness(ctx context.Context, cityName string, params *GetV0CityByCityNameReadinessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24309,25 +24953,25 @@ type ClientInterface interface {
 	GetV0CityByCityNameRuns(ctx context.Context, cityName string, params *GetV0CityByCityNameRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameRunsCensus request
-	GetV0CityByCityNameRunsCensus(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameRunsCensus(ctx context.Context, cityName string, params *GetV0CityByCityNameRunsCensusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameRunsByRunId request
-	GetV0CityByCityNameRunsByRunId(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameRunsByRunId(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameRunsByRunIdCancel request
 	PostV0CityByCityNameRunsByRunIdCancel(ctx context.Context, cityName string, runId string, params *PostV0CityByCityNameRunsByRunIdCancelParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameRunsByRunIdSteps request
-	GetV0CityByCityNameRunsByRunIdSteps(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameRunsByRunIdSteps(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdStepsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameServiceByName request
-	GetV0CityByCityNameServiceByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameServiceByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameServiceByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameServiceByNameRestart request
 	PostV0CityByCityNameServiceByNameRestart(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameServiceByNameRestartParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameServices request
-	GetV0CityByCityNameServices(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameServices(ctx context.Context, cityName string, params *GetV0CityByCityNameServicesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameSessionById request
 	GetV0CityByCityNameSessionById(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24338,10 +24982,10 @@ type ClientInterface interface {
 	PatchV0CityByCityNameSessionById(ctx context.Context, cityName string, id string, params *PatchV0CityByCityNameSessionByIdParams, body PatchV0CityByCityNameSessionByIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameSessionByIdAgents request
-	GetV0CityByCityNameSessionByIdAgents(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameSessionByIdAgents(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameSessionByIdAgentsByAgentId request
-	GetV0CityByCityNameSessionByIdAgentsByAgentId(ctx context.Context, cityName string, id string, agentId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameSessionByIdAgentsByAgentId(ctx context.Context, cityName string, id string, agentId string, params *GetV0CityByCityNameSessionByIdAgentsByAgentIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameSessionByIdClose request
 	PostV0CityByCityNameSessionByIdClose(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdCloseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24355,7 +24999,7 @@ type ClientInterface interface {
 	SendSessionMessage(ctx context.Context, cityName string, id string, params *SendSessionMessageParams, body SendSessionMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSessionOps request
-	ListSessionOps(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListSessionOps(ctx context.Context, cityName string, id string, params *ListSessionOpsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ProposeSessionOpWithBody request with any body
 	ProposeSessionOpWithBody(ctx context.Context, cityName string, id string, params *ProposeSessionOpParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24363,7 +25007,7 @@ type ClientInterface interface {
 	ProposeSessionOp(ctx context.Context, cityName string, id string, params *ProposeSessionOpParams, body ProposeSessionOpJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSessionOp request
-	GetSessionOp(ctx context.Context, cityName string, id string, op string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetSessionOp(ctx context.Context, cityName string, id string, op string, params *GetSessionOpParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CancelSessionOpWithBody request with any body
 	CancelSessionOpWithBody(ctx context.Context, cityName string, id string, op string, params *CancelSessionOpParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24371,7 +25015,7 @@ type ClientInterface interface {
 	CancelSessionOp(ctx context.Context, cityName string, id string, op string, params *CancelSessionOpParams, body CancelSessionOpJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameSessionByIdPending request
-	GetV0CityByCityNameSessionByIdPending(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameSessionByIdPending(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdPendingParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameSessionByIdPermissionModeWithBody request with any body
 	PostV0CityByCityNameSessionByIdPermissionModeWithBody(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdPermissionModeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24414,7 +25058,7 @@ type ClientInterface interface {
 	GetV0CityByCityNameSessionByIdTranscript(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdTranscriptParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameSessionByIdTurn request
-	GetV0CityByCityNameSessionByIdTurn(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameSessionByIdTurn(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdTurnParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostV0CityByCityNameSessionByIdUnpin request
 	PostV0CityByCityNameSessionByIdUnpin(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdUnpinParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24445,7 +25089,7 @@ type ClientInterface interface {
 	GetV0CityByCityNameUsage(ctx context.Context, cityName string, params *GetV0CityByCityNameUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameWaitById request
-	GetV0CityByCityNameWaitById(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetV0CityByCityNameWaitById(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameWaitByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV0CityByCityNameWaits request
 	GetV0CityByCityNameWaits(ctx context.Context, cityName string, params *GetV0CityByCityNameWaitsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -24523,8 +25167,8 @@ func (c *Client) PostV0City(ctx context.Context, params *PostV0CityParams, body 
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityName(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityName(ctx context.Context, cityName string, params *GetV0CityByCityNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24571,8 +25215,8 @@ func (c *Client) DeleteV0CityByCityNameAgentByBase(ctx context.Context, cityName
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameAgentByBase(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameAgentByBaseRequest(c.Server, cityName, base)
+func (c *Client) GetV0CityByCityNameAgentByBase(ctx context.Context, cityName string, base string, params *GetV0CityByCityNameAgentByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameAgentByBaseRequest(c.Server, cityName, base, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24619,8 +25263,8 @@ func (c *Client) GetV0CityByCityNameAgentByBaseOutput(ctx context.Context, cityN
 	return c.Client.Do(req)
 }
 
-func (c *Client) StreamAgentOutput(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStreamAgentOutputRequest(c.Server, cityName, base)
+func (c *Client) StreamAgentOutput(ctx context.Context, cityName string, base string, params *StreamAgentOutputParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStreamAgentOutputRequest(c.Server, cityName, base, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24655,8 +25299,8 @@ func (c *Client) DeleteV0CityByCityNameAgentByDirByBase(ctx context.Context, cit
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameAgentByDirByBaseRequest(c.Server, cityName, dir, base)
+func (c *Client) GetV0CityByCityNameAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNameAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameAgentByDirByBaseRequest(c.Server, cityName, dir, base, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24703,8 +25347,8 @@ func (c *Client) GetV0CityByCityNameAgentByDirByBaseOutput(ctx context.Context, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) StreamAgentOutputQualified(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStreamAgentOutputQualifiedRequest(c.Server, cityName, dir, base)
+func (c *Client) StreamAgentOutputQualified(ctx context.Context, cityName string, dir string, base string, params *StreamAgentOutputQualifiedParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStreamAgentOutputQualifiedRequest(c.Server, cityName, dir, base, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24775,8 +25419,8 @@ func (c *Client) DeleteV0CityByCityNameBeadById(ctx context.Context, cityName st
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameBeadById(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameBeadByIdRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameBeadById(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameBeadByIdRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24859,8 +25503,8 @@ func (c *Client) PostV0CityByCityNameBeadByIdClose(ctx context.Context, cityName
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameBeadByIdDeps(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameBeadByIdDepsRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameBeadByIdDeps(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdDepsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameBeadByIdDepsRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24943,8 +25587,8 @@ func (c *Client) CreateBead(ctx context.Context, cityName string, params *Create
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameBeadsGraphByRootId(ctx context.Context, cityName string, rootID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameBeadsGraphByRootIdRequest(c.Server, cityName, rootID)
+func (c *Client) GetV0CityByCityNameBeadsGraphByRootId(ctx context.Context, cityName string, rootID string, params *GetV0CityByCityNameBeadsGraphByRootIdParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameBeadsGraphByRootIdRequest(c.Server, cityName, rootID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24967,8 +25611,8 @@ func (c *Client) GetV0CityByCityNameBeadsReady(ctx context.Context, cityName str
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameConfig(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameConfigRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameConfig(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameConfigRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24979,8 +25623,8 @@ func (c *Client) GetV0CityByCityNameConfig(ctx context.Context, cityName string,
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameConfigDefaults(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameConfigDefaultsRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameConfigDefaults(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigDefaultsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameConfigDefaultsRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24991,8 +25635,8 @@ func (c *Client) GetV0CityByCityNameConfigDefaults(ctx context.Context, cityName
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameConfigExplain(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameConfigExplainRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameConfigExplain(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigExplainParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameConfigExplainRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25003,8 +25647,8 @@ func (c *Client) GetV0CityByCityNameConfigExplain(ctx context.Context, cityName 
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameConfigValidate(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameConfigValidateRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameConfigValidate(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigValidateParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameConfigValidateRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25027,8 +25671,8 @@ func (c *Client) DeleteV0CityByCityNameConvoyById(ctx context.Context, cityName 
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameConvoyById(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameConvoyByIdRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameConvoyById(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameConvoyByIdRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25063,8 +25707,8 @@ func (c *Client) PostV0CityByCityNameConvoyByIdAdd(ctx context.Context, cityName
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameConvoyByIdCheck(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameConvoyByIdCheckRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameConvoyByIdCheck(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdCheckParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameConvoyByIdCheckRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25231,8 +25875,8 @@ func (c *Client) DeleteV0CityByCityNameExtmsgAdapters(ctx context.Context, cityN
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameExtmsgAdapters(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameExtmsgAdaptersRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameExtmsgAdapters(ctx context.Context, cityName string, params *GetV0CityByCityNameExtmsgAdaptersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameExtmsgAdaptersRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25603,8 +26247,8 @@ func (c *Client) GetV0CityByCityNameFormulasByNameRuns(ctx context.Context, city
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameFormulasByNameSource(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameFormulasByNameSourceRequest(c.Server, cityName, name)
+func (c *Client) GetV0CityByCityNameFormulasByNameSource(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameFormulasByNameSourceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameFormulasByNameSourceRequest(c.Server, cityName, name, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25627,8 +26271,8 @@ func (c *Client) PostV0CityByCityNameFormulasByNameValidateWithBody(ctx context.
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameHealth(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameHealthRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameHealth(ctx context.Context, cityName string, params *GetV0CityByCityNameHealthParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameHealthRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25795,8 +26439,8 @@ func (c *Client) TriggerMaintenanceDoltGc(ctx context.Context, cityName string, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameMaintenanceStatus(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameMaintenanceStatusRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameMaintenanceStatus(ctx context.Context, cityName string, params *GetV0CityByCityNameMaintenanceStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameMaintenanceStatusRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25819,8 +26463,8 @@ func (c *Client) GetV0CityByCityNameOrderHistoryByBeadId(ctx context.Context, ci
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameOrderByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameOrderByNameRequest(c.Server, cityName, name)
+func (c *Client) GetV0CityByCityNameOrderByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameOrderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameOrderByNameRequest(c.Server, cityName, name, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25879,8 +26523,8 @@ func (c *Client) PostV0CityByCityNameOrderByNameRun(ctx context.Context, cityNam
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameOrders(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameOrdersRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameOrders(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameOrdersRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25927,8 +26571,8 @@ func (c *Client) GetV0CityByCityNameOrdersHistory(ctx context.Context, cityName 
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePacks(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePacksRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNamePacks(ctx context.Context, cityName string, params *GetV0CityByCityNamePacksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePacksRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25987,8 +26631,8 @@ func (c *Client) DeleteV0CityByCityNamePatchesAgentByBase(ctx context.Context, c
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePatchesAgentByBase(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePatchesAgentByBaseRequest(c.Server, cityName, base)
+func (c *Client) GetV0CityByCityNamePatchesAgentByBase(ctx context.Context, cityName string, base string, params *GetV0CityByCityNamePatchesAgentByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePatchesAgentByBaseRequest(c.Server, cityName, base, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26011,8 +26655,8 @@ func (c *Client) DeleteV0CityByCityNamePatchesAgentByDirByBase(ctx context.Conte
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePatchesAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePatchesAgentByDirByBaseRequest(c.Server, cityName, dir, base)
+func (c *Client) GetV0CityByCityNamePatchesAgentByDirByBase(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNamePatchesAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePatchesAgentByDirByBaseRequest(c.Server, cityName, dir, base, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26023,8 +26667,8 @@ func (c *Client) GetV0CityByCityNamePatchesAgentByDirByBase(ctx context.Context,
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePatchesAgents(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePatchesAgentsRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNamePatchesAgents(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePatchesAgentsRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26071,8 +26715,8 @@ func (c *Client) DeleteV0CityByCityNamePatchesProviderByName(ctx context.Context
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePatchesProviderByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePatchesProviderByNameRequest(c.Server, cityName, name)
+func (c *Client) GetV0CityByCityNamePatchesProviderByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesProviderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePatchesProviderByNameRequest(c.Server, cityName, name, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26083,8 +26727,8 @@ func (c *Client) GetV0CityByCityNamePatchesProviderByName(ctx context.Context, c
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePatchesProviders(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePatchesProvidersRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNamePatchesProviders(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesProvidersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePatchesProvidersRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26131,8 +26775,8 @@ func (c *Client) DeleteV0CityByCityNamePatchesRigByName(ctx context.Context, cit
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePatchesRigByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePatchesRigByNameRequest(c.Server, cityName, name)
+func (c *Client) GetV0CityByCityNamePatchesRigByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesRigByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePatchesRigByNameRequest(c.Server, cityName, name, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26143,8 +26787,8 @@ func (c *Client) GetV0CityByCityNamePatchesRigByName(ctx context.Context, cityNa
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePatchesRigs(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePatchesRigsRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNamePatchesRigs(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesRigsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePatchesRigsRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26179,8 +26823,8 @@ func (c *Client) PutV0CityByCityNamePatchesRigs(ctx context.Context, cityName st
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNamePending(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNamePendingRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNamePending(ctx context.Context, cityName string, params *GetV0CityByCityNamePendingParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNamePendingRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26215,8 +26859,8 @@ func (c *Client) DeleteV0CityByCityNameProviderByName(ctx context.Context, cityN
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameProviderByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameProviderByNameRequest(c.Server, cityName, name)
+func (c *Client) GetV0CityByCityNameProviderByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameProviderByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameProviderByNameRequest(c.Server, cityName, name, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26251,8 +26895,8 @@ func (c *Client) PatchV0CityByCityNameProviderByName(ctx context.Context, cityNa
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameProviders(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameProvidersRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameProviders(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameProvidersRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26287,8 +26931,8 @@ func (c *Client) CreateProvider(ctx context.Context, cityName string, params *Cr
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameProvidersPublic(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameProvidersPublicRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameProvidersPublic(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersPublicParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameProvidersPublicRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26431,8 +27075,8 @@ func (c *Client) GetV0CityByCityNameRuns(ctx context.Context, cityName string, p
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameRunsCensus(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameRunsCensusRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameRunsCensus(ctx context.Context, cityName string, params *GetV0CityByCityNameRunsCensusParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameRunsCensusRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26443,8 +27087,8 @@ func (c *Client) GetV0CityByCityNameRunsCensus(ctx context.Context, cityName str
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameRunsByRunId(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameRunsByRunIdRequest(c.Server, cityName, runId)
+func (c *Client) GetV0CityByCityNameRunsByRunId(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameRunsByRunIdRequest(c.Server, cityName, runId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26467,8 +27111,8 @@ func (c *Client) PostV0CityByCityNameRunsByRunIdCancel(ctx context.Context, city
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameRunsByRunIdSteps(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameRunsByRunIdStepsRequest(c.Server, cityName, runId)
+func (c *Client) GetV0CityByCityNameRunsByRunIdSteps(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdStepsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameRunsByRunIdStepsRequest(c.Server, cityName, runId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26479,8 +27123,8 @@ func (c *Client) GetV0CityByCityNameRunsByRunIdSteps(ctx context.Context, cityNa
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameServiceByName(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameServiceByNameRequest(c.Server, cityName, name)
+func (c *Client) GetV0CityByCityNameServiceByName(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameServiceByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameServiceByNameRequest(c.Server, cityName, name, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26503,8 +27147,8 @@ func (c *Client) PostV0CityByCityNameServiceByNameRestart(ctx context.Context, c
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameServices(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameServicesRequest(c.Server, cityName)
+func (c *Client) GetV0CityByCityNameServices(ctx context.Context, cityName string, params *GetV0CityByCityNameServicesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameServicesRequest(c.Server, cityName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26551,8 +27195,8 @@ func (c *Client) PatchV0CityByCityNameSessionById(ctx context.Context, cityName 
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameSessionByIdAgents(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameSessionByIdAgentsRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameSessionByIdAgents(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdAgentsRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26563,8 +27207,8 @@ func (c *Client) GetV0CityByCityNameSessionByIdAgents(ctx context.Context, cityN
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameSessionByIdAgentsByAgentId(ctx context.Context, cityName string, id string, agentId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameSessionByIdAgentsByAgentIdRequest(c.Server, cityName, id, agentId)
+func (c *Client) GetV0CityByCityNameSessionByIdAgentsByAgentId(ctx context.Context, cityName string, id string, agentId string, params *GetV0CityByCityNameSessionByIdAgentsByAgentIdParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdAgentsByAgentIdRequest(c.Server, cityName, id, agentId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26623,8 +27267,8 @@ func (c *Client) SendSessionMessage(ctx context.Context, cityName string, id str
 	return c.Client.Do(req)
 }
 
-func (c *Client) ListSessionOps(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListSessionOpsRequest(c.Server, cityName, id)
+func (c *Client) ListSessionOps(ctx context.Context, cityName string, id string, params *ListSessionOpsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSessionOpsRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26659,8 +27303,8 @@ func (c *Client) ProposeSessionOp(ctx context.Context, cityName string, id strin
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetSessionOp(ctx context.Context, cityName string, id string, op string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetSessionOpRequest(c.Server, cityName, id, op)
+func (c *Client) GetSessionOp(ctx context.Context, cityName string, id string, op string, params *GetSessionOpParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSessionOpRequest(c.Server, cityName, id, op, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26695,8 +27339,8 @@ func (c *Client) CancelSessionOp(ctx context.Context, cityName string, id string
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameSessionByIdPending(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameSessionByIdPendingRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameSessionByIdPending(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdPendingParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdPendingRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -26887,8 +27531,8 @@ func (c *Client) GetV0CityByCityNameSessionByIdTranscript(ctx context.Context, c
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameSessionByIdTurn(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameSessionByIdTurnRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameSessionByIdTurn(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdTurnParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdTurnRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -27019,8 +27663,8 @@ func (c *Client) GetV0CityByCityNameUsage(ctx context.Context, cityName string, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetV0CityByCityNameWaitById(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetV0CityByCityNameWaitByIdRequest(c.Server, cityName, id)
+func (c *Client) GetV0CityByCityNameWaitById(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameWaitByIdParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameWaitByIdRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -27258,7 +27902,7 @@ func NewPostV0CityRequestWithBody(server string, params *PostV0CityParams, conte
 }
 
 // NewGetV0CityByCityNameRequest generates requests for GetV0CityByCityName
-func NewGetV0CityByCityNameRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameRequest(server string, cityName string, params *GetV0CityByCityNameParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -27286,6 +27930,21 @@ func NewGetV0CityByCityNameRequest(server string, cityName string) (*http.Reques
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -27346,6 +28005,17 @@ func NewPatchV0CityByCityNameRequestWithBody(server string, cityName string, par
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -27400,13 +28070,24 @@ func NewDeleteV0CityByCityNameAgentByBaseRequest(server string, cityName string,
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameAgentByBaseRequest generates requests for GetV0CityByCityNameAgentByBase
-func NewGetV0CityByCityNameAgentByBaseRequest(server string, cityName string, base string) (*http.Request, error) {
+func NewGetV0CityByCityNameAgentByBaseRequest(server string, cityName string, base string, params *GetV0CityByCityNameAgentByBaseParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -27441,6 +28122,21 @@ func NewGetV0CityByCityNameAgentByBaseRequest(server string, cityName string, ba
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -27507,6 +28203,17 @@ func NewPatchV0CityByCityNameAgentByBaseRequestWithBody(server string, cityName 
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -27589,11 +28296,26 @@ func NewGetV0CityByCityNameAgentByBaseOutputRequest(server string, cityName stri
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewStreamAgentOutputRequest generates requests for StreamAgentOutput
-func NewStreamAgentOutputRequest(server string, cityName string, base string) (*http.Request, error) {
+func NewStreamAgentOutputRequest(server string, cityName string, base string, params *StreamAgentOutputParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -27628,6 +28350,21 @@ func NewStreamAgentOutputRequest(server string, cityName string, base string) (*
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -27688,6 +28425,17 @@ func NewPostV0CityByCityNameAgentByBaseByActionRequest(server string, cityName s
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -27750,13 +28498,24 @@ func NewDeleteV0CityByCityNameAgentByDirByBaseRequest(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameAgentByDirByBaseRequest generates requests for GetV0CityByCityNameAgentByDirByBase
-func NewGetV0CityByCityNameAgentByDirByBaseRequest(server string, cityName string, dir string, base string) (*http.Request, error) {
+func NewGetV0CityByCityNameAgentByDirByBaseRequest(server string, cityName string, dir string, base string, params *GetV0CityByCityNameAgentByDirByBaseParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -27798,6 +28557,21 @@ func NewGetV0CityByCityNameAgentByDirByBaseRequest(server string, cityName strin
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -27871,6 +28645,17 @@ func NewPatchV0CityByCityNameAgentByDirByBaseRequestWithBody(server string, city
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -27960,11 +28745,26 @@ func NewGetV0CityByCityNameAgentByDirByBaseOutputRequest(server string, cityName
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewStreamAgentOutputQualifiedRequest generates requests for StreamAgentOutputQualified
-func NewStreamAgentOutputQualifiedRequest(server string, cityName string, dir string, base string) (*http.Request, error) {
+func NewStreamAgentOutputQualifiedRequest(server string, cityName string, dir string, base string, params *StreamAgentOutputQualifiedParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -28006,6 +28806,21 @@ func NewStreamAgentOutputQualifiedRequest(server string, cityName string, dir st
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -28073,6 +28888,17 @@ func NewPostV0CityByCityNameAgentByDirByBaseByActionRequest(server string, cityN
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -28212,6 +29038,21 @@ func NewGetV0CityByCityNameAgentsRequest(server string, cityName string, params 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -28270,15 +29111,26 @@ func NewCreateAgentRequestWithBody(server string, cityName string, params *Creat
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -28335,13 +29187,24 @@ func NewDeleteV0CityByCityNameBeadByIdRequest(server string, cityName string, id
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameBeadByIdRequest generates requests for GetV0CityByCityNameBeadById
-func NewGetV0CityByCityNameBeadByIdRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameBeadByIdRequest(server string, cityName string, id string, params *GetV0CityByCityNameBeadByIdParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -28376,6 +29239,21 @@ func NewGetV0CityByCityNameBeadByIdRequest(server string, cityName string, id st
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -28442,6 +29320,17 @@ func NewPatchV0CityByCityNameBeadByIdRequestWithBody(server string, cityName str
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -28510,6 +29399,17 @@ func NewPostV0CityByCityNameBeadByIdAssignRequestWithBody(server string, cityNam
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -28577,13 +29477,24 @@ func NewPostV0CityByCityNameBeadByIdCloseRequestWithBody(server string, cityName
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameBeadByIdDepsRequest generates requests for GetV0CityByCityNameBeadByIdDeps
-func NewGetV0CityByCityNameBeadByIdDepsRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameBeadByIdDepsRequest(server string, cityName string, id string, params *GetV0CityByCityNameBeadByIdDepsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -28618,6 +29529,21 @@ func NewGetV0CityByCityNameBeadByIdDepsRequest(server string, cityName string, i
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -28671,6 +29597,17 @@ func NewPostV0CityByCityNameBeadByIdReopenRequest(server string, cityName string
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -28738,6 +29675,17 @@ func NewPostV0CityByCityNameBeadByIdUpdateRequestWithBody(server string, cityNam
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -28941,6 +29889,21 @@ func NewGetV0CityByCityNameBeadsRequest(server string, cityName string, params *
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -28999,15 +29962,26 @@ func NewCreateBeadRequestWithBody(server string, cityName string, params *Create
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -29016,7 +29990,7 @@ func NewCreateBeadRequestWithBody(server string, cityName string, params *Create
 }
 
 // NewGetV0CityByCityNameBeadsGraphByRootIdRequest generates requests for GetV0CityByCityNameBeadsGraphByRootId
-func NewGetV0CityByCityNameBeadsGraphByRootIdRequest(server string, cityName string, rootID string) (*http.Request, error) {
+func NewGetV0CityByCityNameBeadsGraphByRootIdRequest(server string, cityName string, rootID string, params *GetV0CityByCityNameBeadsGraphByRootIdParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -29051,6 +30025,21 @@ func NewGetV0CityByCityNameBeadsGraphByRootIdRequest(server string, cityName str
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -29125,11 +30114,26 @@ func NewGetV0CityByCityNameBeadsReadyRequest(server string, cityName string, par
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameConfigRequest generates requests for GetV0CityByCityNameConfig
-func NewGetV0CityByCityNameConfigRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameConfigRequest(server string, cityName string, params *GetV0CityByCityNameConfigParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -29159,11 +30163,26 @@ func NewGetV0CityByCityNameConfigRequest(server string, cityName string) (*http.
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameConfigDefaultsRequest generates requests for GetV0CityByCityNameConfigDefaults
-func NewGetV0CityByCityNameConfigDefaultsRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameConfigDefaultsRequest(server string, cityName string, params *GetV0CityByCityNameConfigDefaultsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -29193,11 +30212,26 @@ func NewGetV0CityByCityNameConfigDefaultsRequest(server string, cityName string)
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameConfigExplainRequest generates requests for GetV0CityByCityNameConfigExplain
-func NewGetV0CityByCityNameConfigExplainRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameConfigExplainRequest(server string, cityName string, params *GetV0CityByCityNameConfigExplainParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -29227,11 +30261,26 @@ func NewGetV0CityByCityNameConfigExplainRequest(server string, cityName string) 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameConfigValidateRequest generates requests for GetV0CityByCityNameConfigValidate
-func NewGetV0CityByCityNameConfigValidateRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameConfigValidateRequest(server string, cityName string, params *GetV0CityByCityNameConfigValidateParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -29259,6 +30308,21 @@ func NewGetV0CityByCityNameConfigValidateRequest(server string, cityName string)
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -29313,13 +30377,24 @@ func NewDeleteV0CityByCityNameConvoyByIdRequest(server string, cityName string, 
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameConvoyByIdRequest generates requests for GetV0CityByCityNameConvoyById
-func NewGetV0CityByCityNameConvoyByIdRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameConvoyByIdRequest(server string, cityName string, id string, params *GetV0CityByCityNameConvoyByIdParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -29354,6 +30429,21 @@ func NewGetV0CityByCityNameConvoyByIdRequest(server string, cityName string, id 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -29421,13 +30511,24 @@ func NewPostV0CityByCityNameConvoyByIdAddRequestWithBody(server string, cityName
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameConvoyByIdCheckRequest generates requests for GetV0CityByCityNameConvoyByIdCheck
-func NewGetV0CityByCityNameConvoyByIdCheckRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameConvoyByIdCheckRequest(server string, cityName string, id string, params *GetV0CityByCityNameConvoyByIdCheckParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -29462,6 +30563,21 @@ func NewGetV0CityByCityNameConvoyByIdCheckRequest(server string, cityName string
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -29515,6 +30631,17 @@ func NewPostV0CityByCityNameConvoyByIdCloseRequest(server string, cityName strin
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -29582,6 +30709,17 @@ func NewPostV0CityByCityNameConvoyByIdRemoveRequestWithBody(server string, cityN
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -29689,6 +30827,21 @@ func NewGetV0CityByCityNameConvoysRequest(server string, cityName string, params
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -29747,15 +30900,26 @@ func NewCreateConvoyRequestWithBody(server string, cityName string, params *Crea
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -29912,6 +31076,21 @@ func NewGetV0CityByCityNameEventsRequest(server string, cityName string, params 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -29970,15 +31149,26 @@ func NewEmitEventRequestWithBody(server string, cityName string, params *EmitEve
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -30050,6 +31240,17 @@ func NewRotateEventsRequest(server string, cityName string, params *RotateEvents
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -30110,15 +31311,26 @@ func NewStreamEventsRequest(server string, cityName string, params *StreamEvents
 
 	if params != nil {
 
-		if params.LastEventID != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam0 string
 
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Last-Event-ID", headerParam0)
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+		if params.LastEventID != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam1)
 		}
 
 	}
@@ -30181,13 +31393,24 @@ func NewDeleteV0CityByCityNameExtmsgAdaptersRequestWithBody(server string, cityN
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameExtmsgAdaptersRequest generates requests for GetV0CityByCityNameExtmsgAdapters
-func NewGetV0CityByCityNameExtmsgAdaptersRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameExtmsgAdaptersRequest(server string, cityName string, params *GetV0CityByCityNameExtmsgAdaptersParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -30215,6 +31438,21 @@ func NewGetV0CityByCityNameExtmsgAdaptersRequest(server string, cityName string)
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -30275,15 +31513,26 @@ func NewRegisterExtmsgAdapterRequestWithBody(server string, cityName string, par
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -30346,6 +31595,17 @@ func NewPostV0CityByCityNameExtmsgBindRequestWithBody(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -30402,6 +31662,21 @@ func NewGetV0CityByCityNameExtmsgBindingsRequest(server string, cityName string,
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -30524,6 +31799,21 @@ func NewGetV0CityByCityNameExtmsgGroupsRequest(server string, cityName string, p
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -30581,6 +31871,17 @@ func NewEnsureExtmsgGroupRequestWithBody(server string, cityName string, params 
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -30642,6 +31943,17 @@ func NewPostV0CityByCityNameExtmsgInboundRequestWithBody(server string, cityName
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -30701,6 +32013,17 @@ func NewPostV0CityByCityNameExtmsgOutboundRequestWithBody(server string, cityNam
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -30762,6 +32085,17 @@ func NewDeleteV0CityByCityNameExtmsgParticipantsRequestWithBody(server string, c
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -30821,6 +32155,17 @@ func NewPostV0CityByCityNameExtmsgParticipantsRequestWithBody(server string, cit
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -31008,6 +32353,21 @@ func NewGetV0CityByCityNameExtmsgTranscriptRequest(server string, cityName strin
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -31065,6 +32425,17 @@ func NewPostV0CityByCityNameExtmsgTranscriptAckRequestWithBody(server string, ci
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -31125,6 +32496,17 @@ func NewPostV0CityByCityNameExtmsgUnbindRequestWithBody(server string, cityName 
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -31219,6 +32601,21 @@ func NewGetV0CityByCityNameFormulaByNameRequest(server string, cityName string, 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -31289,6 +32686,21 @@ func NewGetV0CityByCityNameFormulasRequest(server string, cityName string, param
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -31379,6 +32791,21 @@ func NewGetV0CityByCityNameFormulasFeedRequest(server string, cityName string, p
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -31430,6 +32857,17 @@ func NewDeleteV0CityByCityNameFormulasByNameRequest(server string, cityName stri
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -31524,6 +32962,21 @@ func NewGetV0CityByCityNameFormulasByNameRequest(server string, cityName string,
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -31577,6 +33030,17 @@ func NewPutV0CityByCityNameFormulasByNameRequestWithBody(server string, cityName
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -31644,6 +33108,17 @@ func NewPostV0CityByCityNameFormulasByNamePreviewRequestWithBody(server string, 
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -31742,11 +33217,26 @@ func NewGetV0CityByCityNameFormulasByNameRunsRequest(server string, cityName str
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameFormulasByNameSourceRequest generates requests for GetV0CityByCityNameFormulasByNameSource
-func NewGetV0CityByCityNameFormulasByNameSourceRequest(server string, cityName string, name string) (*http.Request, error) {
+func NewGetV0CityByCityNameFormulasByNameSourceRequest(server string, cityName string, name string, params *GetV0CityByCityNameFormulasByNameSourceParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -31781,6 +33271,21 @@ func NewGetV0CityByCityNameFormulasByNameSourceRequest(server string, cityName s
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -31837,13 +33342,24 @@ func NewPostV0CityByCityNameFormulasByNameValidateRequestWithBody(server string,
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameHealthRequest generates requests for GetV0CityByCityNameHealth
-func NewGetV0CityByCityNameHealthRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameHealthRequest(server string, cityName string, params *GetV0CityByCityNameHealthParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -31871,6 +33387,21 @@ func NewGetV0CityByCityNameHealthRequest(server string, cityName string) (*http.
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -32025,6 +33556,21 @@ func NewGetV0CityByCityNameMailRequest(server string, cityName string, params *G
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -32083,15 +33629,26 @@ func NewSendMailRequestWithBody(server string, cityName string, params *SendMail
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -32168,6 +33725,21 @@ func NewGetV0CityByCityNameMailCountRequest(server string, cityName string, para
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -32229,6 +33801,21 @@ func NewGetV0CityByCityNameMailThreadByIdRequest(server string, cityName string,
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -32305,6 +33892,17 @@ func NewDeleteV0CityByCityNameMailByIdRequest(server string, cityName string, id
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -32368,6 +33966,21 @@ func NewGetV0CityByCityNameMailByIdRequest(server string, cityName string, id st
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -32443,6 +34056,17 @@ func NewPostV0CityByCityNameMailByIdArchiveRequest(server string, cityName strin
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -32520,6 +34144,17 @@ func NewPostV0CityByCityNameMailByIdMarkUnreadRequest(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -32595,6 +34230,17 @@ func NewPostV0CityByCityNameMailByIdReadRequest(server string, cityName string, 
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -32685,15 +34331,26 @@ func NewReplyMailRequestWithBody(server string, cityName string, id string, para
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -32765,13 +34422,24 @@ func NewTriggerMaintenanceDoltGcRequest(server string, cityName string, params *
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameMaintenanceStatusRequest generates requests for GetV0CityByCityNameMaintenanceStatus
-func NewGetV0CityByCityNameMaintenanceStatusRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameMaintenanceStatusRequest(server string, cityName string, params *GetV0CityByCityNameMaintenanceStatusParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -32799,6 +34467,21 @@ func NewGetV0CityByCityNameMaintenanceStatusRequest(server string, cityName stri
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -32864,11 +34547,26 @@ func NewGetV0CityByCityNameOrderHistoryByBeadIdRequest(server string, cityName s
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameOrderByNameRequest generates requests for GetV0CityByCityNameOrderByName
-func NewGetV0CityByCityNameOrderByNameRequest(server string, cityName string, name string) (*http.Request, error) {
+func NewGetV0CityByCityNameOrderByNameRequest(server string, cityName string, name string, params *GetV0CityByCityNameOrderByNameParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -32903,6 +34601,21 @@ func NewGetV0CityByCityNameOrderByNameRequest(server string, cityName string, na
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -32957,6 +34670,17 @@ func NewPostV0CityByCityNameOrderByNameDisableRequest(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -33010,6 +34734,17 @@ func NewPostV0CityByCityNameOrderByNameEnableRequest(server string, cityName str
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -33078,13 +34813,24 @@ func NewPostV0CityByCityNameOrderByNameRunRequestWithBody(server string, cityNam
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameOrdersRequest generates requests for GetV0CityByCityNameOrders
-func NewGetV0CityByCityNameOrdersRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameOrdersRequest(server string, cityName string, params *GetV0CityByCityNameOrdersParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -33112,6 +34858,21 @@ func NewGetV0CityByCityNameOrdersRequest(server string, cityName string) (*http.
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -33168,6 +34929,21 @@ func NewGetV0CityByCityNameOrdersCheckRequest(server string, cityName string, pa
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -33258,6 +35034,21 @@ func NewGetV0CityByCityNameOrdersFeedRequest(server string, cityName string, par
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -33342,11 +35133,26 @@ func NewGetV0CityByCityNameOrdersHistoryRequest(server string, cityName string, 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePacksRequest generates requests for GetV0CityByCityNamePacks
-func NewGetV0CityByCityNamePacksRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNamePacksRequest(server string, cityName string, params *GetV0CityByCityNamePacksParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -33374,6 +35180,21 @@ func NewGetV0CityByCityNamePacksRequest(server string, cityName string) (*http.R
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -33434,15 +35255,26 @@ func NewAddPackRequestWithBody(server string, cityName string, params *AddPackPa
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -33499,6 +35331,17 @@ func NewDeleteV0CityByCityNamePacksByNameRequest(server string, cityName string,
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -33553,13 +35396,24 @@ func NewDeleteV0CityByCityNamePatchesAgentByBaseRequest(server string, cityName 
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePatchesAgentByBaseRequest generates requests for GetV0CityByCityNamePatchesAgentByBase
-func NewGetV0CityByCityNamePatchesAgentByBaseRequest(server string, cityName string, base string) (*http.Request, error) {
+func NewGetV0CityByCityNamePatchesAgentByBaseRequest(server string, cityName string, base string, params *GetV0CityByCityNamePatchesAgentByBaseParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -33594,6 +35448,21 @@ func NewGetV0CityByCityNamePatchesAgentByBaseRequest(server string, cityName str
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -33655,13 +35524,24 @@ func NewDeleteV0CityByCityNamePatchesAgentByDirByBaseRequest(server string, city
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePatchesAgentByDirByBaseRequest generates requests for GetV0CityByCityNamePatchesAgentByDirByBase
-func NewGetV0CityByCityNamePatchesAgentByDirByBaseRequest(server string, cityName string, dir string, base string) (*http.Request, error) {
+func NewGetV0CityByCityNamePatchesAgentByDirByBaseRequest(server string, cityName string, dir string, base string, params *GetV0CityByCityNamePatchesAgentByDirByBaseParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -33705,11 +35585,26 @@ func NewGetV0CityByCityNamePatchesAgentByDirByBaseRequest(server string, cityNam
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePatchesAgentsRequest generates requests for GetV0CityByCityNamePatchesAgents
-func NewGetV0CityByCityNamePatchesAgentsRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNamePatchesAgentsRequest(server string, cityName string, params *GetV0CityByCityNamePatchesAgentsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -33737,6 +35632,21 @@ func NewGetV0CityByCityNamePatchesAgentsRequest(server string, cityName string) 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -33797,6 +35707,17 @@ func NewPutV0CityByCityNamePatchesAgentsRequestWithBody(server string, cityName 
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -33851,13 +35772,24 @@ func NewDeleteV0CityByCityNamePatchesProviderByNameRequest(server string, cityNa
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePatchesProviderByNameRequest generates requests for GetV0CityByCityNamePatchesProviderByName
-func NewGetV0CityByCityNamePatchesProviderByNameRequest(server string, cityName string, name string) (*http.Request, error) {
+func NewGetV0CityByCityNamePatchesProviderByNameRequest(server string, cityName string, name string, params *GetV0CityByCityNamePatchesProviderByNameParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -33894,11 +35826,26 @@ func NewGetV0CityByCityNamePatchesProviderByNameRequest(server string, cityName 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePatchesProvidersRequest generates requests for GetV0CityByCityNamePatchesProviders
-func NewGetV0CityByCityNamePatchesProvidersRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNamePatchesProvidersRequest(server string, cityName string, params *GetV0CityByCityNamePatchesProvidersParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -33926,6 +35873,21 @@ func NewGetV0CityByCityNamePatchesProvidersRequest(server string, cityName strin
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -33986,6 +35948,17 @@ func NewPutV0CityByCityNamePatchesProvidersRequestWithBody(server string, cityNa
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -34040,13 +36013,24 @@ func NewDeleteV0CityByCityNamePatchesRigByNameRequest(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePatchesRigByNameRequest generates requests for GetV0CityByCityNamePatchesRigByName
-func NewGetV0CityByCityNamePatchesRigByNameRequest(server string, cityName string, name string) (*http.Request, error) {
+func NewGetV0CityByCityNamePatchesRigByNameRequest(server string, cityName string, name string, params *GetV0CityByCityNamePatchesRigByNameParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -34083,11 +36067,26 @@ func NewGetV0CityByCityNamePatchesRigByNameRequest(server string, cityName strin
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePatchesRigsRequest generates requests for GetV0CityByCityNamePatchesRigs
-func NewGetV0CityByCityNamePatchesRigsRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNamePatchesRigsRequest(server string, cityName string, params *GetV0CityByCityNamePatchesRigsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -34115,6 +36114,21 @@ func NewGetV0CityByCityNamePatchesRigsRequest(server string, cityName string) (*
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -34175,13 +36189,24 @@ func NewPutV0CityByCityNamePatchesRigsRequestWithBody(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNamePendingRequest generates requests for GetV0CityByCityNamePending
-func NewGetV0CityByCityNamePendingRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNamePendingRequest(server string, cityName string, params *GetV0CityByCityNamePendingParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -34209,6 +36234,21 @@ func NewGetV0CityByCityNamePendingRequest(server string, cityName string) (*http
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -34283,6 +36323,21 @@ func NewGetV0CityByCityNameProviderReadinessRequest(server string, cityName stri
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -34335,13 +36390,24 @@ func NewDeleteV0CityByCityNameProviderByNameRequest(server string, cityName stri
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameProviderByNameRequest generates requests for GetV0CityByCityNameProviderByName
-func NewGetV0CityByCityNameProviderByNameRequest(server string, cityName string, name string) (*http.Request, error) {
+func NewGetV0CityByCityNameProviderByNameRequest(server string, cityName string, name string, params *GetV0CityByCityNameProviderByNameParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -34376,6 +36442,21 @@ func NewGetV0CityByCityNameProviderByNameRequest(server string, cityName string,
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -34443,13 +36524,24 @@ func NewPatchV0CityByCityNameProviderByNameRequestWithBody(server string, cityNa
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameProvidersRequest generates requests for GetV0CityByCityNameProviders
-func NewGetV0CityByCityNameProvidersRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameProvidersRequest(server string, cityName string, params *GetV0CityByCityNameProvidersParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -34477,6 +36569,21 @@ func NewGetV0CityByCityNameProvidersRequest(server string, cityName string) (*ht
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -34537,15 +36644,26 @@ func NewCreateProviderRequestWithBody(server string, cityName string, params *Cr
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -34554,7 +36672,7 @@ func NewCreateProviderRequestWithBody(server string, cityName string, params *Cr
 }
 
 // NewGetV0CityByCityNameProvidersPublicRequest generates requests for GetV0CityByCityNameProvidersPublic
-func NewGetV0CityByCityNameProvidersPublicRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameProvidersPublicRequest(server string, cityName string, params *GetV0CityByCityNameProvidersPublicParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -34582,6 +36700,21 @@ func NewGetV0CityByCityNameProvidersPublicRequest(server string, cityName string
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -34656,6 +36789,21 @@ func NewGetV0CityByCityNameReadinessRequest(server string, cityName string, para
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -34715,6 +36863,21 @@ func NewGetRequestOutcomeRequest(server string, cityName string, requestId strin
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -34766,6 +36929,17 @@ func NewDeleteV0CityByCityNameRigByNameRequest(server string, cityName string, n
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -34830,6 +37004,21 @@ func NewGetV0CityByCityNameRigByNameRequest(server string, cityName string, name
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -34897,6 +37086,17 @@ func NewPatchV0CityByCityNameRigByNameRequestWithBody(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -34957,6 +37157,17 @@ func NewPostV0CityByCityNameRigByNameByActionRequest(server string, cityName str
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -35048,6 +37259,21 @@ func NewGetV0CityByCityNameRigsRequest(server string, cityName string, params *G
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -35106,15 +37332,26 @@ func NewCreateRigRequestWithBody(server string, cityName string, params *CreateR
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -35175,11 +37412,26 @@ func NewGetV0CityByCityNameRunsRequest(server string, cityName string, params *G
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameRunsCensusRequest generates requests for GetV0CityByCityNameRunsCensus
-func NewGetV0CityByCityNameRunsCensusRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameRunsCensusRequest(server string, cityName string, params *GetV0CityByCityNameRunsCensusParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35209,11 +37461,26 @@ func NewGetV0CityByCityNameRunsCensusRequest(server string, cityName string) (*h
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameRunsByRunIdRequest generates requests for GetV0CityByCityNameRunsByRunId
-func NewGetV0CityByCityNameRunsByRunIdRequest(server string, cityName string, runId string) (*http.Request, error) {
+func NewGetV0CityByCityNameRunsByRunIdRequest(server string, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35248,6 +37515,21 @@ func NewGetV0CityByCityNameRunsByRunIdRequest(server string, cityName string, ru
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -35302,13 +37584,24 @@ func NewPostV0CityByCityNameRunsByRunIdCancelRequest(server string, cityName str
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameRunsByRunIdStepsRequest generates requests for GetV0CityByCityNameRunsByRunIdSteps
-func NewGetV0CityByCityNameRunsByRunIdStepsRequest(server string, cityName string, runId string) (*http.Request, error) {
+func NewGetV0CityByCityNameRunsByRunIdStepsRequest(server string, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdStepsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35345,11 +37638,26 @@ func NewGetV0CityByCityNameRunsByRunIdStepsRequest(server string, cityName strin
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameServiceByNameRequest generates requests for GetV0CityByCityNameServiceByName
-func NewGetV0CityByCityNameServiceByNameRequest(server string, cityName string, name string) (*http.Request, error) {
+func NewGetV0CityByCityNameServiceByNameRequest(server string, cityName string, name string, params *GetV0CityByCityNameServiceByNameParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35384,6 +37692,21 @@ func NewGetV0CityByCityNameServiceByNameRequest(server string, cityName string, 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -35438,13 +37761,24 @@ func NewPostV0CityByCityNameServiceByNameRestartRequest(server string, cityName 
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameServicesRequest generates requests for GetV0CityByCityNameServices
-func NewGetV0CityByCityNameServicesRequest(server string, cityName string) (*http.Request, error) {
+func NewGetV0CityByCityNameServicesRequest(server string, cityName string, params *GetV0CityByCityNameServicesParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35472,6 +37806,21 @@ func NewGetV0CityByCityNameServicesRequest(server string, cityName string) (*htt
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -35569,6 +37918,21 @@ func NewGetV0CityByCityNameSessionByIdRequest(server string, cityName string, id
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -35634,13 +37998,24 @@ func NewPatchV0CityByCityNameSessionByIdRequestWithBody(server string, cityName 
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameSessionByIdAgentsRequest generates requests for GetV0CityByCityNameSessionByIdAgents
-func NewGetV0CityByCityNameSessionByIdAgentsRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameSessionByIdAgentsRequest(server string, cityName string, id string, params *GetV0CityByCityNameSessionByIdAgentsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35677,11 +38052,26 @@ func NewGetV0CityByCityNameSessionByIdAgentsRequest(server string, cityName stri
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameSessionByIdAgentsByAgentIdRequest generates requests for GetV0CityByCityNameSessionByIdAgentsByAgentId
-func NewGetV0CityByCityNameSessionByIdAgentsByAgentIdRequest(server string, cityName string, id string, agentId string) (*http.Request, error) {
+func NewGetV0CityByCityNameSessionByIdAgentsByAgentIdRequest(server string, cityName string, id string, agentId string, params *GetV0CityByCityNameSessionByIdAgentsByAgentIdParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -35723,6 +38113,21 @@ func NewGetV0CityByCityNameSessionByIdAgentsByAgentIdRequest(server string, city
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -35799,15 +38204,26 @@ func NewPostV0CityByCityNameSessionByIdCloseRequest(server string, cityName stri
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -35886,15 +38302,26 @@ func NewPostV0CityByCityNameSessionByIdKillRequest(server string, cityName strin
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -35964,15 +38391,26 @@ func NewSendSessionMessageRequestWithBody(server string, cityName string, id str
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -35981,7 +38419,7 @@ func NewSendSessionMessageRequestWithBody(server string, cityName string, id str
 }
 
 // NewListSessionOpsRequest generates requests for ListSessionOps
-func NewListSessionOpsRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewListSessionOpsRequest(server string, cityName string, id string, params *ListSessionOpsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -36016,6 +38454,21 @@ func NewListSessionOpsRequest(server string, cityName string, id string) (*http.
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -36083,15 +38536,26 @@ func NewProposeSessionOpRequestWithBody(server string, cityName string, id strin
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -36100,7 +38564,7 @@ func NewProposeSessionOpRequestWithBody(server string, cityName string, id strin
 }
 
 // NewGetSessionOpRequest generates requests for GetSessionOp
-func NewGetSessionOpRequest(server string, cityName string, id string, op string) (*http.Request, error) {
+func NewGetSessionOpRequest(server string, cityName string, id string, op string, params *GetSessionOpParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -36142,6 +38606,21 @@ func NewGetSessionOpRequest(server string, cityName string, id string, op string
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -36216,13 +38695,24 @@ func NewCancelSessionOpRequestWithBody(server string, cityName string, id string
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
 }
 
 // NewGetV0CityByCityNameSessionByIdPendingRequest generates requests for GetV0CityByCityNameSessionByIdPending
-func NewGetV0CityByCityNameSessionByIdPendingRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameSessionByIdPendingRequest(server string, cityName string, id string, params *GetV0CityByCityNameSessionByIdPendingParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -36257,6 +38747,21 @@ func NewGetV0CityByCityNameSessionByIdPendingRequest(server string, cityName str
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -36324,6 +38829,17 @@ func NewPostV0CityByCityNameSessionByIdPermissionModeRequestWithBody(server stri
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -36377,6 +38893,17 @@ func NewPostV0CityByCityNameSessionByIdPinRequest(server string, cityName string
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -36445,6 +38972,17 @@ func NewPostV0CityByCityNameSessionByIdRenameRequestWithBody(server string, city
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -36499,15 +39037,26 @@ func NewPostV0CityByCityNameSessionByIdResetRequest(server string, cityName stri
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -36577,15 +39126,26 @@ func NewRespondSessionRequestWithBody(server string, cityName string, id string,
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -36655,15 +39215,26 @@ func NewPostV0CityByCityNameSessionByIdStopRequestWithBody(server string, cityNa
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -36765,15 +39336,26 @@ func NewStreamSessionRequest(server string, cityName string, id string, params *
 
 	if params != nil {
 
-		if params.LastEventID != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam0 string
 
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Last-Event-ID", headerParam0)
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+		if params.LastEventID != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam1)
 		}
 
 	}
@@ -36843,15 +39425,26 @@ func NewSubmitSessionRequestWithBody(server string, cityName string, id string, 
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -36908,15 +39501,26 @@ func NewPostV0CityByCityNameSessionByIdSuspendRequest(server string, cityName st
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -37048,11 +39652,26 @@ func NewGetV0CityByCityNameSessionByIdTranscriptRequest(server string, cityName 
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameSessionByIdTurnRequest generates requests for GetV0CityByCityNameSessionByIdTurn
-func NewGetV0CityByCityNameSessionByIdTurnRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameSessionByIdTurnRequest(server string, cityName string, id string, params *GetV0CityByCityNameSessionByIdTurnParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -37087,6 +39706,21 @@ func NewGetV0CityByCityNameSessionByIdTurnRequest(server string, cityName string
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -37140,6 +39774,17 @@ func NewPostV0CityByCityNameSessionByIdUnpinRequest(server string, cityName stri
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -37195,15 +39840,26 @@ func NewPostV0CityByCityNameSessionByIdWakeRequest(server string, cityName strin
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -37328,6 +39984,21 @@ func NewGetV0CityByCityNameSessionsRequest(server string, cityName string, param
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -37386,15 +40057,26 @@ func NewCreateSessionRequestWithBody(server string, cityName string, params *Cre
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
-		if params.IdempotencyKey != nil {
+		if params.XGCCityIncarnation != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Idempotency-Key", headerParam1)
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
+		if params.IdempotencyKey != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam2)
 		}
 
 	}
@@ -37456,6 +40138,17 @@ func NewPostV0CityByCityNameSlingRequestWithBody(server string, cityName string,
 		}
 
 		req.Header.Set("X-GC-Request", headerParam0)
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
 
 	}
 
@@ -37545,6 +40238,21 @@ func NewGetV0CityByCityNameStatusRequest(server string, cityName string, params 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -37650,11 +40358,26 @@ func NewGetV0CityByCityNameUsageRequest(server string, cityName string, params *
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
 // NewGetV0CityByCityNameWaitByIdRequest generates requests for GetV0CityByCityNameWaitById
-func NewGetV0CityByCityNameWaitByIdRequest(server string, cityName string, id string) (*http.Request, error) {
+func NewGetV0CityByCityNameWaitByIdRequest(server string, cityName string, id string, params *GetV0CityByCityNameWaitByIdParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -37689,6 +40412,21 @@ func NewGetV0CityByCityNameWaitByIdRequest(server string, cityName string, id st
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -37763,6 +40501,21 @@ func NewGetV0CityByCityNameWaitsRequest(server string, cityName string, params *
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -37833,6 +40586,21 @@ func NewGetV0CityByCityNameWorkActiveStepRequest(server string, cityName string,
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -38003,6 +40771,21 @@ func NewGetV0CityByCityNameWorkReadyRequest(server string, cityName string, para
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -38109,6 +40892,17 @@ func NewDeleteV0CityByCityNameWorkflowByWorkflowIdRequest(server string, cityNam
 
 		req.Header.Set("X-GC-Request", headerParam0)
 
+		if params.XGCCityIncarnation != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam1)
+		}
+
 	}
 
 	return req, nil
@@ -38188,6 +40982,21 @@ func NewGetV0CityByCityNameWorkflowByWorkflowIdRequest(server string, cityName s
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XGCCityIncarnation != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-GC-City-Incarnation", *params.XGCCityIncarnation, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-GC-City-Incarnation", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -38539,7 +41348,7 @@ type ClientWithResponsesInterface interface {
 	PostV0CityWithResponse(ctx context.Context, params *PostV0CityParams, body PostV0CityJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV0CityResponse, error)
 
 	// GetV0CityByCityNameWithResponse request
-	GetV0CityByCityNameWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameResponse, error)
+	GetV0CityByCityNameWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameResponse, error)
 
 	// PatchV0CityByCityNameWithBodyWithResponse request with any body
 	PatchV0CityByCityNameWithBodyWithResponse(ctx context.Context, cityName string, params *PatchV0CityByCityNameParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchV0CityByCityNameResponse, error)
@@ -38550,7 +41359,7 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNameAgentByBaseWithResponse(ctx context.Context, cityName string, base string, params *DeleteV0CityByCityNameAgentByBaseParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNameAgentByBaseResponse, error)
 
 	// GetV0CityByCityNameAgentByBaseWithResponse request
-	GetV0CityByCityNameAgentByBaseWithResponse(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByBaseResponse, error)
+	GetV0CityByCityNameAgentByBaseWithResponse(ctx context.Context, cityName string, base string, params *GetV0CityByCityNameAgentByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByBaseResponse, error)
 
 	// PatchV0CityByCityNameAgentByBaseWithBodyWithResponse request with any body
 	PatchV0CityByCityNameAgentByBaseWithBodyWithResponse(ctx context.Context, cityName string, base string, params *PatchV0CityByCityNameAgentByBaseParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchV0CityByCityNameAgentByBaseResponse, error)
@@ -38561,7 +41370,7 @@ type ClientWithResponsesInterface interface {
 	GetV0CityByCityNameAgentByBaseOutputWithResponse(ctx context.Context, cityName string, base string, params *GetV0CityByCityNameAgentByBaseOutputParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByBaseOutputResponse, error)
 
 	// StreamAgentOutputWithResponse request
-	StreamAgentOutputWithResponse(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*StreamAgentOutputResponse, error)
+	StreamAgentOutputWithResponse(ctx context.Context, cityName string, base string, params *StreamAgentOutputParams, reqEditors ...RequestEditorFn) (*StreamAgentOutputResponse, error)
 
 	// PostV0CityByCityNameAgentByBaseByActionWithResponse request
 	PostV0CityByCityNameAgentByBaseByActionWithResponse(ctx context.Context, cityName string, base string, action PostV0CityByCityNameAgentByBaseByActionParamsAction, params *PostV0CityByCityNameAgentByBaseByActionParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameAgentByBaseByActionResponse, error)
@@ -38570,7 +41379,7 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNameAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, params *DeleteV0CityByCityNameAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNameAgentByDirByBaseResponse, error)
 
 	// GetV0CityByCityNameAgentByDirByBaseWithResponse request
-	GetV0CityByCityNameAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByDirByBaseResponse, error)
+	GetV0CityByCityNameAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNameAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByDirByBaseResponse, error)
 
 	// PatchV0CityByCityNameAgentByDirByBaseWithBodyWithResponse request with any body
 	PatchV0CityByCityNameAgentByDirByBaseWithBodyWithResponse(ctx context.Context, cityName string, dir string, base string, params *PatchV0CityByCityNameAgentByDirByBaseParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchV0CityByCityNameAgentByDirByBaseResponse, error)
@@ -38581,7 +41390,7 @@ type ClientWithResponsesInterface interface {
 	GetV0CityByCityNameAgentByDirByBaseOutputWithResponse(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNameAgentByDirByBaseOutputParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByDirByBaseOutputResponse, error)
 
 	// StreamAgentOutputQualifiedWithResponse request
-	StreamAgentOutputQualifiedWithResponse(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*StreamAgentOutputQualifiedResponse, error)
+	StreamAgentOutputQualifiedWithResponse(ctx context.Context, cityName string, dir string, base string, params *StreamAgentOutputQualifiedParams, reqEditors ...RequestEditorFn) (*StreamAgentOutputQualifiedResponse, error)
 
 	// PostV0CityByCityNameAgentByDirByBaseByActionWithResponse request
 	PostV0CityByCityNameAgentByDirByBaseByActionWithResponse(ctx context.Context, cityName string, dir string, base string, action PostV0CityByCityNameAgentByDirByBaseByActionParamsAction, params *PostV0CityByCityNameAgentByDirByBaseByActionParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameAgentByDirByBaseByActionResponse, error)
@@ -38598,7 +41407,7 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNameBeadByIdWithResponse(ctx context.Context, cityName string, id string, params *DeleteV0CityByCityNameBeadByIdParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNameBeadByIdResponse, error)
 
 	// GetV0CityByCityNameBeadByIdWithResponse request
-	GetV0CityByCityNameBeadByIdWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdResponse, error)
+	GetV0CityByCityNameBeadByIdWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdResponse, error)
 
 	// PatchV0CityByCityNameBeadByIdWithBodyWithResponse request with any body
 	PatchV0CityByCityNameBeadByIdWithBodyWithResponse(ctx context.Context, cityName string, id string, params *PatchV0CityByCityNameBeadByIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchV0CityByCityNameBeadByIdResponse, error)
@@ -38616,7 +41425,7 @@ type ClientWithResponsesInterface interface {
 	PostV0CityByCityNameBeadByIdCloseWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameBeadByIdCloseParams, body PostV0CityByCityNameBeadByIdCloseJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameBeadByIdCloseResponse, error)
 
 	// GetV0CityByCityNameBeadByIdDepsWithResponse request
-	GetV0CityByCityNameBeadByIdDepsWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdDepsResponse, error)
+	GetV0CityByCityNameBeadByIdDepsWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdDepsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdDepsResponse, error)
 
 	// PostV0CityByCityNameBeadByIdReopenWithResponse request
 	PostV0CityByCityNameBeadByIdReopenWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameBeadByIdReopenParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameBeadByIdReopenResponse, error)
@@ -38635,28 +41444,28 @@ type ClientWithResponsesInterface interface {
 	CreateBeadWithResponse(ctx context.Context, cityName string, params *CreateBeadParams, body CreateBeadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateBeadResponse, error)
 
 	// GetV0CityByCityNameBeadsGraphByRootIdWithResponse request
-	GetV0CityByCityNameBeadsGraphByRootIdWithResponse(ctx context.Context, cityName string, rootID string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadsGraphByRootIdResponse, error)
+	GetV0CityByCityNameBeadsGraphByRootIdWithResponse(ctx context.Context, cityName string, rootID string, params *GetV0CityByCityNameBeadsGraphByRootIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadsGraphByRootIdResponse, error)
 
 	// GetV0CityByCityNameBeadsReadyWithResponse request
 	GetV0CityByCityNameBeadsReadyWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameBeadsReadyParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadsReadyResponse, error)
 
 	// GetV0CityByCityNameConfigWithResponse request
-	GetV0CityByCityNameConfigWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigResponse, error)
+	GetV0CityByCityNameConfigWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigResponse, error)
 
 	// GetV0CityByCityNameConfigDefaultsWithResponse request
-	GetV0CityByCityNameConfigDefaultsWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigDefaultsResponse, error)
+	GetV0CityByCityNameConfigDefaultsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigDefaultsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigDefaultsResponse, error)
 
 	// GetV0CityByCityNameConfigExplainWithResponse request
-	GetV0CityByCityNameConfigExplainWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigExplainResponse, error)
+	GetV0CityByCityNameConfigExplainWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigExplainParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigExplainResponse, error)
 
 	// GetV0CityByCityNameConfigValidateWithResponse request
-	GetV0CityByCityNameConfigValidateWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigValidateResponse, error)
+	GetV0CityByCityNameConfigValidateWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigValidateParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigValidateResponse, error)
 
 	// DeleteV0CityByCityNameConvoyByIdWithResponse request
 	DeleteV0CityByCityNameConvoyByIdWithResponse(ctx context.Context, cityName string, id string, params *DeleteV0CityByCityNameConvoyByIdParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNameConvoyByIdResponse, error)
 
 	// GetV0CityByCityNameConvoyByIdWithResponse request
-	GetV0CityByCityNameConvoyByIdWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdResponse, error)
+	GetV0CityByCityNameConvoyByIdWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdResponse, error)
 
 	// PostV0CityByCityNameConvoyByIdAddWithBodyWithResponse request with any body
 	PostV0CityByCityNameConvoyByIdAddWithBodyWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameConvoyByIdAddParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameConvoyByIdAddResponse, error)
@@ -38664,7 +41473,7 @@ type ClientWithResponsesInterface interface {
 	PostV0CityByCityNameConvoyByIdAddWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameConvoyByIdAddParams, body PostV0CityByCityNameConvoyByIdAddJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameConvoyByIdAddResponse, error)
 
 	// GetV0CityByCityNameConvoyByIdCheckWithResponse request
-	GetV0CityByCityNameConvoyByIdCheckWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdCheckResponse, error)
+	GetV0CityByCityNameConvoyByIdCheckWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdCheckParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdCheckResponse, error)
 
 	// PostV0CityByCityNameConvoyByIdCloseWithResponse request
 	PostV0CityByCityNameConvoyByIdCloseWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameConvoyByIdCloseParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameConvoyByIdCloseResponse, error)
@@ -38702,7 +41511,7 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNameExtmsgAdaptersWithResponse(ctx context.Context, cityName string, params *DeleteV0CityByCityNameExtmsgAdaptersParams, body DeleteV0CityByCityNameExtmsgAdaptersJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNameExtmsgAdaptersResponse, error)
 
 	// GetV0CityByCityNameExtmsgAdaptersWithResponse request
-	GetV0CityByCityNameExtmsgAdaptersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameExtmsgAdaptersResponse, error)
+	GetV0CityByCityNameExtmsgAdaptersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameExtmsgAdaptersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameExtmsgAdaptersResponse, error)
 
 	// RegisterExtmsgAdapterWithBodyWithResponse request with any body
 	RegisterExtmsgAdapterWithBodyWithResponse(ctx context.Context, cityName string, params *RegisterExtmsgAdapterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterExtmsgAdapterResponse, error)
@@ -38785,13 +41594,13 @@ type ClientWithResponsesInterface interface {
 	GetV0CityByCityNameFormulasByNameRunsWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameFormulasByNameRunsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameFormulasByNameRunsResponse, error)
 
 	// GetV0CityByCityNameFormulasByNameSourceWithResponse request
-	GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameFormulasByNameSourceResponse, error)
+	GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameFormulasByNameSourceParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameFormulasByNameSourceResponse, error)
 
 	// PostV0CityByCityNameFormulasByNameValidateWithBodyWithResponse request with any body
 	PostV0CityByCityNameFormulasByNameValidateWithBodyWithResponse(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameFormulasByNameValidateParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameFormulasByNameValidateResponse, error)
 
 	// GetV0CityByCityNameHealthWithResponse request
-	GetV0CityByCityNameHealthWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameHealthResponse, error)
+	GetV0CityByCityNameHealthWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameHealthParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameHealthResponse, error)
 
 	// GetV0CityByCityNameMailWithResponse request
 	GetV0CityByCityNameMailWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameMailParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameMailResponse, error)
@@ -38831,13 +41640,13 @@ type ClientWithResponsesInterface interface {
 	TriggerMaintenanceDoltGcWithResponse(ctx context.Context, cityName string, params *TriggerMaintenanceDoltGcParams, reqEditors ...RequestEditorFn) (*TriggerMaintenanceDoltGcResponse, error)
 
 	// GetV0CityByCityNameMaintenanceStatusWithResponse request
-	GetV0CityByCityNameMaintenanceStatusWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameMaintenanceStatusResponse, error)
+	GetV0CityByCityNameMaintenanceStatusWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameMaintenanceStatusParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameMaintenanceStatusResponse, error)
 
 	// GetV0CityByCityNameOrderHistoryByBeadIdWithResponse request
 	GetV0CityByCityNameOrderHistoryByBeadIdWithResponse(ctx context.Context, cityName string, beadId string, params *GetV0CityByCityNameOrderHistoryByBeadIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrderHistoryByBeadIdResponse, error)
 
 	// GetV0CityByCityNameOrderByNameWithResponse request
-	GetV0CityByCityNameOrderByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrderByNameResponse, error)
+	GetV0CityByCityNameOrderByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameOrderByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrderByNameResponse, error)
 
 	// PostV0CityByCityNameOrderByNameDisableWithResponse request
 	PostV0CityByCityNameOrderByNameDisableWithResponse(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameOrderByNameDisableParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameOrderByNameDisableResponse, error)
@@ -38851,7 +41660,7 @@ type ClientWithResponsesInterface interface {
 	PostV0CityByCityNameOrderByNameRunWithResponse(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameOrderByNameRunParams, body PostV0CityByCityNameOrderByNameRunJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameOrderByNameRunResponse, error)
 
 	// GetV0CityByCityNameOrdersWithResponse request
-	GetV0CityByCityNameOrdersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrdersResponse, error)
+	GetV0CityByCityNameOrdersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrdersResponse, error)
 
 	// GetV0CityByCityNameOrdersCheckWithResponse request
 	GetV0CityByCityNameOrdersCheckWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersCheckParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrdersCheckResponse, error)
@@ -38863,7 +41672,7 @@ type ClientWithResponsesInterface interface {
 	GetV0CityByCityNameOrdersHistoryWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersHistoryParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrdersHistoryResponse, error)
 
 	// GetV0CityByCityNamePacksWithResponse request
-	GetV0CityByCityNamePacksWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePacksResponse, error)
+	GetV0CityByCityNamePacksWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePacksParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePacksResponse, error)
 
 	// AddPackWithBodyWithResponse request with any body
 	AddPackWithBodyWithResponse(ctx context.Context, cityName string, params *AddPackParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddPackResponse, error)
@@ -38877,16 +41686,16 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNamePatchesAgentByBaseWithResponse(ctx context.Context, cityName string, base string, params *DeleteV0CityByCityNamePatchesAgentByBaseParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNamePatchesAgentByBaseResponse, error)
 
 	// GetV0CityByCityNamePatchesAgentByBaseWithResponse request
-	GetV0CityByCityNamePatchesAgentByBaseWithResponse(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByBaseResponse, error)
+	GetV0CityByCityNamePatchesAgentByBaseWithResponse(ctx context.Context, cityName string, base string, params *GetV0CityByCityNamePatchesAgentByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByBaseResponse, error)
 
 	// DeleteV0CityByCityNamePatchesAgentByDirByBaseWithResponse request
 	DeleteV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, params *DeleteV0CityByCityNamePatchesAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNamePatchesAgentByDirByBaseResponse, error)
 
 	// GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse request
-	GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByDirByBaseResponse, error)
+	GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNamePatchesAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByDirByBaseResponse, error)
 
 	// GetV0CityByCityNamePatchesAgentsWithResponse request
-	GetV0CityByCityNamePatchesAgentsWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentsResponse, error)
+	GetV0CityByCityNamePatchesAgentsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesAgentsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentsResponse, error)
 
 	// PutV0CityByCityNamePatchesAgentsWithBodyWithResponse request with any body
 	PutV0CityByCityNamePatchesAgentsWithBodyWithResponse(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesAgentsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutV0CityByCityNamePatchesAgentsResponse, error)
@@ -38897,10 +41706,10 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNamePatchesProviderByNameWithResponse(ctx context.Context, cityName string, name string, params *DeleteV0CityByCityNamePatchesProviderByNameParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNamePatchesProviderByNameResponse, error)
 
 	// GetV0CityByCityNamePatchesProviderByNameWithResponse request
-	GetV0CityByCityNamePatchesProviderByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProviderByNameResponse, error)
+	GetV0CityByCityNamePatchesProviderByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesProviderByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProviderByNameResponse, error)
 
 	// GetV0CityByCityNamePatchesProvidersWithResponse request
-	GetV0CityByCityNamePatchesProvidersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProvidersResponse, error)
+	GetV0CityByCityNamePatchesProvidersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesProvidersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProvidersResponse, error)
 
 	// PutV0CityByCityNamePatchesProvidersWithBodyWithResponse request with any body
 	PutV0CityByCityNamePatchesProvidersWithBodyWithResponse(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesProvidersParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutV0CityByCityNamePatchesProvidersResponse, error)
@@ -38911,10 +41720,10 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNamePatchesRigByNameWithResponse(ctx context.Context, cityName string, name string, params *DeleteV0CityByCityNamePatchesRigByNameParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNamePatchesRigByNameResponse, error)
 
 	// GetV0CityByCityNamePatchesRigByNameWithResponse request
-	GetV0CityByCityNamePatchesRigByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigByNameResponse, error)
+	GetV0CityByCityNamePatchesRigByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesRigByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigByNameResponse, error)
 
 	// GetV0CityByCityNamePatchesRigsWithResponse request
-	GetV0CityByCityNamePatchesRigsWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigsResponse, error)
+	GetV0CityByCityNamePatchesRigsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesRigsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigsResponse, error)
 
 	// PutV0CityByCityNamePatchesRigsWithBodyWithResponse request with any body
 	PutV0CityByCityNamePatchesRigsWithBodyWithResponse(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesRigsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutV0CityByCityNamePatchesRigsResponse, error)
@@ -38922,7 +41731,7 @@ type ClientWithResponsesInterface interface {
 	PutV0CityByCityNamePatchesRigsWithResponse(ctx context.Context, cityName string, params *PutV0CityByCityNamePatchesRigsParams, body PutV0CityByCityNamePatchesRigsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutV0CityByCityNamePatchesRigsResponse, error)
 
 	// GetV0CityByCityNamePendingWithResponse request
-	GetV0CityByCityNamePendingWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePendingResponse, error)
+	GetV0CityByCityNamePendingWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePendingParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePendingResponse, error)
 
 	// GetV0CityByCityNameProviderReadinessWithResponse request
 	GetV0CityByCityNameProviderReadinessWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameProviderReadinessParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProviderReadinessResponse, error)
@@ -38931,7 +41740,7 @@ type ClientWithResponsesInterface interface {
 	DeleteV0CityByCityNameProviderByNameWithResponse(ctx context.Context, cityName string, name string, params *DeleteV0CityByCityNameProviderByNameParams, reqEditors ...RequestEditorFn) (*DeleteV0CityByCityNameProviderByNameResponse, error)
 
 	// GetV0CityByCityNameProviderByNameWithResponse request
-	GetV0CityByCityNameProviderByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProviderByNameResponse, error)
+	GetV0CityByCityNameProviderByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameProviderByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProviderByNameResponse, error)
 
 	// PatchV0CityByCityNameProviderByNameWithBodyWithResponse request with any body
 	PatchV0CityByCityNameProviderByNameWithBodyWithResponse(ctx context.Context, cityName string, name string, params *PatchV0CityByCityNameProviderByNameParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchV0CityByCityNameProviderByNameResponse, error)
@@ -38939,7 +41748,7 @@ type ClientWithResponsesInterface interface {
 	PatchV0CityByCityNameProviderByNameWithResponse(ctx context.Context, cityName string, name string, params *PatchV0CityByCityNameProviderByNameParams, body PatchV0CityByCityNameProviderByNameJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchV0CityByCityNameProviderByNameResponse, error)
 
 	// GetV0CityByCityNameProvidersWithResponse request
-	GetV0CityByCityNameProvidersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersResponse, error)
+	GetV0CityByCityNameProvidersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersResponse, error)
 
 	// CreateProviderWithBodyWithResponse request with any body
 	CreateProviderWithBodyWithResponse(ctx context.Context, cityName string, params *CreateProviderParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProviderResponse, error)
@@ -38947,7 +41756,7 @@ type ClientWithResponsesInterface interface {
 	CreateProviderWithResponse(ctx context.Context, cityName string, params *CreateProviderParams, body CreateProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProviderResponse, error)
 
 	// GetV0CityByCityNameProvidersPublicWithResponse request
-	GetV0CityByCityNameProvidersPublicWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersPublicResponse, error)
+	GetV0CityByCityNameProvidersPublicWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersPublicParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersPublicResponse, error)
 
 	// GetV0CityByCityNameReadinessWithResponse request
 	GetV0CityByCityNameReadinessWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameReadinessParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameReadinessResponse, error)
@@ -38981,25 +41790,25 @@ type ClientWithResponsesInterface interface {
 	GetV0CityByCityNameRunsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameRunsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsResponse, error)
 
 	// GetV0CityByCityNameRunsCensusWithResponse request
-	GetV0CityByCityNameRunsCensusWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsCensusResponse, error)
+	GetV0CityByCityNameRunsCensusWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameRunsCensusParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsCensusResponse, error)
 
 	// GetV0CityByCityNameRunsByRunIdWithResponse request
-	GetV0CityByCityNameRunsByRunIdWithResponse(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdResponse, error)
+	GetV0CityByCityNameRunsByRunIdWithResponse(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdResponse, error)
 
 	// PostV0CityByCityNameRunsByRunIdCancelWithResponse request
 	PostV0CityByCityNameRunsByRunIdCancelWithResponse(ctx context.Context, cityName string, runId string, params *PostV0CityByCityNameRunsByRunIdCancelParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameRunsByRunIdCancelResponse, error)
 
 	// GetV0CityByCityNameRunsByRunIdStepsWithResponse request
-	GetV0CityByCityNameRunsByRunIdStepsWithResponse(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdStepsResponse, error)
+	GetV0CityByCityNameRunsByRunIdStepsWithResponse(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdStepsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdStepsResponse, error)
 
 	// GetV0CityByCityNameServiceByNameWithResponse request
-	GetV0CityByCityNameServiceByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServiceByNameResponse, error)
+	GetV0CityByCityNameServiceByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameServiceByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServiceByNameResponse, error)
 
 	// PostV0CityByCityNameServiceByNameRestartWithResponse request
 	PostV0CityByCityNameServiceByNameRestartWithResponse(ctx context.Context, cityName string, name string, params *PostV0CityByCityNameServiceByNameRestartParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameServiceByNameRestartResponse, error)
 
 	// GetV0CityByCityNameServicesWithResponse request
-	GetV0CityByCityNameServicesWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServicesResponse, error)
+	GetV0CityByCityNameServicesWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameServicesParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServicesResponse, error)
 
 	// GetV0CityByCityNameSessionByIdWithResponse request
 	GetV0CityByCityNameSessionByIdWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdResponse, error)
@@ -39010,10 +41819,10 @@ type ClientWithResponsesInterface interface {
 	PatchV0CityByCityNameSessionByIdWithResponse(ctx context.Context, cityName string, id string, params *PatchV0CityByCityNameSessionByIdParams, body PatchV0CityByCityNameSessionByIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchV0CityByCityNameSessionByIdResponse, error)
 
 	// GetV0CityByCityNameSessionByIdAgentsWithResponse request
-	GetV0CityByCityNameSessionByIdAgentsWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsResponse, error)
+	GetV0CityByCityNameSessionByIdAgentsWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdAgentsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsResponse, error)
 
 	// GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse request
-	GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse(ctx context.Context, cityName string, id string, agentId string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsByAgentIdResponse, error)
+	GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse(ctx context.Context, cityName string, id string, agentId string, params *GetV0CityByCityNameSessionByIdAgentsByAgentIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsByAgentIdResponse, error)
 
 	// PostV0CityByCityNameSessionByIdCloseWithResponse request
 	PostV0CityByCityNameSessionByIdCloseWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdCloseParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameSessionByIdCloseResponse, error)
@@ -39027,7 +41836,7 @@ type ClientWithResponsesInterface interface {
 	SendSessionMessageWithResponse(ctx context.Context, cityName string, id string, params *SendSessionMessageParams, body SendSessionMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SendSessionMessageResponse, error)
 
 	// ListSessionOpsWithResponse request
-	ListSessionOpsWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*ListSessionOpsResponse, error)
+	ListSessionOpsWithResponse(ctx context.Context, cityName string, id string, params *ListSessionOpsParams, reqEditors ...RequestEditorFn) (*ListSessionOpsResponse, error)
 
 	// ProposeSessionOpWithBodyWithResponse request with any body
 	ProposeSessionOpWithBodyWithResponse(ctx context.Context, cityName string, id string, params *ProposeSessionOpParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProposeSessionOpResponse, error)
@@ -39035,7 +41844,7 @@ type ClientWithResponsesInterface interface {
 	ProposeSessionOpWithResponse(ctx context.Context, cityName string, id string, params *ProposeSessionOpParams, body ProposeSessionOpJSONRequestBody, reqEditors ...RequestEditorFn) (*ProposeSessionOpResponse, error)
 
 	// GetSessionOpWithResponse request
-	GetSessionOpWithResponse(ctx context.Context, cityName string, id string, op string, reqEditors ...RequestEditorFn) (*GetSessionOpResponse, error)
+	GetSessionOpWithResponse(ctx context.Context, cityName string, id string, op string, params *GetSessionOpParams, reqEditors ...RequestEditorFn) (*GetSessionOpResponse, error)
 
 	// CancelSessionOpWithBodyWithResponse request with any body
 	CancelSessionOpWithBodyWithResponse(ctx context.Context, cityName string, id string, op string, params *CancelSessionOpParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CancelSessionOpResponse, error)
@@ -39043,7 +41852,7 @@ type ClientWithResponsesInterface interface {
 	CancelSessionOpWithResponse(ctx context.Context, cityName string, id string, op string, params *CancelSessionOpParams, body CancelSessionOpJSONRequestBody, reqEditors ...RequestEditorFn) (*CancelSessionOpResponse, error)
 
 	// GetV0CityByCityNameSessionByIdPendingWithResponse request
-	GetV0CityByCityNameSessionByIdPendingWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdPendingResponse, error)
+	GetV0CityByCityNameSessionByIdPendingWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdPendingParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdPendingResponse, error)
 
 	// PostV0CityByCityNameSessionByIdPermissionModeWithBodyWithResponse request with any body
 	PostV0CityByCityNameSessionByIdPermissionModeWithBodyWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdPermissionModeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameSessionByIdPermissionModeResponse, error)
@@ -39086,7 +41895,7 @@ type ClientWithResponsesInterface interface {
 	GetV0CityByCityNameSessionByIdTranscriptWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdTranscriptParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdTranscriptResponse, error)
 
 	// GetV0CityByCityNameSessionByIdTurnWithResponse request
-	GetV0CityByCityNameSessionByIdTurnWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdTurnResponse, error)
+	GetV0CityByCityNameSessionByIdTurnWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdTurnParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdTurnResponse, error)
 
 	// PostV0CityByCityNameSessionByIdUnpinWithResponse request
 	PostV0CityByCityNameSessionByIdUnpinWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdUnpinParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameSessionByIdUnpinResponse, error)
@@ -39117,7 +41926,7 @@ type ClientWithResponsesInterface interface {
 	GetV0CityByCityNameUsageWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameUsageParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameUsageResponse, error)
 
 	// GetV0CityByCityNameWaitByIdWithResponse request
-	GetV0CityByCityNameWaitByIdWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameWaitByIdResponse, error)
+	GetV0CityByCityNameWaitByIdWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameWaitByIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameWaitByIdResponse, error)
 
 	// GetV0CityByCityNameWaitsWithResponse request
 	GetV0CityByCityNameWaitsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameWaitsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameWaitsResponse, error)
@@ -39226,6 +42035,7 @@ type GetV0CityByCityNameResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *CityGetResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39254,6 +42064,7 @@ type PatchV0CityByCityNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39284,6 +42095,7 @@ type DeleteV0CityByCityNameAgentByBaseResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39310,6 +42122,7 @@ type GetV0CityByCityNameAgentByBaseResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *AgentResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39339,6 +42152,7 @@ type PatchV0CityByCityNameAgentByBaseResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39365,6 +42179,7 @@ type GetV0CityByCityNameAgentByBaseOutputResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *AgentOutputResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39416,6 +42231,7 @@ type PostV0CityByCityNameAgentByBaseByActionResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39446,6 +42262,7 @@ type DeleteV0CityByCityNameAgentByDirByBaseResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39472,6 +42289,7 @@ type GetV0CityByCityNameAgentByDirByBaseResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *AgentResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39501,6 +42319,7 @@ type PatchV0CityByCityNameAgentByDirByBaseResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39527,6 +42346,7 @@ type GetV0CityByCityNameAgentByDirByBaseOutputResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *AgentOutputResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39578,6 +42398,7 @@ type PostV0CityByCityNameAgentByDirByBaseByActionResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39604,6 +42425,7 @@ type GetV0CityByCityNameAgentsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyAgentResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39633,6 +42455,7 @@ type CreateAgentResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -39664,6 +42487,7 @@ type DeleteV0CityByCityNameBeadByIdResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39689,6 +42513,7 @@ type GetV0CityByCityNameBeadByIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *Bead
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -39719,6 +42544,7 @@ type PatchV0CityByCityNameBeadByIdResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -39750,6 +42576,7 @@ type PostV0CityByCityNameBeadByIdAssignResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39778,6 +42605,7 @@ type PostV0CityByCityNameBeadByIdCloseResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39803,6 +42631,7 @@ type GetV0CityByCityNameBeadByIdDepsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *BeadDepsResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39831,6 +42660,7 @@ type PostV0CityByCityNameBeadByIdReopenResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39860,6 +42690,7 @@ type PostV0CityByCityNameBeadByIdUpdateResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -39888,6 +42719,7 @@ type GetV0CityByCityNameBeadsResponse struct {
 	JSON200                   *ListBodyBead
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -39918,6 +42750,7 @@ type CreateBeadResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39943,6 +42776,7 @@ type GetV0CityByCityNameBeadsGraphByRootIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *BeadGraphResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -39968,6 +42802,7 @@ type GetV0CityByCityNameBeadsReadyResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyBead
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -39994,6 +42829,7 @@ type GetV0CityByCityNameConfigResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ConfigResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40019,6 +42855,7 @@ type GetV0CityByCityNameConfigDefaultsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ConfigResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40044,6 +42881,7 @@ type GetV0CityByCityNameConfigExplainResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ConfigExplainResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40069,6 +42907,7 @@ type GetV0CityByCityNameConfigValidateResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ConfigValidateOutputBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40097,6 +42936,7 @@ type DeleteV0CityByCityNameConvoyByIdResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40122,6 +42962,7 @@ type GetV0CityByCityNameConvoyByIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ConvoyGetResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40151,6 +42992,7 @@ type PostV0CityByCityNameConvoyByIdAddResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40177,6 +43019,7 @@ type GetV0CityByCityNameConvoyByIdCheckResponse struct {
 	JSON200                   *ConvoyCheckResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40206,6 +43049,7 @@ type PostV0CityByCityNameConvoyByIdCloseResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40234,6 +43078,7 @@ type PostV0CityByCityNameConvoyByIdRemoveResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40260,6 +43105,7 @@ type GetV0CityByCityNameConvoysResponse struct {
 	JSON200                   *ListBodyBead
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40290,6 +43136,7 @@ type CreateConvoyResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40316,6 +43163,7 @@ type GetV0CityByCityNameEventsResponse struct {
 	JSON200                   *ListBodyWireEvent
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40344,6 +43192,7 @@ type EmitEventResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40373,6 +43222,7 @@ type RotateEventsResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON405 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -40422,6 +43272,7 @@ type DeleteV0CityByCityNameExtmsgAdaptersResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40448,6 +43299,7 @@ type GetV0CityByCityNameExtmsgAdaptersResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyExtmsgAdapterInfo
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40477,6 +43329,7 @@ type RegisterExtmsgAdapterResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40507,6 +43360,7 @@ type PostV0CityByCityNameExtmsgBindResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40534,6 +43388,7 @@ type GetV0CityByCityNameExtmsgBindingsResponse struct {
 	JSON200                   *ListBodySessionBindingRecord
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40560,6 +43415,7 @@ type GetV0CityByCityNameExtmsgGroupsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ConversationGroupRecord
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40588,6 +43444,7 @@ type EnsureExtmsgGroupResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40617,6 +43474,7 @@ type PostV0CityByCityNameExtmsgInboundResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40645,6 +43503,7 @@ type PostV0CityByCityNameExtmsgOutboundResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40673,6 +43532,7 @@ type DeleteV0CityByCityNameExtmsgParticipantsResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40701,6 +43561,7 @@ type PostV0CityByCityNameExtmsgParticipantsResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40727,6 +43588,7 @@ type GetV0CityByCityNameExtmsgTranscriptResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyConversationTranscriptRecord
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40755,6 +43617,7 @@ type PostV0CityByCityNameExtmsgTranscriptAckResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40784,6 +43647,7 @@ type PostV0CityByCityNameExtmsgUnbindResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40811,6 +43675,7 @@ type GetV0CityByCityNameFormulaByNameResponse struct {
 	JSON200                   *FormulaDetailResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40838,6 +43703,7 @@ type GetV0CityByCityNameFormulasResponse struct {
 	JSON200                   *FormulaListBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40865,6 +43731,7 @@ type GetV0CityByCityNameFormulasFeedResponse struct {
 	JSON200                   *FormulaFeedBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40894,6 +43761,7 @@ type DeleteV0CityByCityNameFormulasByNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -40921,6 +43789,7 @@ type GetV0CityByCityNameFormulasByNameResponse struct {
 	JSON200                   *FormulaDetailResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -40950,6 +43819,7 @@ type PutV0CityByCityNameFormulasByNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON413 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
@@ -40980,6 +43850,7 @@ type PostV0CityByCityNameFormulasByNamePreviewResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41007,6 +43878,7 @@ type GetV0CityByCityNameFormulasByNameRunsResponse struct {
 	JSON200                   *FormulaRunsResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41034,6 +43906,7 @@ type GetV0CityByCityNameFormulasByNameSourceResponse struct {
 	JSON200                   *FormulaSourceOutputBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -41062,6 +43935,7 @@ type PostV0CityByCityNameFormulasByNameValidateResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON413 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
@@ -41088,6 +43962,7 @@ type GetV0CityByCityNameHealthResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *HealthOutputBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41114,6 +43989,7 @@ type GetV0CityByCityNameMailResponse struct {
 	JSON200                   *MailListBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41144,6 +44020,7 @@ type SendMailResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41169,6 +44046,7 @@ type GetV0CityByCityNameMailCountResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *MailCountOutputBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41195,6 +44073,7 @@ type GetV0CityByCityNameMailThreadByIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *MailListBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41223,6 +44102,7 @@ type DeleteV0CityByCityNameMailByIdResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41248,6 +44128,7 @@ type GetV0CityByCityNameMailByIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *Message
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41276,6 +44157,7 @@ type PostV0CityByCityNameMailByIdArchiveResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41303,6 +44185,7 @@ type PostV0CityByCityNameMailByIdMarkUnreadResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41330,6 +44213,7 @@ type PostV0CityByCityNameMailByIdReadResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41358,6 +44242,7 @@ type ReplyMailResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41386,6 +44271,7 @@ type TriggerMaintenanceDoltGcResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41412,6 +44298,7 @@ type GetV0CityByCityNameMaintenanceStatusResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *MaintenanceStatusBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41438,6 +44325,7 @@ type GetV0CityByCityNameOrderHistoryByBeadIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *OrderHistoryDetailResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41465,6 +44353,7 @@ type GetV0CityByCityNameOrderByNameResponse struct {
 	JSON200                   *OrderResponse
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41494,6 +44383,7 @@ type PostV0CityByCityNameOrderByNameDisableResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -41524,6 +44414,7 @@ type PostV0CityByCityNameOrderByNameEnableResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -41552,6 +44443,7 @@ type PostV0CityByCityNameOrderByNameRunResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41578,6 +44470,7 @@ type GetV0CityByCityNameOrdersResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *OrderListBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41603,6 +44496,7 @@ type GetV0CityByCityNameOrdersCheckResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *OrderCheckListBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41629,6 +44523,7 @@ type GetV0CityByCityNameOrdersFeedResponse struct {
 	JSON200                   *OrdersFeedBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41655,6 +44550,7 @@ type GetV0CityByCityNameOrdersHistoryResponse struct {
 	JSON200                   *OrderHistoryListBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -41682,6 +44578,7 @@ type GetV0CityByCityNamePacksResponse struct {
 	JSON200                   *PackListBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41711,6 +44608,7 @@ type AddPackResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON502 *ErrorModel
@@ -41740,6 +44638,7 @@ type DeleteV0CityByCityNamePacksByNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41768,6 +44667,7 @@ type DeleteV0CityByCityNamePatchesAgentByBaseResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -41794,6 +44694,7 @@ type GetV0CityByCityNamePatchesAgentByBaseResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *AgentPatch
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41822,6 +44723,7 @@ type DeleteV0CityByCityNamePatchesAgentByDirByBaseResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -41848,6 +44750,7 @@ type GetV0CityByCityNamePatchesAgentByDirByBaseResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *AgentPatch
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41873,6 +44776,7 @@ type GetV0CityByCityNamePatchesAgentsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyAgentPatch
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41901,6 +44805,7 @@ type PutV0CityByCityNamePatchesAgentsResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -41930,6 +44835,7 @@ type DeleteV0CityByCityNamePatchesProviderByNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -41956,6 +44862,7 @@ type GetV0CityByCityNamePatchesProviderByNameResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ProviderPatch
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -41981,6 +44888,7 @@ type GetV0CityByCityNamePatchesProvidersResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyProviderPatch
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42009,6 +44917,7 @@ type PutV0CityByCityNamePatchesProvidersResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42038,6 +44947,7 @@ type DeleteV0CityByCityNamePatchesRigByNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42064,6 +44974,7 @@ type GetV0CityByCityNamePatchesRigByNameResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *RigPatch
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42089,6 +45000,7 @@ type GetV0CityByCityNamePatchesRigsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyRigPatch
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42117,6 +45029,7 @@ type PutV0CityByCityNamePatchesRigsResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42143,6 +45056,7 @@ type GetV0CityByCityNamePendingResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyCityPendingEntry
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42170,6 +45084,7 @@ type GetV0CityByCityNameProviderReadinessResponse struct {
 	JSON200                   *ProviderReadinessResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42199,6 +45114,7 @@ type DeleteV0CityByCityNameProviderByNameResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42225,6 +45141,7 @@ type GetV0CityByCityNameProviderByNameResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ProviderResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42254,6 +45171,7 @@ type PatchV0CityByCityNameProviderByNameResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42280,6 +45198,7 @@ type GetV0CityByCityNameProvidersResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyProviderResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42309,6 +45228,7 @@ type CreateProviderResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42335,6 +45255,7 @@ type GetV0CityByCityNameProvidersPublicResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ProviderPublicListBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42361,6 +45282,7 @@ type GetV0CityByCityNameReadinessResponse struct {
 	JSON200                   *ReadinessResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42386,6 +45308,7 @@ type GetRequestOutcomeResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *RequestOutcome
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42415,6 +45338,7 @@ type DeleteV0CityByCityNameRigByNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42441,6 +45365,7 @@ type GetV0CityByCityNameRigByNameResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *RigResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42469,6 +45394,7 @@ type PatchV0CityByCityNameRigByNameResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42497,6 +45423,7 @@ type PostV0CityByCityNameRigByNameByActionResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -42523,6 +45450,7 @@ type GetV0CityByCityNameRigsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyRigResponse
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42550,6 +45478,9 @@ type CreateRigResponse struct {
 	JSON200                       *RigCreateResponseBody
 	JSON201                       *RigCreateResponseBody
 	JSON202                       *RigCreateResponseBody
+	ApplicationproblemJSON412     *ErrorModel
+	ApplicationproblemJSON422     *ErrorModel
+	ApplicationproblemJSON500     *ErrorModel
 	ApplicationproblemJSONDefault *ErrorModel
 }
 
@@ -42573,6 +45504,7 @@ type GetV0CityByCityNameRunsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
 	JSON200                   *RunsListOutputBody
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42598,6 +45530,7 @@ type GetV0CityByCityNameRunsCensusResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
 	JSON200                   *RunsCensusOutputBody
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42624,6 +45557,7 @@ type GetV0CityByCityNameRunsByRunIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *Run
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42651,6 +45585,7 @@ type PostV0CityByCityNameRunsByRunIdCancelResponse struct {
 	JSON202                   *RunCancelOutputBody
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42677,6 +45612,7 @@ type GetV0CityByCityNameRunsByRunIdStepsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *RunStepsOutputBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42703,6 +45639,7 @@ type GetV0CityByCityNameServiceByNameResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *Status
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42730,6 +45667,7 @@ type PostV0CityByCityNameServiceByNameRestartResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42755,6 +45693,7 @@ type GetV0CityByCityNameServicesResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *ListBodyStatus
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -42781,6 +45720,7 @@ type GetV0CityByCityNameSessionByIdResponse struct {
 	JSON200                   *SessionResponse
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42811,6 +45751,7 @@ type PatchV0CityByCityNameSessionByIdResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42838,6 +45779,7 @@ type GetV0CityByCityNameSessionByIdAgentsResponse struct {
 	JSON200                   *SessionAgentListResponse
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42866,6 +45808,7 @@ type GetV0CityByCityNameSessionByIdAgentsByAgentIdResponse struct {
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42895,6 +45838,7 @@ type PostV0CityByCityNameSessionByIdCloseResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42924,6 +45868,7 @@ type PostV0CityByCityNameSessionByIdKillResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42953,6 +45898,7 @@ type SendSessionMessageResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -42980,6 +45926,7 @@ type ListSessionOpsResponse struct {
 	JSON200                   *ListBodyConversationOp
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43010,6 +45957,7 @@ type ProposeSessionOpResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43037,6 +45985,7 @@ type GetSessionOpResponse struct {
 	JSON200                   *ConversationOp
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43066,6 +46015,7 @@ type CancelSessionOpResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43093,6 +46043,7 @@ type GetV0CityByCityNameSessionByIdPendingResponse struct {
 	JSON200                   *SessionPendingResponse
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43123,6 +46074,7 @@ type PostV0CityByCityNameSessionByIdPermissionModeResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -43154,6 +46106,7 @@ type PostV0CityByCityNameSessionByIdPinResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43184,6 +46137,7 @@ type PostV0CityByCityNameSessionByIdRenameResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43213,6 +46167,7 @@ type PostV0CityByCityNameSessionByIdResetResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43242,6 +46197,7 @@ type RespondSessionResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -43272,6 +46228,7 @@ type PostV0CityByCityNameSessionByIdStopResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON501 *ErrorModel
@@ -43324,6 +46281,7 @@ type SubmitSessionResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43353,6 +46311,7 @@ type PostV0CityByCityNameSessionByIdSuspendResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43380,6 +46339,7 @@ type GetV0CityByCityNameSessionByIdTranscriptResponse struct {
 	JSON200                   *SessionTranscriptGetResponse
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43407,6 +46367,7 @@ type GetV0CityByCityNameSessionByIdTurnResponse struct {
 	JSON200                   *SessionTurnResponse
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43437,6 +46398,7 @@ type PostV0CityByCityNameSessionByIdUnpinResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43467,6 +46429,7 @@ type PostV0CityByCityNameSessionByIdWakeResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43494,6 +46457,7 @@ type GetV0CityByCityNameSessionsResponse struct {
 	JSON200                   *ListBodySessionResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43524,6 +46488,7 @@ type CreateSessionResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43554,6 +46519,7 @@ type PostV0CityByCityNameSlingResponse struct {
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
 	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -43579,6 +46545,7 @@ type GetV0CityByCityNameStatusResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *StatusBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43628,6 +46595,7 @@ type GetV0CityByCityNameUsageResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *UsageBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43654,6 +46622,7 @@ type GetV0CityByCityNameWaitByIdResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *WaitView
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43680,6 +46649,7 @@ type GetV0CityByCityNameWaitsResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *WaitListBody
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43707,6 +46677,7 @@ type GetV0CityByCityNameWorkActiveStepResponse struct {
 	JSON200                   *WorkActiveStepBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43734,6 +46705,7 @@ type GetV0CityByCityNameWorkReadyResponse struct {
 	JSON200                   *WorkReadyBody
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 	ApplicationproblemJSON503 *ErrorModel
@@ -43763,6 +46735,7 @@ type DeleteV0CityByCityNameWorkflowByWorkflowIdResponse struct {
 	ApplicationproblemJSON401 *ErrorModel
 	ApplicationproblemJSON403 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -43789,6 +46762,7 @@ type GetV0CityByCityNameWorkflowByWorkflowIdResponse struct {
 	JSON200                   *WorkflowSnapshotResponse
 	ApplicationproblemJSON400 *ErrorModel
 	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON412 *ErrorModel
 	ApplicationproblemJSON422 *ErrorModel
 	ApplicationproblemJSON500 *ErrorModel
 }
@@ -43936,8 +46910,8 @@ func (c *ClientWithResponses) PostV0CityWithResponse(ctx context.Context, params
 }
 
 // GetV0CityByCityNameWithResponse request returning *GetV0CityByCityNameResponse
-func (c *ClientWithResponses) GetV0CityByCityNameWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameResponse, error) {
-	rsp, err := c.GetV0CityByCityName(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameResponse, error) {
+	rsp, err := c.GetV0CityByCityName(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -43971,8 +46945,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNameAgentByBaseWithResponse(ctx 
 }
 
 // GetV0CityByCityNameAgentByBaseWithResponse request returning *GetV0CityByCityNameAgentByBaseResponse
-func (c *ClientWithResponses) GetV0CityByCityNameAgentByBaseWithResponse(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByBaseResponse, error) {
-	rsp, err := c.GetV0CityByCityNameAgentByBase(ctx, cityName, base, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameAgentByBaseWithResponse(ctx context.Context, cityName string, base string, params *GetV0CityByCityNameAgentByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByBaseResponse, error) {
+	rsp, err := c.GetV0CityByCityNameAgentByBase(ctx, cityName, base, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44006,8 +46980,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameAgentByBaseOutputWithResponse(c
 }
 
 // StreamAgentOutputWithResponse request returning *StreamAgentOutputResponse
-func (c *ClientWithResponses) StreamAgentOutputWithResponse(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*StreamAgentOutputResponse, error) {
-	rsp, err := c.StreamAgentOutput(ctx, cityName, base, reqEditors...)
+func (c *ClientWithResponses) StreamAgentOutputWithResponse(ctx context.Context, cityName string, base string, params *StreamAgentOutputParams, reqEditors ...RequestEditorFn) (*StreamAgentOutputResponse, error) {
+	rsp, err := c.StreamAgentOutput(ctx, cityName, base, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44033,8 +47007,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNameAgentByDirByBaseWithResponse
 }
 
 // GetV0CityByCityNameAgentByDirByBaseWithResponse request returning *GetV0CityByCityNameAgentByDirByBaseResponse
-func (c *ClientWithResponses) GetV0CityByCityNameAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByDirByBaseResponse, error) {
-	rsp, err := c.GetV0CityByCityNameAgentByDirByBase(ctx, cityName, dir, base, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNameAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameAgentByDirByBaseResponse, error) {
+	rsp, err := c.GetV0CityByCityNameAgentByDirByBase(ctx, cityName, dir, base, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44068,8 +47042,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameAgentByDirByBaseOutputWithRespo
 }
 
 // StreamAgentOutputQualifiedWithResponse request returning *StreamAgentOutputQualifiedResponse
-func (c *ClientWithResponses) StreamAgentOutputQualifiedWithResponse(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*StreamAgentOutputQualifiedResponse, error) {
-	rsp, err := c.StreamAgentOutputQualified(ctx, cityName, dir, base, reqEditors...)
+func (c *ClientWithResponses) StreamAgentOutputQualifiedWithResponse(ctx context.Context, cityName string, dir string, base string, params *StreamAgentOutputQualifiedParams, reqEditors ...RequestEditorFn) (*StreamAgentOutputQualifiedResponse, error) {
+	rsp, err := c.StreamAgentOutputQualified(ctx, cityName, dir, base, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44121,8 +47095,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNameBeadByIdWithResponse(ctx con
 }
 
 // GetV0CityByCityNameBeadByIdWithResponse request returning *GetV0CityByCityNameBeadByIdResponse
-func (c *ClientWithResponses) GetV0CityByCityNameBeadByIdWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdResponse, error) {
-	rsp, err := c.GetV0CityByCityNameBeadById(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameBeadByIdWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdResponse, error) {
+	rsp, err := c.GetV0CityByCityNameBeadById(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44181,8 +47155,8 @@ func (c *ClientWithResponses) PostV0CityByCityNameBeadByIdCloseWithResponse(ctx 
 }
 
 // GetV0CityByCityNameBeadByIdDepsWithResponse request returning *GetV0CityByCityNameBeadByIdDepsResponse
-func (c *ClientWithResponses) GetV0CityByCityNameBeadByIdDepsWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdDepsResponse, error) {
-	rsp, err := c.GetV0CityByCityNameBeadByIdDeps(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameBeadByIdDepsWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameBeadByIdDepsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadByIdDepsResponse, error) {
+	rsp, err := c.GetV0CityByCityNameBeadByIdDeps(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44242,8 +47216,8 @@ func (c *ClientWithResponses) CreateBeadWithResponse(ctx context.Context, cityNa
 }
 
 // GetV0CityByCityNameBeadsGraphByRootIdWithResponse request returning *GetV0CityByCityNameBeadsGraphByRootIdResponse
-func (c *ClientWithResponses) GetV0CityByCityNameBeadsGraphByRootIdWithResponse(ctx context.Context, cityName string, rootID string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadsGraphByRootIdResponse, error) {
-	rsp, err := c.GetV0CityByCityNameBeadsGraphByRootId(ctx, cityName, rootID, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameBeadsGraphByRootIdWithResponse(ctx context.Context, cityName string, rootID string, params *GetV0CityByCityNameBeadsGraphByRootIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameBeadsGraphByRootIdResponse, error) {
+	rsp, err := c.GetV0CityByCityNameBeadsGraphByRootId(ctx, cityName, rootID, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44260,8 +47234,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameBeadsReadyWithResponse(ctx cont
 }
 
 // GetV0CityByCityNameConfigWithResponse request returning *GetV0CityByCityNameConfigResponse
-func (c *ClientWithResponses) GetV0CityByCityNameConfigWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigResponse, error) {
-	rsp, err := c.GetV0CityByCityNameConfig(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameConfigWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigResponse, error) {
+	rsp, err := c.GetV0CityByCityNameConfig(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44269,8 +47243,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameConfigWithResponse(ctx context.
 }
 
 // GetV0CityByCityNameConfigDefaultsWithResponse request returning *GetV0CityByCityNameConfigDefaultsResponse
-func (c *ClientWithResponses) GetV0CityByCityNameConfigDefaultsWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigDefaultsResponse, error) {
-	rsp, err := c.GetV0CityByCityNameConfigDefaults(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameConfigDefaultsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigDefaultsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigDefaultsResponse, error) {
+	rsp, err := c.GetV0CityByCityNameConfigDefaults(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44278,8 +47252,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameConfigDefaultsWithResponse(ctx 
 }
 
 // GetV0CityByCityNameConfigExplainWithResponse request returning *GetV0CityByCityNameConfigExplainResponse
-func (c *ClientWithResponses) GetV0CityByCityNameConfigExplainWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigExplainResponse, error) {
-	rsp, err := c.GetV0CityByCityNameConfigExplain(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameConfigExplainWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigExplainParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigExplainResponse, error) {
+	rsp, err := c.GetV0CityByCityNameConfigExplain(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44287,8 +47261,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameConfigExplainWithResponse(ctx c
 }
 
 // GetV0CityByCityNameConfigValidateWithResponse request returning *GetV0CityByCityNameConfigValidateResponse
-func (c *ClientWithResponses) GetV0CityByCityNameConfigValidateWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigValidateResponse, error) {
-	rsp, err := c.GetV0CityByCityNameConfigValidate(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameConfigValidateWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameConfigValidateParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConfigValidateResponse, error) {
+	rsp, err := c.GetV0CityByCityNameConfigValidate(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44305,8 +47279,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNameConvoyByIdWithResponse(ctx c
 }
 
 // GetV0CityByCityNameConvoyByIdWithResponse request returning *GetV0CityByCityNameConvoyByIdResponse
-func (c *ClientWithResponses) GetV0CityByCityNameConvoyByIdWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdResponse, error) {
-	rsp, err := c.GetV0CityByCityNameConvoyById(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameConvoyByIdWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdResponse, error) {
+	rsp, err := c.GetV0CityByCityNameConvoyById(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44331,8 +47305,8 @@ func (c *ClientWithResponses) PostV0CityByCityNameConvoyByIdAddWithResponse(ctx 
 }
 
 // GetV0CityByCityNameConvoyByIdCheckWithResponse request returning *GetV0CityByCityNameConvoyByIdCheckResponse
-func (c *ClientWithResponses) GetV0CityByCityNameConvoyByIdCheckWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdCheckResponse, error) {
-	rsp, err := c.GetV0CityByCityNameConvoyByIdCheck(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameConvoyByIdCheckWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameConvoyByIdCheckParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameConvoyByIdCheckResponse, error) {
+	rsp, err := c.GetV0CityByCityNameConvoyByIdCheck(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44453,8 +47427,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNameExtmsgAdaptersWithResponse(c
 }
 
 // GetV0CityByCityNameExtmsgAdaptersWithResponse request returning *GetV0CityByCityNameExtmsgAdaptersResponse
-func (c *ClientWithResponses) GetV0CityByCityNameExtmsgAdaptersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameExtmsgAdaptersResponse, error) {
-	rsp, err := c.GetV0CityByCityNameExtmsgAdapters(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameExtmsgAdaptersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameExtmsgAdaptersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameExtmsgAdaptersResponse, error) {
+	rsp, err := c.GetV0CityByCityNameExtmsgAdapters(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44722,8 +47696,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameFormulasByNameRunsWithResponse(
 }
 
 // GetV0CityByCityNameFormulasByNameSourceWithResponse request returning *GetV0CityByCityNameFormulasByNameSourceResponse
-func (c *ClientWithResponses) GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameFormulasByNameSourceResponse, error) {
-	rsp, err := c.GetV0CityByCityNameFormulasByNameSource(ctx, cityName, name, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameFormulasByNameSourceWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameFormulasByNameSourceParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameFormulasByNameSourceResponse, error) {
+	rsp, err := c.GetV0CityByCityNameFormulasByNameSource(ctx, cityName, name, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44740,8 +47714,8 @@ func (c *ClientWithResponses) PostV0CityByCityNameFormulasByNameValidateWithBody
 }
 
 // GetV0CityByCityNameHealthWithResponse request returning *GetV0CityByCityNameHealthResponse
-func (c *ClientWithResponses) GetV0CityByCityNameHealthWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameHealthResponse, error) {
-	rsp, err := c.GetV0CityByCityNameHealth(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameHealthWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameHealthParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameHealthResponse, error) {
+	rsp, err := c.GetV0CityByCityNameHealth(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44864,8 +47838,8 @@ func (c *ClientWithResponses) TriggerMaintenanceDoltGcWithResponse(ctx context.C
 }
 
 // GetV0CityByCityNameMaintenanceStatusWithResponse request returning *GetV0CityByCityNameMaintenanceStatusResponse
-func (c *ClientWithResponses) GetV0CityByCityNameMaintenanceStatusWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameMaintenanceStatusResponse, error) {
-	rsp, err := c.GetV0CityByCityNameMaintenanceStatus(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameMaintenanceStatusWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameMaintenanceStatusParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameMaintenanceStatusResponse, error) {
+	rsp, err := c.GetV0CityByCityNameMaintenanceStatus(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44882,8 +47856,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameOrderHistoryByBeadIdWithRespons
 }
 
 // GetV0CityByCityNameOrderByNameWithResponse request returning *GetV0CityByCityNameOrderByNameResponse
-func (c *ClientWithResponses) GetV0CityByCityNameOrderByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrderByNameResponse, error) {
-	rsp, err := c.GetV0CityByCityNameOrderByName(ctx, cityName, name, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameOrderByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameOrderByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrderByNameResponse, error) {
+	rsp, err := c.GetV0CityByCityNameOrderByName(ctx, cityName, name, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44926,8 +47900,8 @@ func (c *ClientWithResponses) PostV0CityByCityNameOrderByNameRunWithResponse(ctx
 }
 
 // GetV0CityByCityNameOrdersWithResponse request returning *GetV0CityByCityNameOrdersResponse
-func (c *ClientWithResponses) GetV0CityByCityNameOrdersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrdersResponse, error) {
-	rsp, err := c.GetV0CityByCityNameOrders(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameOrdersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameOrdersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameOrdersResponse, error) {
+	rsp, err := c.GetV0CityByCityNameOrders(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -44962,8 +47936,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameOrdersHistoryWithResponse(ctx c
 }
 
 // GetV0CityByCityNamePacksWithResponse request returning *GetV0CityByCityNamePacksResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePacksWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePacksResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePacks(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePacksWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePacksParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePacksResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePacks(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45006,8 +47980,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNamePatchesAgentByBaseWithRespon
 }
 
 // GetV0CityByCityNamePatchesAgentByBaseWithResponse request returning *GetV0CityByCityNamePatchesAgentByBaseResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePatchesAgentByBaseWithResponse(ctx context.Context, cityName string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByBaseResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePatchesAgentByBase(ctx, cityName, base, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePatchesAgentByBaseWithResponse(ctx context.Context, cityName string, base string, params *GetV0CityByCityNamePatchesAgentByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByBaseResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePatchesAgentByBase(ctx, cityName, base, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45024,8 +47998,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNamePatchesAgentByDirByBaseWithR
 }
 
 // GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse request returning *GetV0CityByCityNamePatchesAgentByDirByBaseResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByDirByBaseResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePatchesAgentByDirByBase(ctx, cityName, dir, base, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePatchesAgentByDirByBaseWithResponse(ctx context.Context, cityName string, dir string, base string, params *GetV0CityByCityNamePatchesAgentByDirByBaseParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentByDirByBaseResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePatchesAgentByDirByBase(ctx, cityName, dir, base, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45033,8 +48007,8 @@ func (c *ClientWithResponses) GetV0CityByCityNamePatchesAgentByDirByBaseWithResp
 }
 
 // GetV0CityByCityNamePatchesAgentsWithResponse request returning *GetV0CityByCityNamePatchesAgentsResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePatchesAgentsWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentsResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePatchesAgents(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePatchesAgentsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesAgentsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesAgentsResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePatchesAgents(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45068,8 +48042,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNamePatchesProviderByNameWithRes
 }
 
 // GetV0CityByCityNamePatchesProviderByNameWithResponse request returning *GetV0CityByCityNamePatchesProviderByNameResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePatchesProviderByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProviderByNameResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePatchesProviderByName(ctx, cityName, name, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePatchesProviderByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesProviderByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProviderByNameResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePatchesProviderByName(ctx, cityName, name, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45077,8 +48051,8 @@ func (c *ClientWithResponses) GetV0CityByCityNamePatchesProviderByNameWithRespon
 }
 
 // GetV0CityByCityNamePatchesProvidersWithResponse request returning *GetV0CityByCityNamePatchesProvidersResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePatchesProvidersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProvidersResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePatchesProviders(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePatchesProvidersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesProvidersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesProvidersResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePatchesProviders(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45112,8 +48086,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNamePatchesRigByNameWithResponse
 }
 
 // GetV0CityByCityNamePatchesRigByNameWithResponse request returning *GetV0CityByCityNamePatchesRigByNameResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePatchesRigByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigByNameResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePatchesRigByName(ctx, cityName, name, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePatchesRigByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNamePatchesRigByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigByNameResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePatchesRigByName(ctx, cityName, name, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45121,8 +48095,8 @@ func (c *ClientWithResponses) GetV0CityByCityNamePatchesRigByNameWithResponse(ct
 }
 
 // GetV0CityByCityNamePatchesRigsWithResponse request returning *GetV0CityByCityNamePatchesRigsResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePatchesRigsWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigsResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePatchesRigs(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePatchesRigsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePatchesRigsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePatchesRigsResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePatchesRigs(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45147,8 +48121,8 @@ func (c *ClientWithResponses) PutV0CityByCityNamePatchesRigsWithResponse(ctx con
 }
 
 // GetV0CityByCityNamePendingWithResponse request returning *GetV0CityByCityNamePendingResponse
-func (c *ClientWithResponses) GetV0CityByCityNamePendingWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePendingResponse, error) {
-	rsp, err := c.GetV0CityByCityNamePending(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNamePendingWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNamePendingParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNamePendingResponse, error) {
+	rsp, err := c.GetV0CityByCityNamePending(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45174,8 +48148,8 @@ func (c *ClientWithResponses) DeleteV0CityByCityNameProviderByNameWithResponse(c
 }
 
 // GetV0CityByCityNameProviderByNameWithResponse request returning *GetV0CityByCityNameProviderByNameResponse
-func (c *ClientWithResponses) GetV0CityByCityNameProviderByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProviderByNameResponse, error) {
-	rsp, err := c.GetV0CityByCityNameProviderByName(ctx, cityName, name, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameProviderByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameProviderByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProviderByNameResponse, error) {
+	rsp, err := c.GetV0CityByCityNameProviderByName(ctx, cityName, name, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45200,8 +48174,8 @@ func (c *ClientWithResponses) PatchV0CityByCityNameProviderByNameWithResponse(ct
 }
 
 // GetV0CityByCityNameProvidersWithResponse request returning *GetV0CityByCityNameProvidersResponse
-func (c *ClientWithResponses) GetV0CityByCityNameProvidersWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersResponse, error) {
-	rsp, err := c.GetV0CityByCityNameProviders(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameProvidersWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersResponse, error) {
+	rsp, err := c.GetV0CityByCityNameProviders(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45226,8 +48200,8 @@ func (c *ClientWithResponses) CreateProviderWithResponse(ctx context.Context, ci
 }
 
 // GetV0CityByCityNameProvidersPublicWithResponse request returning *GetV0CityByCityNameProvidersPublicResponse
-func (c *ClientWithResponses) GetV0CityByCityNameProvidersPublicWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersPublicResponse, error) {
-	rsp, err := c.GetV0CityByCityNameProvidersPublic(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameProvidersPublicWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameProvidersPublicParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameProvidersPublicResponse, error) {
+	rsp, err := c.GetV0CityByCityNameProvidersPublic(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45332,8 +48306,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameRunsWithResponse(ctx context.Co
 }
 
 // GetV0CityByCityNameRunsCensusWithResponse request returning *GetV0CityByCityNameRunsCensusResponse
-func (c *ClientWithResponses) GetV0CityByCityNameRunsCensusWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsCensusResponse, error) {
-	rsp, err := c.GetV0CityByCityNameRunsCensus(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameRunsCensusWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameRunsCensusParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsCensusResponse, error) {
+	rsp, err := c.GetV0CityByCityNameRunsCensus(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45341,8 +48315,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameRunsCensusWithResponse(ctx cont
 }
 
 // GetV0CityByCityNameRunsByRunIdWithResponse request returning *GetV0CityByCityNameRunsByRunIdResponse
-func (c *ClientWithResponses) GetV0CityByCityNameRunsByRunIdWithResponse(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdResponse, error) {
-	rsp, err := c.GetV0CityByCityNameRunsByRunId(ctx, cityName, runId, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameRunsByRunIdWithResponse(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdResponse, error) {
+	rsp, err := c.GetV0CityByCityNameRunsByRunId(ctx, cityName, runId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45359,8 +48333,8 @@ func (c *ClientWithResponses) PostV0CityByCityNameRunsByRunIdCancelWithResponse(
 }
 
 // GetV0CityByCityNameRunsByRunIdStepsWithResponse request returning *GetV0CityByCityNameRunsByRunIdStepsResponse
-func (c *ClientWithResponses) GetV0CityByCityNameRunsByRunIdStepsWithResponse(ctx context.Context, cityName string, runId string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdStepsResponse, error) {
-	rsp, err := c.GetV0CityByCityNameRunsByRunIdSteps(ctx, cityName, runId, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameRunsByRunIdStepsWithResponse(ctx context.Context, cityName string, runId string, params *GetV0CityByCityNameRunsByRunIdStepsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameRunsByRunIdStepsResponse, error) {
+	rsp, err := c.GetV0CityByCityNameRunsByRunIdSteps(ctx, cityName, runId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45368,8 +48342,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameRunsByRunIdStepsWithResponse(ct
 }
 
 // GetV0CityByCityNameServiceByNameWithResponse request returning *GetV0CityByCityNameServiceByNameResponse
-func (c *ClientWithResponses) GetV0CityByCityNameServiceByNameWithResponse(ctx context.Context, cityName string, name string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServiceByNameResponse, error) {
-	rsp, err := c.GetV0CityByCityNameServiceByName(ctx, cityName, name, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameServiceByNameWithResponse(ctx context.Context, cityName string, name string, params *GetV0CityByCityNameServiceByNameParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServiceByNameResponse, error) {
+	rsp, err := c.GetV0CityByCityNameServiceByName(ctx, cityName, name, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45386,8 +48360,8 @@ func (c *ClientWithResponses) PostV0CityByCityNameServiceByNameRestartWithRespon
 }
 
 // GetV0CityByCityNameServicesWithResponse request returning *GetV0CityByCityNameServicesResponse
-func (c *ClientWithResponses) GetV0CityByCityNameServicesWithResponse(ctx context.Context, cityName string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServicesResponse, error) {
-	rsp, err := c.GetV0CityByCityNameServices(ctx, cityName, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameServicesWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameServicesParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameServicesResponse, error) {
+	rsp, err := c.GetV0CityByCityNameServices(ctx, cityName, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45421,8 +48395,8 @@ func (c *ClientWithResponses) PatchV0CityByCityNameSessionByIdWithResponse(ctx c
 }
 
 // GetV0CityByCityNameSessionByIdAgentsWithResponse request returning *GetV0CityByCityNameSessionByIdAgentsResponse
-func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdAgentsWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsResponse, error) {
-	rsp, err := c.GetV0CityByCityNameSessionByIdAgents(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdAgentsWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdAgentsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdAgents(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45430,8 +48404,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdAgentsWithResponse(c
 }
 
 // GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse request returning *GetV0CityByCityNameSessionByIdAgentsByAgentIdResponse
-func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse(ctx context.Context, cityName string, id string, agentId string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsByAgentIdResponse, error) {
-	rsp, err := c.GetV0CityByCityNameSessionByIdAgentsByAgentId(ctx, cityName, id, agentId, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse(ctx context.Context, cityName string, id string, agentId string, params *GetV0CityByCityNameSessionByIdAgentsByAgentIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdAgentsByAgentIdResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdAgentsByAgentId(ctx, cityName, id, agentId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45474,8 +48448,8 @@ func (c *ClientWithResponses) SendSessionMessageWithResponse(ctx context.Context
 }
 
 // ListSessionOpsWithResponse request returning *ListSessionOpsResponse
-func (c *ClientWithResponses) ListSessionOpsWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*ListSessionOpsResponse, error) {
-	rsp, err := c.ListSessionOps(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) ListSessionOpsWithResponse(ctx context.Context, cityName string, id string, params *ListSessionOpsParams, reqEditors ...RequestEditorFn) (*ListSessionOpsResponse, error) {
+	rsp, err := c.ListSessionOps(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45500,8 +48474,8 @@ func (c *ClientWithResponses) ProposeSessionOpWithResponse(ctx context.Context, 
 }
 
 // GetSessionOpWithResponse request returning *GetSessionOpResponse
-func (c *ClientWithResponses) GetSessionOpWithResponse(ctx context.Context, cityName string, id string, op string, reqEditors ...RequestEditorFn) (*GetSessionOpResponse, error) {
-	rsp, err := c.GetSessionOp(ctx, cityName, id, op, reqEditors...)
+func (c *ClientWithResponses) GetSessionOpWithResponse(ctx context.Context, cityName string, id string, op string, params *GetSessionOpParams, reqEditors ...RequestEditorFn) (*GetSessionOpResponse, error) {
+	rsp, err := c.GetSessionOp(ctx, cityName, id, op, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45526,8 +48500,8 @@ func (c *ClientWithResponses) CancelSessionOpWithResponse(ctx context.Context, c
 }
 
 // GetV0CityByCityNameSessionByIdPendingWithResponse request returning *GetV0CityByCityNameSessionByIdPendingResponse
-func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdPendingWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdPendingResponse, error) {
-	rsp, err := c.GetV0CityByCityNameSessionByIdPending(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdPendingWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdPendingParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdPendingResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdPending(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45665,8 +48639,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdTranscriptWithRespon
 }
 
 // GetV0CityByCityNameSessionByIdTurnWithResponse request returning *GetV0CityByCityNameSessionByIdTurnResponse
-func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdTurnWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdTurnResponse, error) {
-	rsp, err := c.GetV0CityByCityNameSessionByIdTurn(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdTurnWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdTurnParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdTurnResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdTurn(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -45762,8 +48736,8 @@ func (c *ClientWithResponses) GetV0CityByCityNameUsageWithResponse(ctx context.C
 }
 
 // GetV0CityByCityNameWaitByIdWithResponse request returning *GetV0CityByCityNameWaitByIdResponse
-func (c *ClientWithResponses) GetV0CityByCityNameWaitByIdWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameWaitByIdResponse, error) {
-	rsp, err := c.GetV0CityByCityNameWaitById(ctx, cityName, id, reqEditors...)
+func (c *ClientWithResponses) GetV0CityByCityNameWaitByIdWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameWaitByIdParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameWaitByIdResponse, error) {
+	rsp, err := c.GetV0CityByCityNameWaitById(ctx, cityName, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -46013,6 +48987,13 @@ func ParseGetV0CityByCityNameResponse(rsp *http.Response) (*GetV0CityByCityNameR
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -46080,6 +49061,13 @@ func ParsePatchV0CityByCityNameResponse(rsp *http.Response) (*PatchV0CityByCityN
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -46163,6 +49151,13 @@ func ParseDeleteV0CityByCityNameAgentByBaseResponse(rsp *http.Response) (*Delete
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -46216,6 +49211,13 @@ func ParseGetV0CityByCityNameAgentByBaseResponse(rsp *http.Response) (*GetV0City
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -46292,6 +49294,13 @@ func ParsePatchV0CityByCityNameAgentByBaseResponse(rsp *http.Response) (*PatchV0
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -46345,6 +49354,13 @@ func ParseGetV0CityByCityNameAgentByBaseOutputResponse(rsp *http.Response) (*Get
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -46447,6 +49463,13 @@ func ParsePostV0CityByCityNameAgentByBaseByActionResponse(rsp *http.Response) (*
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -46529,6 +49552,13 @@ func ParseDeleteV0CityByCityNameAgentByDirByBaseResponse(rsp *http.Response) (*D
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -46582,6 +49612,13 @@ func ParseGetV0CityByCityNameAgentByDirByBaseResponse(rsp *http.Response) (*GetV
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -46658,6 +49695,13 @@ func ParsePatchV0CityByCityNameAgentByDirByBaseResponse(rsp *http.Response) (*Pa
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -46711,6 +49755,13 @@ func ParseGetV0CityByCityNameAgentByDirByBaseOutputResponse(rsp *http.Response) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -46813,6 +49864,13 @@ func ParsePostV0CityByCityNameAgentByDirByBaseByActionResponse(rsp *http.Respons
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -46866,6 +49924,13 @@ func ParseGetV0CityByCityNameAgentsResponse(rsp *http.Response) (*GetV0CityByCit
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -46941,6 +50006,13 @@ func ParseCreateAgentResponse(rsp *http.Response) (*CreateAgentResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47031,6 +50103,13 @@ func ParseDeleteV0CityByCityNameBeadByIdResponse(rsp *http.Response) (*DeleteV0C
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47077,6 +50156,13 @@ func ParseGetV0CityByCityNameBeadByIdResponse(rsp *http.Response) (*GetV0CityByC
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47159,6 +50245,13 @@ func ParsePatchV0CityByCityNameBeadByIdResponse(rsp *http.Response) (*PatchV0Cit
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47249,6 +50342,13 @@ func ParsePostV0CityByCityNameBeadByIdAssignResponse(rsp *http.Response) (*PostV
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47317,6 +50417,13 @@ func ParsePostV0CityByCityNameBeadByIdCloseResponse(rsp *http.Response) (*PostV0
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47363,6 +50470,13 @@ func ParseGetV0CityByCityNameBeadByIdDepsResponse(rsp *http.Response) (*GetV0Cit
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47431,6 +50545,13 @@ func ParsePostV0CityByCityNameBeadByIdReopenResponse(rsp *http.Response) (*PostV
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47507,6 +50628,13 @@ func ParsePostV0CityByCityNameBeadByIdUpdateResponse(rsp *http.Response) (*PostV
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47574,6 +50702,13 @@ func ParseGetV0CityByCityNameBeadsResponse(rsp *http.Response) (*GetV0CityByCity
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47657,6 +50792,13 @@ func ParseCreateBeadResponse(rsp *http.Response) (*CreateBeadResponse, error) {
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47704,6 +50846,13 @@ func ParseGetV0CityByCityNameBeadsGraphByRootIdResponse(rsp *http.Response) (*Ge
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47750,6 +50899,13 @@ func ParseGetV0CityByCityNameBeadsReadyResponse(rsp *http.Response) (*GetV0CityB
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47805,6 +50961,13 @@ func ParseGetV0CityByCityNameConfigResponse(rsp *http.Response) (*GetV0CityByCit
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47851,6 +51014,13 @@ func ParseGetV0CityByCityNameConfigDefaultsResponse(rsp *http.Response) (*GetV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -47899,6 +51069,13 @@ func ParseGetV0CityByCityNameConfigExplainResponse(rsp *http.Response) (*GetV0Ci
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -47945,6 +51122,13 @@ func ParseGetV0CityByCityNameConfigValidateResponse(rsp *http.Response) (*GetV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48014,6 +51198,13 @@ func ParseDeleteV0CityByCityNameConvoyByIdResponse(rsp *http.Response) (*DeleteV
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -48060,6 +51251,13 @@ func ParseGetV0CityByCityNameConvoyByIdResponse(rsp *http.Response) (*GetV0CityB
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48136,6 +51334,13 @@ func ParsePostV0CityByCityNameConvoyByIdAddResponse(rsp *http.Response) (*PostV0
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -48189,6 +51394,13 @@ func ParseGetV0CityByCityNameConvoyByIdCheckResponse(rsp *http.Response) (*GetV0
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48265,6 +51477,13 @@ func ParsePostV0CityByCityNameConvoyByIdCloseResponse(rsp *http.Response) (*Post
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -48333,6 +51552,13 @@ func ParsePostV0CityByCityNameConvoyByIdRemoveResponse(rsp *http.Response) (*Pos
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -48386,6 +51612,13 @@ func ParseGetV0CityByCityNameConvoysResponse(rsp *http.Response) (*GetV0CityByCi
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48469,6 +51702,13 @@ func ParseCreateConvoyResponse(rsp *http.Response) (*CreateConvoyResponse, error
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -48522,6 +51762,13 @@ func ParseGetV0CityByCityNameEventsResponse(rsp *http.Response) (*GetV0CityByCit
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48590,6 +51837,13 @@ func ParseEmitEventResponse(rsp *http.Response) (*EmitEventResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48665,6 +51919,13 @@ func ParseRotateEventsResponse(rsp *http.Response) (*RotateEventsResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48753,6 +52014,13 @@ func ParseDeleteV0CityByCityNameExtmsgAdaptersResponse(rsp *http.Response) (*Del
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -48806,6 +52074,13 @@ func ParseGetV0CityByCityNameExtmsgAdaptersResponse(rsp *http.Response) (*GetV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48881,6 +52156,13 @@ func ParseRegisterExtmsgAdapterResponse(rsp *http.Response) (*RegisterExtmsgAdap
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -48964,6 +52246,13 @@ func ParsePostV0CityByCityNameExtmsgBindResponse(rsp *http.Response) (*PostV0Cit
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49025,6 +52314,13 @@ func ParseGetV0CityByCityNameExtmsgBindingsResponse(rsp *http.Response) (*GetV0C
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49078,6 +52374,13 @@ func ParseGetV0CityByCityNameExtmsgGroupsResponse(rsp *http.Response) (*GetV0Cit
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -49146,6 +52449,13 @@ func ParseEnsureExtmsgGroupResponse(rsp *http.Response) (*EnsureExtmsgGroupRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -49222,6 +52532,13 @@ func ParsePostV0CityByCityNameExtmsgInboundResponse(rsp *http.Response) (*PostV0
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49289,6 +52606,13 @@ func ParsePostV0CityByCityNameExtmsgOutboundResponse(rsp *http.Response) (*PostV
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -49358,6 +52682,13 @@ func ParseDeleteV0CityByCityNameExtmsgParticipantsResponse(rsp *http.Response) (
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49426,6 +52757,13 @@ func ParsePostV0CityByCityNameExtmsgParticipantsResponse(rsp *http.Response) (*P
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49479,6 +52817,13 @@ func ParseGetV0CityByCityNameExtmsgTranscriptResponse(rsp *http.Response) (*GetV
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -49547,6 +52892,13 @@ func ParsePostV0CityByCityNameExtmsgTranscriptAckResponse(rsp *http.Response) (*
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -49623,6 +52975,13 @@ func ParsePostV0CityByCityNameExtmsgUnbindResponse(rsp *http.Response) (*PostV0C
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49683,6 +53042,13 @@ func ParseGetV0CityByCityNameFormulaByNameResponse(rsp *http.Response) (*GetV0Ci
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -49745,6 +53111,13 @@ func ParseGetV0CityByCityNameFormulasResponse(rsp *http.Response) (*GetV0CityByC
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49805,6 +53178,13 @@ func ParseGetV0CityByCityNameFormulasFeedResponse(rsp *http.Response) (*GetV0Cit
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -49881,6 +53261,13 @@ func ParseDeleteV0CityByCityNameFormulasByNameResponse(rsp *http.Response) (*Del
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -49941,6 +53328,13 @@ func ParseGetV0CityByCityNameFormulasByNameResponse(rsp *http.Response) (*GetV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -50016,6 +53410,13 @@ func ParsePutV0CityByCityNameFormulasByNameResponse(rsp *http.Response) (*PutV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest ErrorModel
@@ -50099,6 +53500,13 @@ func ParsePostV0CityByCityNameFormulasByNamePreviewResponse(rsp *http.Response) 
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50160,6 +53568,13 @@ func ParseGetV0CityByCityNameFormulasByNameRunsResponse(rsp *http.Response) (*Ge
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50220,6 +53635,13 @@ func ParseGetV0CityByCityNameFormulasByNameSourceResponse(rsp *http.Response) (*
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -50289,6 +53711,13 @@ func ParsePostV0CityByCityNameFormulasByNameValidateResponse(rsp *http.Response)
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50343,6 +53772,13 @@ func ParseGetV0CityByCityNameHealthResponse(rsp *http.Response) (*GetV0CityByCit
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50396,6 +53832,13 @@ func ParseGetV0CityByCityNameMailResponse(rsp *http.Response) (*GetV0CityByCityN
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -50479,6 +53922,13 @@ func ParseSendMailResponse(rsp *http.Response) (*SendMailResponse, error) {
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50525,6 +53975,13 @@ func ParseGetV0CityByCityNameMailCountResponse(rsp *http.Response) (*GetV0CityBy
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -50579,6 +54036,13 @@ func ParseGetV0CityByCityNameMailThreadByIdResponse(rsp *http.Response) (*GetV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -50648,6 +54112,13 @@ func ParseDeleteV0CityByCityNameMailByIdResponse(rsp *http.Response) (*DeleteV0C
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50694,6 +54165,13 @@ func ParseGetV0CityByCityNameMailByIdResponse(rsp *http.Response) (*GetV0CityByC
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -50763,6 +54241,13 @@ func ParsePostV0CityByCityNameMailByIdArchiveResponse(rsp *http.Response) (*Post
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50824,6 +54309,13 @@ func ParsePostV0CityByCityNameMailByIdMarkUnreadResponse(rsp *http.Response) (*P
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -50884,6 +54376,13 @@ func ParsePostV0CityByCityNameMailByIdReadResponse(rsp *http.Response) (*PostV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -50953,6 +54452,13 @@ func ParseReplyMailResponse(rsp *http.Response) (*ReplyMailResponse, error) {
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51021,6 +54527,13 @@ func ParseTriggerMaintenanceDoltGcResponse(rsp *http.Response) (*TriggerMaintena
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51075,6 +54588,13 @@ func ParseGetV0CityByCityNameMaintenanceStatusResponse(rsp *http.Response) (*Get
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51128,6 +54648,13 @@ func ParseGetV0CityByCityNameOrderHistoryByBeadIdResponse(rsp *http.Response) (*
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -51189,6 +54716,13 @@ func ParseGetV0CityByCityNameOrderByNameResponse(rsp *http.Response) (*GetV0City
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -51264,6 +54798,13 @@ func ParsePostV0CityByCityNameOrderByNameDisableResponse(rsp *http.Response) (*P
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -51347,6 +54888,13 @@ func ParsePostV0CityByCityNameOrderByNameEnableResponse(rsp *http.Response) (*Po
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51415,6 +54963,13 @@ func ParsePostV0CityByCityNameOrderByNameRunResponse(rsp *http.Response) (*PostV
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51469,6 +55024,13 @@ func ParseGetV0CityByCityNameOrdersResponse(rsp *http.Response) (*GetV0CityByCit
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51515,6 +55077,13 @@ func ParseGetV0CityByCityNameOrdersCheckResponse(rsp *http.Response) (*GetV0City
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -51570,6 +55139,13 @@ func ParseGetV0CityByCityNameOrdersFeedResponse(rsp *http.Response) (*GetV0CityB
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51623,6 +55199,13 @@ func ParseGetV0CityByCityNameOrdersHistoryResponse(rsp *http.Response) (*GetV0Ci
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -51684,6 +55267,13 @@ func ParseGetV0CityByCityNamePacksResponse(rsp *http.Response) (*GetV0CityByCity
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -51760,6 +55350,13 @@ func ParseAddPackResponse(rsp *http.Response) (*AddPackResponse, error) {
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51835,6 +55432,13 @@ func ParseDeleteV0CityByCityNamePacksByNameResponse(rsp *http.Response) (*Delete
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51903,6 +55507,13 @@ func ParseDeleteV0CityByCityNamePatchesAgentByBaseResponse(rsp *http.Response) (
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -51956,6 +55567,13 @@ func ParseGetV0CityByCityNamePatchesAgentByBaseResponse(rsp *http.Response) (*Ge
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52025,6 +55643,13 @@ func ParseDeleteV0CityByCityNamePatchesAgentByDirByBaseResponse(rsp *http.Respon
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52079,6 +55704,13 @@ func ParseGetV0CityByCityNamePatchesAgentByDirByBaseResponse(rsp *http.Response)
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52125,6 +55757,13 @@ func ParseGetV0CityByCityNamePatchesAgentsResponse(rsp *http.Response) (*GetV0Ci
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52193,6 +55832,13 @@ func ParsePutV0CityByCityNamePatchesAgentsResponse(rsp *http.Response) (*PutV0Ci
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52269,6 +55915,13 @@ func ParseDeleteV0CityByCityNamePatchesProviderByNameResponse(rsp *http.Response
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52323,6 +55976,13 @@ func ParseGetV0CityByCityNamePatchesProviderByNameResponse(rsp *http.Response) (
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52369,6 +56029,13 @@ func ParseGetV0CityByCityNamePatchesProvidersResponse(rsp *http.Response) (*GetV
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52437,6 +56104,13 @@ func ParsePutV0CityByCityNamePatchesProvidersResponse(rsp *http.Response) (*PutV
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52513,6 +56187,13 @@ func ParseDeleteV0CityByCityNamePatchesRigByNameResponse(rsp *http.Response) (*D
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52567,6 +56248,13 @@ func ParseGetV0CityByCityNamePatchesRigByNameResponse(rsp *http.Response) (*GetV
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52613,6 +56301,13 @@ func ParseGetV0CityByCityNamePatchesRigsResponse(rsp *http.Response) (*GetV0City
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52682,6 +56377,13 @@ func ParsePutV0CityByCityNamePatchesRigsResponse(rsp *http.Response) (*PutV0City
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52735,6 +56437,13 @@ func ParseGetV0CityByCityNamePendingResponse(rsp *http.Response) (*GetV0CityByCi
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52796,6 +56505,13 @@ func ParseGetV0CityByCityNameProviderReadinessResponse(rsp *http.Response) (*Get
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -52872,6 +56588,13 @@ func ParseDeleteV0CityByCityNameProviderByNameResponse(rsp *http.Response) (*Del
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -52925,6 +56648,13 @@ func ParseGetV0CityByCityNameProviderByNameResponse(rsp *http.Response) (*GetV0C
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53001,6 +56731,13 @@ func ParsePatchV0CityByCityNameProviderByNameResponse(rsp *http.Response) (*Patc
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53054,6 +56791,13 @@ func ParseGetV0CityByCityNameProvidersResponse(rsp *http.Response) (*GetV0CityBy
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53130,6 +56874,13 @@ func ParseCreateProviderResponse(rsp *http.Response) (*CreateProviderResponse, e
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53183,6 +56934,13 @@ func ParseGetV0CityByCityNameProvidersPublicResponse(rsp *http.Response) (*GetV0
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53238,6 +56996,13 @@ func ParseGetV0CityByCityNameReadinessResponse(rsp *http.Response) (*GetV0CityBy
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53284,6 +57049,13 @@ func ParseGetRequestOutcomeResponse(rsp *http.Response) (*GetRequestOutcomeRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53360,6 +57132,13 @@ func ParseDeleteV0CityByCityNameRigByNameResponse(rsp *http.Response) (*DeleteV0
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53413,6 +57192,13 @@ func ParseGetV0CityByCityNameRigByNameResponse(rsp *http.Response) (*GetV0CityBy
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53482,6 +57268,13 @@ func ParsePatchV0CityByCityNameRigByNameResponse(rsp *http.Response) (*PatchV0Ci
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53550,6 +57343,13 @@ func ParsePostV0CityByCityNameRigByNameByActionResponse(rsp *http.Response) (*Po
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53603,6 +57403,13 @@ func ParseGetV0CityByCityNameRigsResponse(rsp *http.Response) (*GetV0CityByCityN
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53665,6 +57472,27 @@ func ParseCreateRigResponse(rsp *http.Response) (*CreateRigResponse, error) {
 		}
 		response.JSON202 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53697,6 +57525,13 @@ func ParseGetV0CityByCityNameRunsResponse(rsp *http.Response) (*GetV0CityByCityN
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53744,6 +57579,13 @@ func ParseGetV0CityByCityNameRunsCensusResponse(rsp *http.Response) (*GetV0CityB
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53798,6 +57640,13 @@ func ParseGetV0CityByCityNameRunsByRunIdResponse(rsp *http.Response) (*GetV0City
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -53860,6 +57709,13 @@ func ParsePostV0CityByCityNameRunsByRunIdCancelResponse(rsp *http.Response) (*Po
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53914,6 +57770,13 @@ func ParseGetV0CityByCityNameRunsByRunIdStepsResponse(rsp *http.Response) (*GetV
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -53967,6 +57830,13 @@ func ParseGetV0CityByCityNameServiceByNameResponse(rsp *http.Response) (*GetV0Ci
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54029,6 +57899,13 @@ func ParsePostV0CityByCityNameServiceByNameRestartResponse(rsp *http.Response) (
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -54075,6 +57952,13 @@ func ParseGetV0CityByCityNameServicesResponse(rsp *http.Response) (*GetV0CityByC
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54129,6 +58013,13 @@ func ParseGetV0CityByCityNameSessionByIdResponse(rsp *http.Response) (*GetV0City
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54212,6 +58103,13 @@ func ParsePatchV0CityByCityNameSessionByIdResponse(rsp *http.Response) (*PatchV0
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -54272,6 +58170,13 @@ func ParseGetV0CityByCityNameSessionByIdAgentsResponse(rsp *http.Response) (*Get
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54340,6 +58245,13 @@ func ParseGetV0CityByCityNameSessionByIdAgentsByAgentIdResponse(rsp *http.Respon
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54416,6 +58328,13 @@ func ParsePostV0CityByCityNameSessionByIdCloseResponse(rsp *http.Response) (*Pos
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -54490,6 +58409,13 @@ func ParsePostV0CityByCityNameSessionByIdKillResponse(rsp *http.Response) (*Post
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54566,6 +58492,13 @@ func ParseSendSessionMessageResponse(rsp *http.Response) (*SendSessionMessageRes
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -54626,6 +58559,13 @@ func ParseListSessionOpsResponse(rsp *http.Response) (*ListSessionOpsResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54709,6 +58649,13 @@ func ParseProposeSessionOpResponse(rsp *http.Response) (*ProposeSessionOpRespons
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -54769,6 +58716,13 @@ func ParseGetSessionOpResponse(rsp *http.Response) (*GetSessionOpResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54845,6 +58799,13 @@ func ParseCancelSessionOpResponse(rsp *http.Response) (*CancelSessionOpResponse,
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -54905,6 +58866,13 @@ func ParseGetV0CityByCityNameSessionByIdPendingResponse(rsp *http.Response) (*Ge
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -54987,6 +58955,13 @@ func ParsePostV0CityByCityNameSessionByIdPermissionModeResponse(rsp *http.Respon
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -55077,6 +59052,13 @@ func ParsePostV0CityByCityNameSessionByIdPinResponse(rsp *http.Response) (*PostV
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55159,6 +59141,13 @@ func ParsePostV0CityByCityNameSessionByIdRenameResponse(rsp *http.Response) (*Po
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55234,6 +59223,13 @@ func ParsePostV0CityByCityNameSessionByIdResetResponse(rsp *http.Response) (*Pos
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55308,6 +59304,13 @@ func ParseRespondSessionResponse(rsp *http.Response) (*RespondSessionResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -55390,6 +59393,13 @@ func ParsePostV0CityByCityNameSessionByIdStopResponse(rsp *http.Response) (*Post
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -55499,6 +59509,13 @@ func ParseSubmitSessionResponse(rsp *http.Response) (*SubmitSessionResponse, err
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55574,6 +59591,13 @@ func ParsePostV0CityByCityNameSessionByIdSuspendResponse(rsp *http.Response) (*P
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55635,6 +59659,13 @@ func ParseGetV0CityByCityNameSessionByIdTranscriptResponse(rsp *http.Response) (
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55695,6 +59726,13 @@ func ParseGetV0CityByCityNameSessionByIdTurnResponse(rsp *http.Response) (*GetV0
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -55778,6 +59816,13 @@ func ParsePostV0CityByCityNameSessionByIdUnpinResponse(rsp *http.Response) (*Pos
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55860,6 +59905,13 @@ func ParsePostV0CityByCityNameSessionByIdWakeResponse(rsp *http.Response) (*Post
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -55920,6 +59972,13 @@ func ParseGetV0CityByCityNameSessionsResponse(rsp *http.Response) (*GetV0CityByC
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -56003,6 +60062,13 @@ func ParseCreateSessionResponse(rsp *http.Response) (*CreateSessionResponse, err
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56085,6 +60151,13 @@ func ParsePostV0CityByCityNameSlingResponse(rsp *http.Response) (*PostV0CityByCi
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56131,6 +60204,13 @@ func ParseGetV0CityByCityNameStatusResponse(rsp *http.Response) (*GetV0CityByCit
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -56219,6 +60299,13 @@ func ParseGetV0CityByCityNameUsageResponse(rsp *http.Response) (*GetV0CityByCity
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56273,6 +60360,13 @@ func ParseGetV0CityByCityNameWaitByIdResponse(rsp *http.Response) (*GetV0CityByC
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56326,6 +60420,13 @@ func ParseGetV0CityByCityNameWaitsResponse(rsp *http.Response) (*GetV0CityByCity
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -56388,6 +60489,13 @@ func ParseGetV0CityByCityNameWorkActiveStepResponse(rsp *http.Response) (*GetV0C
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56448,6 +60556,13 @@ func ParseGetV0CityByCityNameWorkReadyResponse(rsp *http.Response) (*GetV0CityBy
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
@@ -56524,6 +60639,13 @@ func ParseDeleteV0CityByCityNameWorkflowByWorkflowIdResponse(rsp *http.Response)
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56577,6 +60699,13 @@ func ParseGetV0CityByCityNameWorkflowByWorkflowIdResponse(rsp *http.Response) (*
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -21,12 +22,23 @@ import (
 // resolves the target per-city Server before calling through.
 type CityScope struct {
 	CityName string `path:"cityName" minLength:"1" pattern:"\\S" doc:"City name."`
+	// CityIncarnation is the optional X-GC-City-Incarnation request
+	// header, declared once here so every city-scoped operation
+	// accepts and documents it. bindCity (and the SSE precheck)
+	// enforce it: a value that differs from the running city's
+	// incarnation_id is refused with 412 city-incarnation-mismatch.
+	CityIncarnation string `header:"X-GC-City-Incarnation" required:"false" doc:"Optional city-incarnation precondition: when present and different from the city's current incarnation_id, the request is refused with 412 (city-incarnation-mismatch). Omit for default behavior."`
 }
 
 // GetCityName returns the value of the cityName path parameter.
 // Declared on a pointer receiver so types that embed CityScope by
 // value satisfy the cityNamer interface via *T method promotion.
 func (c *CityScope) GetCityName() string { return c.CityName }
+
+// GetCityIncarnation returns the value of the X-GC-City-Incarnation
+// request header, or "" when absent. Pointer receiver for the same
+// promotion reason as GetCityName.
+func (c *CityScope) GetCityIncarnation() string { return c.CityIncarnation }
 
 // cityNamer is satisfied by every type that embeds CityScope.
 // bindCity uses it to extract the target city name. The assertion
@@ -61,7 +73,9 @@ func IsCityNotFoundOrNotRunningDetail(detail string) bool {
 // bindCity wraps a per-city handler method expression as a Huma
 // handler registered on the supervisor API. The returned function
 // resolves the per-city Server for input.GetCityName() and delegates.
-// Returns 404 Problem Details when the named city is not running.
+// Returns 404 Problem Details when the named city is not running, and
+// 412 when the request's X-GC-City-Incarnation names an id the running
+// city no longer holds.
 func bindCity[I any, O any](
 	sm *SupervisorMux,
 	fn func(*Server, context.Context, *I) (*O, error),
@@ -76,8 +90,48 @@ func bindCity[I any, O any](
 		if srv == nil {
 			return nil, apierr.CityNotFound.Msg(CityNotFoundOrNotRunningDetail(name))
 		}
+		if err := checkCityIncarnation(srv, input); err != nil {
+			return nil, err
+		}
 		return fn(srv, ctx, input)
 	}
+}
+
+// cityIncarnationCarrier is satisfied by every input type that carries
+// the X-GC-City-Incarnation precondition — in practice every type that
+// embeds CityScope, via *T method promotion like cityNamer.
+type cityIncarnationCarrier interface {
+	GetCityIncarnation() string
+}
+
+// checkCityIncarnation enforces the X-GC-City-Incarnation precondition
+// against the resolved per-city Server. It runs inside the same
+// resolution that executes the request, so a city replaced between the
+// client's read and this request fails closed here instead of executing
+// against the replacement. No header means today's behavior; a server
+// whose state carries no id has nothing to check against, so the
+// request proceeds. A mismatch is a 412 Problem Details carrying the
+// running city's current incarnation_id.
+func checkCityIncarnation(srv *Server, input any) error {
+	carrier, ok := input.(cityIncarnationCarrier)
+	if !ok {
+		return nil
+	}
+	want := carrier.GetCityIncarnation()
+	if want == "" {
+		return nil
+	}
+	have := StateIncarnationID(srv.state)
+	if have == "" {
+		return nil
+	}
+	if want != have {
+		return apierr.CityIncarnationMismatch.With(
+			fmt.Sprintf("city %q incarnation mismatch: request carries %q, running city is %q; re-read incarnation_id and retry",
+				srv.state.CityName(), want, have),
+			&huma.ErrorDetail{Location: "incarnation_id", Message: "current city incarnation", Value: have})
+	}
+	return nil
 }
 
 // csrfHeaderName is the anti-CSRF header required on every mutation
@@ -137,6 +191,23 @@ func errorStatuses(codes ...int) func(o *huma.Operation) {
 	}
 }
 
+// addCityIncarnation412 is an operation handler that declares the 412
+// the X-GC-City-Incarnation precondition can emit on a city-scoped
+// REST operation. Every such op flows through one of the registration
+// helpers below, so declaring it there covers every current and future
+// endpoint — the same one-line-per-helper shape as addMutationCSRFParam.
+// Idempotent, so an op that already lists 412 keeps a single entry.
+// SSE ops are intentionally excluded: like their precheck 404/503,
+// their 412 rides the op's catch-all `default` error response.
+func addCityIncarnation412(op *huma.Operation) {
+	for _, code := range op.Errors {
+		if code == http.StatusPreconditionFailed {
+			return
+		}
+	}
+	op.Errors = append(op.Errors, http.StatusPreconditionFailed)
+}
+
 // describes sets an operation's description, so a contract a caller cannot
 // infer from the method and path is published in the spec rather than left in
 // the handler's Go doc. Generated clients and the OpenAPI document are all most
@@ -175,7 +246,8 @@ func cityGet[I any, O any](sm *SupervisorMux, tail string,
 	fn func(*Server, context.Context, *I) (*O, error),
 	opts ...func(o *huma.Operation),
 ) {
-	huma.Get(sm.humaAPI, cityScopePrefix+tail, bindCity(sm, fn), opts...)
+	huma.Get(sm.humaAPI, cityScopePrefix+tail, bindCity(sm, fn),
+		append([]func(o *huma.Operation){addCityIncarnation412}, opts...)...)
 }
 
 // cityPost is the POST sibling of cityGet. Every city-scoped POST
@@ -187,7 +259,7 @@ func cityPost[I any, O any](sm *SupervisorMux, tail string,
 	opts ...func(o *huma.Operation),
 ) {
 	huma.Post(sm.humaAPI, cityScopePrefix+tail, bindCity(sm, fn),
-		append([]func(o *huma.Operation){addMutationCSRFParam}, opts...)...)
+		append([]func(o *huma.Operation){addCityIncarnation412, addMutationCSRFParam}, opts...)...)
 }
 
 // cityPut is the PUT sibling of cityGet. See cityPost for the CSRF
@@ -197,7 +269,7 @@ func cityPut[I any, O any](sm *SupervisorMux, tail string,
 	opts ...func(o *huma.Operation),
 ) {
 	huma.Put(sm.humaAPI, cityScopePrefix+tail, bindCity(sm, fn),
-		append([]func(o *huma.Operation){addMutationCSRFParam}, opts...)...)
+		append([]func(o *huma.Operation){addCityIncarnation412, addMutationCSRFParam}, opts...)...)
 }
 
 // cityPatch is the PATCH sibling of cityGet. See cityPost for the CSRF
@@ -207,7 +279,7 @@ func cityPatch[I any, O any](sm *SupervisorMux, tail string,
 	opts ...func(o *huma.Operation),
 ) {
 	huma.Patch(sm.humaAPI, cityScopePrefix+tail, bindCity(sm, fn),
-		append([]func(o *huma.Operation){addMutationCSRFParam}, opts...)...)
+		append([]func(o *huma.Operation){addCityIncarnation412, addMutationCSRFParam}, opts...)...)
 }
 
 // cityDelete is the DELETE sibling of cityGet. See cityPost for the
@@ -217,7 +289,7 @@ func cityDelete[I any, O any](sm *SupervisorMux, tail string,
 	opts ...func(o *huma.Operation),
 ) {
 	huma.Delete(sm.humaAPI, cityScopePrefix+tail, bindCity(sm, fn),
-		append([]func(o *huma.Operation){addMutationCSRFParam}, opts...)...)
+		append([]func(o *huma.Operation){addCityIncarnation412, addMutationCSRFParam}, opts...)...)
 }
 
 // cityRegister is the per-city analog of huma.Register. Use it when
@@ -228,6 +300,7 @@ func cityRegister[I any, O any](sm *SupervisorMux, op huma.Operation,
 	fn func(*Server, context.Context, *I) (*O, error),
 ) {
 	op.Path = cityScopePrefix + op.Path
+	addCityIncarnation412(&op)
 	if isMutationMethod(op.Method) {
 		addMutationCSRFParam(&op)
 	}
@@ -237,7 +310,9 @@ func cityRegister[I any, O any](sm *SupervisorMux, op huma.Operation,
 // sseCityPrecheck wraps an SSE precheck method on Server with
 // per-request city resolution. registerSSE runs the precheck before
 // committing response headers, so a missing city translates into a
-// 404 Problem Details on the wire.
+// 404 Problem Details on the wire, and a stale X-GC-City-Incarnation
+// into a 412 — the header is declared on SSE inputs via the same
+// CityScope mixin, so it must be enforced here too.
 func sseCityPrecheck[I any](sm *SupervisorMux,
 	fn func(*Server, context.Context, *I) error,
 ) func(context.Context, *I) error {
@@ -246,6 +321,9 @@ func sseCityPrecheck[I any](sm *SupervisorMux,
 		srv := sm.resolveCityServer(name)
 		if srv == nil {
 			return apierr.CityNotFound.Msg(CityNotFoundOrNotRunningDetail(name))
+		}
+		if err := checkCityIncarnation(srv, input); err != nil {
+			return err
 		}
 		return fn(srv, ctx, input)
 	}

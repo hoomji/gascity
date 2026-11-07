@@ -704,7 +704,7 @@ func (c *Client) ListServices() ([]workspacesvc.Status, error) {
 	if err := c.requireCityScope(); err != nil {
 		return nil, err
 	}
-	resp, err := c.cw.GetV0CityByCityNameServicesWithResponse(context.Background(), c.cityName)
+	resp, err := c.cw.GetV0CityByCityNameServicesWithResponse(context.Background(), c.cityName, nil)
 	if err != nil {
 		return nil, &connError{err: fmt.Errorf("request failed: %w", err)}
 	}
@@ -771,7 +771,7 @@ func (c *Client) GetMaintenanceStatus() (CachedRead[MaintenanceStatusView], erro
 	if err := c.requireCityScope(); err != nil {
 		return CachedRead[MaintenanceStatusView]{}, err
 	}
-	resp, err := c.cw.GetV0CityByCityNameMaintenanceStatusWithResponse(context.Background(), c.cityName)
+	resp, err := c.cw.GetV0CityByCityNameMaintenanceStatusWithResponse(context.Background(), c.cityName, nil)
 	if err != nil {
 		return CachedRead[MaintenanceStatusView]{}, &connError{err: fmt.Errorf("request failed: %w", err)}
 	}
@@ -979,7 +979,7 @@ func (c *Client) GetConvoy(id string) (CachedRead[ConvoyStatusView], error) {
 	if err := c.requireCityScope(); err != nil {
 		return CachedRead[ConvoyStatusView]{}, err
 	}
-	resp, err := c.cw.GetV0CityByCityNameConvoyByIdWithResponse(context.Background(), c.cityName, id)
+	resp, err := c.cw.GetV0CityByCityNameConvoyByIdWithResponse(context.Background(), c.cityName, id, nil)
 	if err != nil {
 		return CachedRead[ConvoyStatusView]{}, &connError{err: fmt.Errorf("request failed: %w", err)}
 	}
@@ -1005,7 +1005,7 @@ func (c *Client) CheckConvoy(id string) (CachedRead[ConvoyCheckView], error) {
 	if err := c.requireCityScope(); err != nil {
 		return CachedRead[ConvoyCheckView]{}, err
 	}
-	resp, err := c.cw.GetV0CityByCityNameConvoyByIdCheckWithResponse(context.Background(), c.cityName, id)
+	resp, err := c.cw.GetV0CityByCityNameConvoyByIdCheckWithResponse(context.Background(), c.cityName, id, nil)
 	if err != nil {
 		return CachedRead[ConvoyCheckView]{}, &connError{err: fmt.Errorf("request failed: %w", err)}
 	}
@@ -1190,7 +1190,7 @@ func (c *Client) GetBead(id string) (CachedRead[beads.Bead], error) {
 	if err := c.requireCityScope(); err != nil {
 		return CachedRead[beads.Bead]{}, err
 	}
-	resp, err := c.cw.GetV0CityByCityNameBeadByIdWithResponse(context.Background(), c.cityName, id)
+	resp, err := c.cw.GetV0CityByCityNameBeadByIdWithResponse(context.Background(), c.cityName, id, nil)
 	if err != nil {
 		return CachedRead[beads.Bead]{}, &connError{err: fmt.Errorf("request failed: %w", err)}
 	}
@@ -1335,7 +1335,7 @@ func (c *Client) GetService(name string) (workspacesvc.Status, error) {
 	if err := c.requireCityScope(); err != nil {
 		return workspacesvc.Status{}, err
 	}
-	resp, err := c.cw.GetV0CityByCityNameServiceByNameWithResponse(context.Background(), c.cityName, name)
+	resp, err := c.cw.GetV0CityByCityNameServiceByNameWithResponse(context.Background(), c.cityName, name, nil)
 	if err != nil {
 		return workspacesvc.Status{}, &connError{err: fmt.Errorf("request failed: %w", err)}
 	}

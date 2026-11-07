@@ -20,6 +20,7 @@ import (
 	"github.com/gastownhall/gascity/internal/citylayout"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/events"
+	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/runtime"
 	sessionpkg "github.com/gastownhall/gascity/internal/session"
 	"github.com/gastownhall/gascity/internal/testutil"
@@ -2142,6 +2143,10 @@ func TestTryReloadConfig_IncludesBuiltinPackOrders(t *testing.T) {
 }
 
 func (osFS) Chmod(name string, mode os.FileMode) error { return os.Chmod(name, mode) }
+
+func (osFS) CreateExclusive(name string, d []byte, p os.FileMode) error {
+	return fsys.OSFS{}.CreateExclusive(name, d, p)
+}
 
 // TestRunControllerLatchesSessionReconciler pins the latch at the standalone
 // controller entry point. Without the developer override, v2 returns 1

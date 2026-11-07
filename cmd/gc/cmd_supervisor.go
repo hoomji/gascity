@@ -24,6 +24,7 @@ import (
 
 	"github.com/gastownhall/gascity/internal/api"
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/cityidentity"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/convergence"
 	"github.com/gastownhall/gascity/internal/events"
@@ -2811,9 +2812,10 @@ func emitPendingCityCreateResult(cr *cityRegistry, path, cityName string, stderr
 	}
 	if supRec := cr.SupervisorEventRecorder(); supRec != nil && hasReqID {
 		api.EmitTypedEvent(supRec, events.RequestResultCityCreate, cityName, api.CityCreateSucceededPayload{
-			RequestID: reqID,
-			Name:      cityName,
-			Path:      path,
+			RequestID:     reqID,
+			Name:          cityName,
+			Path:          path,
+			IncarnationID: loadIncarnationIDBestEffort(path),
 		})
 	}
 }
@@ -2839,9 +2841,10 @@ func emitPendingCityCreateFailure(cr *cityRegistry, path, cityName, errorCode st
 func emitCityUnregisterTerminalEvent(rec events.Recorder, requestID, cityName, path string, stopErr error) {
 	if stopErr == nil {
 		api.EmitTypedEvent(rec, events.RequestResultCityUnregister, cityName, api.CityUnregisterSucceededPayload{
-			RequestID: requestID,
-			Name:      cityName,
-			Path:      path,
+			RequestID:     requestID,
+			Name:          cityName,
+			Path:          path,
+			IncarnationID: loadIncarnationIDBestEffort(path),
 		})
 		return
 	}
@@ -2910,6 +2913,12 @@ func loadSupervisorCityConfig(cityPath string) (*config.City, *config.Provenance
 // that cmd_start.go performs before runController. Without these, cities
 // would have no formulas, no bead stores, and no resolved rig paths.
 func prepareCityForSupervisor(cityPath, cityName string, cfg *config.City, stderr io.Writer, progress func(string)) error {
+	// First load mints the city's incarnation id when an older city
+	// lacks one. The mint is idempotent; a malformed file fails the
+	// city load loudly and is recorded as an init failure by the caller.
+	if _, err := cityidentity.Ensure(cityPath); err != nil {
+		return fmt.Errorf("city incarnation id: %w", err)
+	}
 	runStep := func(status string, fn func() error) error {
 		if progress != nil && status != "" {
 			progress(status)

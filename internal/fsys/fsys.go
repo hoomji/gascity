@@ -22,6 +22,14 @@ type FS interface {
 	// mode of an existing file is preserved.
 	WriteFile(name string, data []byte, perm os.FileMode) error
 
+	// CreateExclusive writes data to the named file, creating it only when
+	// it does not already exist. The parent directory must exist. An
+	// existing file (or directory) is never overwritten: the call fails
+	// with an error matching os.ErrExist so the caller can re-read the
+	// winner's contents. The create is atomic — concurrent creators elect
+	// exactly one winner.
+	CreateExclusive(name string, data []byte, perm os.FileMode) error
+
 	// ReadFile reads the named file and returns its contents.
 	ReadFile(name string) ([]byte, error)
 
@@ -59,6 +67,23 @@ func (OSFS) MkdirAll(path string, perm os.FileMode) error {
 // WriteFile delegates to [os.WriteFile].
 func (OSFS) WriteFile(name string, data []byte, perm os.FileMode) error {
 	return os.WriteFile(name, data, perm)
+}
+
+// CreateExclusive creates the named file with O_EXCL: an existing path
+// fails with os.ErrExist and is never overwritten.
+func (OSFS) CreateExclusive(name string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		// The file is ours alone (exclusive create just succeeded), so a
+		// torn write is removed instead of left for a later load to trip on.
+		_ = os.Remove(name)
+		return err
+	}
+	return f.Close()
 }
 
 // ReadFile delegates to [os.ReadFile].

@@ -66,12 +66,12 @@ func contractRigsFamily(t *testing.T, h *contractHarness) {
 	if got := h.getRig(t, contractRig); got.DefaultBranch == nil || *got.DefaultBranch != "trunk" {
 		t.Fatalf("rig default_branch after patch = %v, want trunk", got.DefaultBranch)
 	}
-	patches, err := c.GetV0CityByCityNamePatchesRigsWithResponse(ctx, city)
+	patches, err := c.GetV0CityByCityNamePatchesRigsWithResponse(ctx, city, nil)
 	expectStatus(t, "list rig patches", patches, err, http.StatusOK)
 	if items := derefSlice(mustJSON(t, "list rig patches", patches.JSON200, patches).Items); len(items) != 1 || items[0].Name != contractRig {
 		t.Fatalf("rig patches = %s, want the %s patch", contractBody(patches), contractRig)
 	}
-	one, err := c.GetV0CityByCityNamePatchesRigByNameWithResponse(ctx, city, contractRig)
+	one, err := c.GetV0CityByCityNamePatchesRigByNameWithResponse(ctx, city, contractRig, nil)
 	expectStatus(t, "get rig patch", one, err, http.StatusOK)
 	if got := mustJSON(t, "get rig patch", one.JSON200, one).DefaultBranch; got == nil || *got != "trunk" {
 		t.Fatalf("rig patch default_branch = %v, want trunk: %s", got, contractBody(one))

@@ -129,13 +129,13 @@ func contractSessionsFamily(t *testing.T, h *contractHarness) {
 	// The harness's session store mints ids without a prefix, which an op
 	// store needs, so the reads may answer the declared 503
 	// op-journal-unavailable instead.
-	ops, err := c.ListSessionOpsWithResponse(ctx, city, sess.Id)
+	ops, err := c.ListSessionOpsWithResponse(ctx, city, sess.Id, nil)
 	expectStatus(t, "list session ops", ops, err, http.StatusOK, http.StatusServiceUnavailable)
 	if ops.JSON200 != nil && ops.JSON200.Total != 0 {
 		t.Fatalf("open ops = %s", contractBody(ops))
 	}
 	const missingOp = "gc-op-aaaaaaaaaaaaaaaaaaaaaaaaaa"
-	op, err := c.GetSessionOpWithResponse(ctx, city, sess.Id, missingOp)
+	op, err := c.GetSessionOpWithResponse(ctx, city, sess.Id, missingOp, nil)
 	expectStatus(t, "get session op", op, err, http.StatusNotFound, http.StatusServiceUnavailable)
 	canceled, err := c.CancelSessionOpWithResponse(ctx, city, sess.Id, missingOp,
 		&genclient.CancelSessionOpParams{XGCRequest: contractCSRF}, genclient.CancelSessionOpJSONRequestBody{})
@@ -143,9 +143,9 @@ func contractSessionsFamily(t *testing.T, h *contractHarness) {
 
 	transcript, err := c.GetV0CityByCityNameSessionByIdTranscriptWithResponse(ctx, city, sess.Id, nil)
 	expectStatus(t, "session transcript", transcript, err, http.StatusOK)
-	agents, err := c.GetV0CityByCityNameSessionByIdAgentsWithResponse(ctx, city, sess.Id)
+	agents, err := c.GetV0CityByCityNameSessionByIdAgentsWithResponse(ctx, city, sess.Id, nil)
 	expectStatus(t, "session agents", agents, err, http.StatusOK)
-	agent, err := c.GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse(ctx, city, sess.Id, "no-such-subagent")
+	agent, err := c.GetV0CityByCityNameSessionByIdAgentsByAgentIdWithResponse(ctx, city, sess.Id, "no-such-subagent", nil)
 	expectStatus(t, "session agent", agent, err, http.StatusNotFound)
 	h.openStream(t, "session stream", func(ctx context.Context) (*http.Response, error) {
 		return c.StreamSession(ctx, city, sess.Id, nil)
@@ -154,13 +154,13 @@ func contractSessionsFamily(t *testing.T, h *contractHarness) {
 	// Pending interaction reads: the runtime raises one and both the session
 	// and the city pending reads surface it. (Responding is the
 	// respond-session row of the async-202 table.)
-	pending, err := c.GetV0CityByCityNameSessionByIdPendingWithResponse(ctx, city, sess.Id)
+	pending, err := c.GetV0CityByCityNameSessionByIdPendingWithResponse(ctx, city, sess.Id, nil)
 	expectStatus(t, "session pending (none)", pending, err, http.StatusOK)
 	if p := mustJSON(t, "session pending", pending.JSON200, pending); !p.Supported || p.Pending != nil {
 		t.Fatalf("pending before interaction = %s", contractBody(pending))
 	}
 	h.raisePending(t, sess)
-	cityPending, err := c.GetV0CityByCityNamePendingWithResponse(ctx, city)
+	cityPending, err := c.GetV0CityByCityNamePendingWithResponse(ctx, city, nil)
 	expectStatus(t, "city pending", cityPending, err, http.StatusOK)
 	if !strings.Contains(string(cityPending.Body), runtimePendingApproval.RequestID) {
 		t.Fatalf("city pending missing %s: %s", runtimePendingApproval.RequestID, cityPending.Body)
@@ -170,12 +170,12 @@ func contractSessionsFamily(t *testing.T, h *contractHarness) {
 	// Turn read: the harness runtime neither observes turns nor runs agents
 	// whose transcripts gc reads, so the session has no turn source, which is
 	// a 200 unsupported answer, never a 5xx. An unknown session is 404.
-	turn, err := c.GetV0CityByCityNameSessionByIdTurnWithResponse(ctx, city, sess.Id)
+	turn, err := c.GetV0CityByCityNameSessionByIdTurnWithResponse(ctx, city, sess.Id, nil)
 	expectStatus(t, "session turn", turn, err, http.StatusOK)
 	if got := mustJSON(t, "session turn", turn.JSON200, turn); got.Source != "none" || got.Observation != "unsupported" || got.Current != nil || got.SessionId != sess.Id {
 		t.Fatalf("session turn = %s, want source none, observation unsupported", contractBody(turn))
 	}
-	noTurn, err := c.GetV0CityByCityNameSessionByIdTurnWithResponse(ctx, city, "gc-no-such-session")
+	noTurn, err := c.GetV0CityByCityNameSessionByIdTurnWithResponse(ctx, city, "gc-no-such-session", nil)
 	expectStatus(t, "unknown session turn", noTurn, err, http.StatusNotFound)
 
 	perm, err := c.PostV0CityByCityNameSessionByIdPermissionModeWithResponse(ctx, city, sess.Id,
@@ -196,7 +196,7 @@ func contractSessionsFamily(t *testing.T, h *contractHarness) {
 		&genclient.PostV0CityByCityNameBeadByIdAssignParams{XGCRequest: contractCSRF},
 		genclient.PostV0CityByCityNameBeadByIdAssignJSONRequestBody{Assignee: ptr(sess.Id)})
 	expectStatus(t, "assign bead", assigned, err, http.StatusOK)
-	reread, err := c.GetV0CityByCityNameBeadByIdWithResponse(ctx, city, beadID)
+	reread, err := c.GetV0CityByCityNameBeadByIdWithResponse(ctx, city, beadID, nil)
 	expectStatus(t, "reread assigned bead", reread, err, http.StatusOK)
 	if b := mustJSON(t, "reread assigned bead", reread.JSON200, reread); b.Assignee == nil || *b.Assignee != sess.SessionName {
 		t.Fatalf("assignee = %s, want %s", contractBody(reread), sess.SessionName)
@@ -262,7 +262,7 @@ func (h *contractHarness) respondAndExpectCleared(t *testing.T, sess genclient.S
 	if got := h.sp.CountCalls("Respond", sess.SessionName) - before; got != 1 {
 		t.Fatalf("runtime Respond calls = %d, want 1", got)
 	}
-	pending, err := h.client.GetV0CityByCityNameSessionByIdPendingWithResponse(h.ctx, contractCityName, sess.Id)
+	pending, err := h.client.GetV0CityByCityNameSessionByIdPendingWithResponse(h.ctx, contractCityName, sess.Id, nil)
 	expectStatus(t, "pending after respond", pending, err, http.StatusOK)
 	if p := mustJSON(t, "pending after respond", pending.JSON200, pending); p.Pending != nil {
 		t.Fatalf("pending still set after respond: %s", contractBody(pending))

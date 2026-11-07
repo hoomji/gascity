@@ -57,6 +57,7 @@ go_test(
         "atomic_internal_test.go",
         "atomic_test.go",
         "conformance_test.go",
+        "create_exclusive_test.go",
         "fake_test.go",
         "read_regular_unix_internal_test.go",
         "remove_all_test.go",

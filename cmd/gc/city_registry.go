@@ -447,10 +447,11 @@ func (r *cityRegistry) ListCities() []api.CityInfo {
 	out := make([]api.CityInfo, 0, len(snap.all))
 	for _, v := range snap.all {
 		ci := api.CityInfo{
-			Name:    v.Name,
-			Path:    v.Path,
-			Running: v.Started,
-			Status:  v.Status,
+			Name:          v.Name,
+			Path:          v.Path,
+			Running:       v.Started,
+			Status:        v.Status,
+			IncarnationID: api.StateIncarnationID(v.cs),
 		}
 		// Running cities report empty status (matches old behavior).
 		if v.Started {

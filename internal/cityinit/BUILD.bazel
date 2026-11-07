@@ -13,6 +13,7 @@ go_library(
     importpath = "github.com/gastownhall/gascity/internal/cityinit",
     visibility = ["//:__subpackages__"],
     deps = [
+        "//internal/cityidentity",
         "//internal/citylayout",
         "//internal/config",
         "//internal/fsys",
@@ -40,6 +41,7 @@ go_test(
         "//internal/citylayout",
         "//internal/fsys",
         "//internal/testenv",
+        "@com_github_google_uuid//:uuid",
     ],
 )
 

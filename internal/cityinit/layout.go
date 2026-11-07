@@ -6,6 +6,7 @@ import (
 	iofs "io/fs"
 	"path/filepath"
 
+	"github.com/gastownhall/gascity/internal/cityidentity"
 	"github.com/gastownhall/gascity/internal/citylayout"
 	"github.com/gastownhall/gascity/internal/fsys"
 )
@@ -66,12 +67,23 @@ func EnsureCityScaffoldFS(fs fsys.FS, cityPath string) error {
 	}
 	eventsPath := filepath.Join(cityPath, citylayout.RuntimeRoot, "events.jsonl")
 	if _, err := fs.Stat(eventsPath); err == nil {
-		return nil
+		return ensureIncarnationFS(fs, cityPath)
 	} else if !errors.Is(err, iofs.ErrNotExist) {
 		return fmt.Errorf("checking city event log %q: %w", eventsPath, err)
 	}
 	if err := fs.WriteFile(eventsPath, nil, 0o644); err != nil {
 		return fmt.Errorf("creating city event log %q: %w", eventsPath, err)
+	}
+	return ensureIncarnationFS(fs, cityPath)
+}
+
+// ensureIncarnationFS mints the city's incarnation id when the scaffold
+// has none. Every init path flows through EnsureCityScaffoldFS, so this
+// is where a fresh city gets its identity; the mint is idempotent (an
+// existing id is kept), and a malformed file fails loudly.
+func ensureIncarnationFS(fs fsys.FS, cityPath string) error {
+	if _, err := cityidentity.EnsureFS(fs, cityPath); err != nil {
+		return fmt.Errorf("minting city incarnation id: %w", err)
 	}
 	return nil
 }

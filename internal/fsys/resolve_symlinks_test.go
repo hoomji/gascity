@@ -155,6 +155,10 @@ func (f noReadlinkFS) MkdirAll(path string, perm os.FileMode) error {
 func (f noReadlinkFS) WriteFile(name string, data []byte, perm os.FileMode) error {
 	return f.inner.WriteFile(name, data, perm)
 }
+
+func (f noReadlinkFS) CreateExclusive(name string, data []byte, perm os.FileMode) error {
+	return f.inner.CreateExclusive(name, data, perm)
+}
 func (f noReadlinkFS) ReadFile(name string) ([]byte, error)       { return f.inner.ReadFile(name) }
 func (f noReadlinkFS) Stat(name string) (os.FileInfo, error)      { return f.inner.Stat(name) }
 func (f noReadlinkFS) Lstat(name string) (os.FileInfo, error)     { return f.inner.Lstat(name) }

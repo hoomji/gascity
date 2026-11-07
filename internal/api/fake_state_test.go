@@ -56,12 +56,16 @@ type fakeState struct {
 	// bindingRelics is the boot census a test wants replayed. Absent means
 	// uncensused, which means "assume relics" — see
 	// ClassBindingHasLegacyResidents.
-	bindingRelics     map[beads.Store]bool
-	cityBeadsDiag     *beads.BeadsDiagnostic
-	cityMailProv      mail.Provider // city-level mail provider (all mail is city-scoped)
-	eventProv         events.Provider
-	cityName          string
-	cityPath          string
+	bindingRelics map[beads.Store]bool
+	cityBeadsDiag *beads.BeadsDiagnostic
+	cityMailProv  mail.Provider // city-level mail provider (all mail is city-scoped)
+	eventProv     events.Provider
+	cityName      string
+	cityPath      string
+	// incarnationID backs CityIncarnationID. Empty (the default) means the
+	// state carries no city identity, and the incarnation precondition is
+	// not enforced for it.
+	incarnationID     string
 	startedAt         time.Time
 	quarantined       map[string]bool
 	autos             []orders.Order
@@ -135,8 +139,12 @@ func (f *fakeState) UsageSink() usage.Sink {
 	}
 	return usage.Discard
 }
-func (f *fakeState) CityName() string                      { return f.cityName }
-func (f *fakeState) CityPath() string                      { return f.cityPath }
+func (f *fakeState) CityName() string { return f.cityName }
+func (f *fakeState) CityPath() string { return f.cityPath }
+
+// CityIncarnationID implements the production IncarnationProvider shape:
+// the city's incarnation id, or "" when the state carries none.
+func (f *fakeState) CityIncarnationID() string             { return f.incarnationID }
 func (f *fakeState) Version() string                       { return "test" }
 func (f *fakeState) StartedAt() time.Time                  { return f.startedAt }
 func (f *fakeState) IsQuarantined(sessionName string) bool { return f.quarantined[sessionName] }

@@ -125,7 +125,7 @@ func (c *Client) GetWait(id string) (CachedRead[session.WaitInfo], error) {
 	if err := c.requireCityScope(); err != nil {
 		return CachedRead[session.WaitInfo]{}, err
 	}
-	resp, err := c.cw.GetV0CityByCityNameWaitByIdWithResponse(context.Background(), c.cityName, id)
+	resp, err := c.cw.GetV0CityByCityNameWaitByIdWithResponse(context.Background(), c.cityName, id, nil)
 	if err != nil {
 		return CachedRead[session.WaitInfo]{}, &connError{err: fmt.Errorf("request failed: %w", err)}
 	}

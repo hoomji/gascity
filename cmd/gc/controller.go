@@ -1394,6 +1394,7 @@ func controllerLoop(
 	}
 	cr := &CityRuntime{
 		bootCityStore:       bootCityStoreFor(cityPath),
+		bootIncarnationID:   loadIncarnationIDBestEffort(cityPath),
 		cityPath:            cityPath,
 		cityName:            cityName,
 		tomlPath:            tomlPath,
@@ -1718,9 +1719,10 @@ type singleCityStateResolver struct {
 
 func (r *singleCityStateResolver) ListCities() []api.CityInfo {
 	return []api.CityInfo{{
-		Name:    r.state.CityName(),
-		Path:    r.state.CityPath(),
-		Running: true,
+		Name:          r.state.CityName(),
+		Path:          r.state.CityPath(),
+		Running:       true,
+		IncarnationID: api.StateIncarnationID(r.state),
 	}}
 }
 
