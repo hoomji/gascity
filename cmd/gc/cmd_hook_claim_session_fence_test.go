@@ -61,20 +61,31 @@ dir = "aoa"
 // runtime state and instance token, returning its id.
 func newFenceSessionBead(t *testing.T, cityDir string, state session.State, instanceToken string) string {
 	t.Helper()
+	return newFenceSessionBeadWith(t, cityDir, state, instanceToken, nil)
+}
+
+// newFenceSessionBeadWith is newFenceSessionBead with extra metadata keys
+// folded onto the session bead (e.g. continuation_reset_pending).
+func newFenceSessionBeadWith(t *testing.T, cityDir string, state session.State, instanceToken string, extra map[string]string) string {
+	t.Helper()
 	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
+	metadata := map[string]string{
+		"session_name":   "worker-1",
+		"template":       "worker",
+		"state":          string(state),
+		"instance_token": instanceToken,
+	}
+	for k, v := range extra {
+		metadata[k] = v
+	}
 	bead, err := store.Create(beads.Bead{
-		Title:  "worker-1",
-		Type:   session.BeadType,
-		Labels: []string{"gc:session", "agent:worker-1"},
-		Metadata: map[string]string{
-			"session_name":   "worker-1",
-			"template":       "worker",
-			"state":          string(state),
-			"instance_token": instanceToken,
-		},
+		Title:    "worker-1",
+		Type:     session.BeadType,
+		Labels:   []string{"gc:session", "agent:worker-1"},
+		Metadata: metadata,
 	})
 	if err != nil {
 		t.Fatalf("create session bead: %v", err)
@@ -234,6 +245,80 @@ func TestHookCommandClaimEmptyLegacyStateReachesWorkQuery(t *testing.T) {
 	}
 	if result.Action != "drain" || result.Reason != hookClaimReasonNoWork {
 		t.Fatalf("result = %+v, want action=drain reason=no_work (probe returns no work)", result)
+	}
+}
+
+// TestHookCommandClaimAsleepResetPendingReachesWorkQuery is the ci-vqdd
+// end-to-end reproduction: a worker session recreated under the same id reads
+// asleep with continuation_reset_pending=true while its new incarnation is
+// already live and presenting the row's current token. The fence must let it
+// through to the work query instead of refusing its first claim as stale,
+// which idles the recreated worker at its prompt (gc-claim.sh CLAIM_REJECTED
+// with no retry) until an out-of-band reset.
+func TestHookCommandClaimAsleepResetPendingReachesWorkQuery(t *testing.T) {
+	clearGCEnv(t)
+	disableManagedDoltRecoveryForTest(t)
+	t.Setenv("GC_BEADS", "file")
+	cityDir := writeFenceTestCity(t)
+	sessionID := newFenceSessionBeadWith(t, cityDir, session.StateAsleep, "current-token", map[string]string{
+		"continuation_reset_pending": "true",
+	})
+	queryMarker := installFenceWorkQueryProbe(t)
+	setFenceClaimEnv(t, cityDir, sessionID, "current-token")
+
+	var stdout, stderr bytes.Buffer
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+
+	if _, err := os.Stat(queryMarker); err != nil {
+		t.Fatalf("work query did not run for asleep reset-pending session: %v; stderr=%s", err, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "refusing stale session") {
+		t.Fatalf("asleep reset-pending session was refused as stale: %s", stderr.String())
+	}
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 (JSON no-work drain without --drain-ack); stderr=%s", code, stderr.String())
+	}
+	var result hookClaimJSONResult
+	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &result); err != nil {
+		t.Fatalf("stdout is not a JSON result: %v\n%s", err, stdout.String())
+	}
+	if result.Action != "drain" || result.Reason != hookClaimReasonNoWork {
+		t.Fatalf("result = %+v, want action=drain reason=no_work (probe returns no work)", result)
+	}
+}
+
+// TestHookCommandClaimAsleepWithoutResetStaysStale pins the deliberate-dormancy
+// side of the ci-vqdd admission: an asleep row with NO pending continuation
+// reset is still refused, so a session the controller put to sleep cannot
+// adopt routed work on its way down.
+func TestHookCommandClaimAsleepWithoutResetStaysStale(t *testing.T) {
+	clearGCEnv(t)
+	disableManagedDoltRecoveryForTest(t)
+	t.Setenv("GC_BEADS", "file")
+	cityDir := writeFenceTestCity(t)
+	sessionID := newFenceSessionBead(t, cityDir, session.StateAsleep, "current-token")
+	queryMarker := installFenceWorkQueryProbe(t)
+	setFenceClaimEnv(t, cityDir, sessionID, "current-token")
+
+	var stdout, stderr bytes.Buffer
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("code = %d, want 1; stdout=%q stderr=%s", code, stdout.String(), stderr.String())
+	}
+	var result hookClaimJSONResult
+	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &result); err != nil {
+		t.Fatalf("stdout is not a JSON drain result: %v\n%s", err, stdout.String())
+	}
+	if result.Action != "drain" || result.Reason != hookClaimReasonStaleSession {
+		t.Fatalf("result = %+v, want action=drain reason=stale_session", result)
+	}
+	if !strings.Contains(stderr.String(), "refusing stale session") ||
+		!strings.Contains(stderr.String(), "asleep") {
+		t.Fatalf("stderr = %q, want stale-session refusal naming the asleep state", stderr.String())
+	}
+	if _, err := os.Stat(queryMarker); !os.IsNotExist(err) {
+		t.Fatalf("work query ran for dormant asleep session; stat error = %v", err)
 	}
 }
 
@@ -476,6 +561,51 @@ func TestHookClaimSessionEligibility(t *testing.T) {
 		{
 			name:    "drained",
 			info:    session.Info{ID: "s", MetadataState: string(session.StateDrained), InstanceToken: token},
+			token:   token,
+			want:    hookClaimSessionStale,
+			wantMsg: "drained",
+		},
+		{
+			// A deliberately dormant row carries no pending continuation
+			// reset: a lingering runtime presenting its token must stay
+			// refused, or a session the controller put to sleep could adopt
+			// newly routed work on its way down.
+			name:    "asleep without pending reset stays stale",
+			info:    session.Info{ID: "s", MetadataState: string(session.StateAsleep), InstanceToken: token},
+			token:   token,
+			want:    hookClaimSessionStale,
+			wantMsg: "asleep",
+		},
+		{
+			// ci-vqdd: a worker session recreated under the same id reads
+			// asleep with a pending continuation reset while its new
+			// incarnation is already live (the mint/launch precede the state
+			// commit, and a late exit-finalize can move the row back to
+			// asleep under the current token). The token match proves the
+			// claimant IS the row's current incarnation, so the fence must
+			// admit it rather than idle the recreated worker at its prompt.
+			name:    "asleep with pending continuation reset admitted as recreating",
+			info:    session.Info{ID: "s", MetadataState: string(session.StateAsleep), ContinuationResetPending: "true", InstanceToken: token},
+			token:   token,
+			want:    hookClaimSessionEligible,
+			wantMsg: "",
+		},
+		{
+			// The reset-pending admission never bypasses the incarnation
+			// proof: a superseded runtime stays refused even when the row
+			// records a pending reset.
+			name:    "asleep with pending reset but superseded token stays stale",
+			info:    session.Info{ID: "s", MetadataState: string(session.StateAsleep), ContinuationResetPending: "true", InstanceToken: "replacement-token"},
+			token:   "stale-runtime-token",
+			want:    hookClaimSessionStale,
+			wantMsg: "token",
+		},
+		{
+			// A drain-ack still ends claiming: drained stays refused even
+			// with a pending reset (wake_mode=fresh drain-acks stamp both
+			// together), so only the asleep recreation window opens.
+			name:    "drained with pending reset stays stale",
+			info:    session.Info{ID: "s", MetadataState: string(session.StateDrained), ContinuationResetPending: "true", InstanceToken: token},
 			token:   token,
 			want:    hookClaimSessionStale,
 			wantMsg: "drained",

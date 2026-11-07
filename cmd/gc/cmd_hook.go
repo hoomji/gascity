@@ -782,8 +782,15 @@ func classifyHookClaimSessionLookupError(err error) (hookClaimSessionVerdict, st
 // Closed is false and the instance token matches — proving this is the live
 // current incarnation — it is admitted with the active states, or a healthy
 // upgraded legacy runtime would be drained before claiming its routed work.
-// Every other state — failed-create, draining, drained, asleep, suspended,
-// archived, quarantined — is dormant or terminal and classified stale.
+// An asleep row with a pending continuation reset is the same shape: a worker
+// session recreated under the same id reads asleep/reset-pending while its new
+// incarnation is already live (the mint/launch precede the state commit, and a
+// late exit-finalize can move the row back to asleep under the current token),
+// so with the token match proving this is the live current incarnation it is
+// admitted too, or the recreated worker idles at its prompt on a refused first
+// claim (ci-vqdd). An asleep row with NO pending reset is deliberately dormant
+// and stays refused, as does every other state — failed-create, draining,
+// drained, suspended, archived, quarantined — dormant or terminal.
 func hookClaimSessionEligibility(info session.Info, instanceToken string) (hookClaimSessionVerdict, string) {
 	if info.Closed {
 		return hookClaimSessionStale, "session bead is closed"
@@ -795,6 +802,14 @@ func hookClaimSessionEligibility(info session.Info, instanceToken string) (hookC
 	switch state := session.State(strings.TrimSpace(info.MetadataState)); state {
 	case session.StateNone, session.StateActive, session.StateAwake, session.StateCreating, session.StateStartPending:
 		return hookClaimSessionEligible, ""
+	case session.StateAsleep:
+		// The nonempty check is the lifecycle's own reset-pending idiom
+		// (mintStart's consumeReset, pendingContinuationResetNeedsFreshStart):
+		// the flag is cleared by writing "", never any other value.
+		if strings.TrimSpace(info.ContinuationResetPending) != "" {
+			return hookClaimSessionEligible, ""
+		}
+		return hookClaimSessionStale, fmt.Sprintf("session state %q is not claim-eligible", state)
 	default:
 		return hookClaimSessionStale, fmt.Sprintf("session state %q is not claim-eligible", state)
 	}
