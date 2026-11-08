@@ -95,7 +95,7 @@ func TestRenderDeliveryParity(t *testing.T) {
 		"You have 2 deferred reminders that were queued until a safe boundary:\n\n" +
 		"- [mail] first\n" +
 		"- [mail] second\n" +
-		"\nHandle them after this turn.\n" +
+		"\nHandle these reminders now, before responding to the user.\n" +
 		"</system-reminder>\n"
 	if got != want {
 		t.Fatalf("reminder parity\n got: %q\nwant: %q", got, want)
@@ -107,7 +107,7 @@ func TestRenderDeliveryParity(t *testing.T) {
 	want = "<system-reminder>\n" +
 		"You have a deferred reminder that was queued until a safe boundary:\n\n" +
 		"- [mail] first\n" +
-		"\nHandle them after this turn.\n" +
+		"\nHandle these reminders now, before responding to the user.\n" +
 		"</system-reminder>\n"
 	if got != want {
 		t.Fatalf("single reminder parity\n got: %q\nwant: %q", got, want)
@@ -126,7 +126,7 @@ func TestRenderDeliveryNotePlacement(t *testing.T) {
 	n := textOp(t, "n1", RoleNotice, "gc:mail", "hi")
 	p := textOp(t, "p1", RolePrompt, "operator", "do it\n")
 	got, _ := RenderDelivery([]Op{n}, TextReminder, true)
-	if !strings.HasSuffix(got, "\nHandle them after this turn.\n"+RedeliveryNote+"\n</system-reminder>\n") {
+	if !strings.HasSuffix(got, "\nHandle these reminders now, before responding to the user.\n"+RedeliveryNote+"\n</system-reminder>\n") {
 		t.Fatalf("notice-only note is not the block's last line:\n%q", got)
 	}
 	got, _ = RenderDelivery([]Op{p}, TextReminder, true)

@@ -32,7 +32,7 @@ const (
 	reminderClose    = "</system-reminder>\n"
 	reminderHeadOne  = "You have a deferred reminder that was queued until a safe boundary:\n\n"
 	reminderHeadMany = "You have %d deferred reminders that were queued until a safe boundary:\n\n"
-	reminderTail     = "\nHandle them after this turn.\n"
+	reminderTail     = "\nHandle these reminders now, before responding to the user.\n"
 	plainHead        = "Deferred reminders:\n"
 	plainTail        = "\nThese were queued until the session went idle.\n"
 )

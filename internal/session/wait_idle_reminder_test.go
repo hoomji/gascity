@@ -56,3 +56,16 @@ func TestFormatWaitIdleReminderBenignUnchanged(t *testing.T) {
 		t.Errorf("opening tag count = %d, want 1:\n%s", got, out)
 	}
 }
+
+// SESSION-REMINDER-001: a delivered reminder asks for action in the current
+// turn. "Handle them after this turn" read as a note to defer, so agents
+// acknowledged wake reminders and did nothing (ci-d1t8).
+func TestWaitIdleReminderRequestsImmediateAction(t *testing.T) {
+	out := formatWaitIdleReminder("mayor", "check the merge queue")
+	if !strings.Contains(out, "Handle these reminders now, before responding to the user.") {
+		t.Fatalf("reminder does not ask for action now:\n%s", out)
+	}
+	if strings.Contains(out, "after this turn") {
+		t.Fatalf("reminder still defers to after this turn:\n%s", out)
+	}
+}
