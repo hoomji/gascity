@@ -327,6 +327,9 @@ func runRalphCheck(store beads.Store, bead, subject beads.Bead, attempt int, opt
 		trustedAbsRoots = append(trustedAbsRoots, ralphCheckHistoricalFormulaRoots(store, bead, checkPath)...)
 	}
 	if filepath.IsAbs(checkPath) && !pathWithinAny(checkPath, trustedAbsRoots) {
+		trustedAbsRoots = append(trustedAbsRoots, ralphCheckCookedScriptRoots(bead, checkPath)...)
+	}
+	if filepath.IsAbs(checkPath) && !pathWithinAny(checkPath, trustedAbsRoots) {
 		return convergence.GateResult{}, fmt.Errorf("%s: absolute gc.check_path %q escapes trusted roots", bead.ID, checkPath)
 	}
 	scriptPath, err := convergence.ResolveConditionPath(cityPath, scriptBase, checkPath)
@@ -467,6 +470,32 @@ func ralphCheckHistoricalFormulaRoots(store beads.Store, bead beads.Bead, checkP
 		}
 	}
 	return trusted
+}
+
+// ralphCheckCookedScriptRoots admits a check script from a repo-cache entry
+// other than the root formula's, such as one an imported pack ships through an
+// expansion, after that pack is repinned. Cooking records the script's SHA-256
+// as gc.check_hash on the control bead; the script stays trusted only while it
+// sits in a canonical cache entry and its bytes still match that digest. The
+// trusted root is the script path alone, so nothing beside it is admitted.
+// Controls without gc.check_hash, and paths outside the repo cache, get none.
+func ralphCheckCookedScriptRoots(bead beads.Bead, checkPath string) []string {
+	cookedHash := strings.TrimSpace(bead.Metadata[beadmeta.CheckHashMetadataKey])
+	if cookedHash == "" {
+		return nil
+	}
+	cacheRoot, err := config.GlobalRepoCacheRoot()
+	if err != nil {
+		return nil
+	}
+	if _, ok := canonicalRepoCacheEntry(cacheRoot, checkPath); !ok {
+		return nil
+	}
+	script, err := os.ReadFile(checkPath)
+	if err != nil || formula.ContentHash(script) != cookedHash {
+		return nil
+	}
+	return []string{pathutil.NormalizePathForCompare(checkPath)}
 }
 
 func ralphCheckFormulaProvenance(store beads.Store, bead beads.Bead) (string, string) {

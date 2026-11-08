@@ -556,3 +556,156 @@ path = "../assets/scripts/checks/review-approved.sh"
 		t.Fatalf("Outcome = %q (stderr=%q), want pass", result.Outcome, result.Stderr)
 	}
 }
+
+// A workflow whose root formula lives in pack A's cache entry but whose ralph
+// check ships in pack B's entry (pulled in through an expansion) must keep its
+// check after pack B is repinned: the cooked gc.check_hash proves the script at
+// the old pin is the one the workflow was cooked with.
+func TestRunRalphCheckAcceptsCrossPackCheckAfterRepin(t *testing.T) {
+	tmp := t.TempDir()
+	gcHome := filepath.Join(tmp, "gc-home")
+	t.Setenv("GC_HOME", gcHome)
+	cacheRoot := filepath.Join(gcHome, "cache", "repos")
+	rootEntry := filepath.Join(cacheRoot, strings.Repeat("a", 64))
+	oldCheckEntry := filepath.Join(cacheRoot, strings.Repeat("b", 64))
+	newCheckEntry := filepath.Join(cacheRoot, strings.Repeat("c", 64))
+	formulaSource := filepath.Join(rootEntry, "formulas", "drain.toml")
+	checkPath := filepath.Join(oldCheckEntry, "assets", "scripts", "checks", "approved.sh")
+	cityPath := filepath.Join(tmp, "city")
+	storePath := filepath.Join(tmp, "store")
+	for _, dir := range []string{filepath.Dir(formulaSource), filepath.Dir(checkPath), filepath.Join(newCheckEntry, "formulas"), cityPath, storePath} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	formulaBytes := []byte("formula = \"drain\"\n")
+	checkBytes := []byte("#!/bin/sh\nexit 0\n")
+	if err := os.WriteFile(formulaSource, formulaBytes, 0o644); err != nil {
+		t.Fatalf("write formula: %v", err)
+	}
+	if err := os.WriteFile(checkPath, checkBytes, 0o755); err != nil {
+		t.Fatalf("write check: %v", err)
+	}
+
+	store := beads.NewMemStore()
+	root, err := store.Create(beads.Bead{
+		Title:  "workflow rooted in pack A",
+		Type:   "molecule",
+		Status: "open",
+		Metadata: map[string]string{
+			beadmeta.FormulaSourceMetadataKey: formulaSource,
+			beadmeta.FormulaHashMetadataKey:   formula.ContentHash(formulaBytes),
+		},
+	})
+	if err != nil {
+		t.Fatalf("create root: %v", err)
+	}
+	newControl := func(id, hash string) beads.Bead {
+		meta := map[string]string{
+			beadmeta.CheckPathMetadataKey:    checkPath,
+			beadmeta.CheckTimeoutMetadataKey: "30s",
+			beadmeta.RootBeadIDMetadataKey:   root.ID,
+		}
+		if hash != "" {
+			meta[beadmeta.CheckHashMetadataKey] = hash
+		}
+		return beads.Bead{ID: id, Type: "task", Metadata: meta}
+	}
+	opts := ProcessOptions{
+		CityPath:           cityPath,
+		StorePath:          storePath,
+		FormulaSearchPaths: []string{filepath.Join(newCheckEntry, "formulas")},
+	}
+	subject := beads.Bead{ID: "run-cross-pack", Type: "task"}
+
+	result, err := runRalphCheck(store, newControl("check-cross-pack", formula.ContentHash(checkBytes)), subject, 1, opts)
+	if err != nil {
+		t.Fatalf("cross-pack check with matching cooked hash should stay trusted: %v", err)
+	}
+	if result.Outcome != convergence.GatePass {
+		t.Fatalf("outcome = %q, want %q; stderr=%q", result.Outcome, convergence.GatePass, result.Stderr)
+	}
+
+	// Negative cases: the same path is rejected when no hash was cooked, when
+	// the hash no longer matches the bytes on disk, or when the script lives
+	// outside the repo cache.
+	if _, err := runRalphCheck(store, newControl("check-no-hash", ""), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+		t.Fatalf("check without gc.check_hash: err = %v, want escapes trusted roots", err)
+	}
+	if _, err := runRalphCheck(store, newControl("check-bad-hash", strings.Repeat("0", 64)), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+		t.Fatalf("check with mismatched gc.check_hash: err = %v, want escapes trusted roots", err)
+	}
+	outside := filepath.Join(tmp, "elsewhere", "approved.sh")
+	if err := os.MkdirAll(filepath.Dir(outside), 0o755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	if err := os.WriteFile(outside, checkBytes, 0o755); err != nil {
+		t.Fatalf("write outside check: %v", err)
+	}
+	escaping := newControl("check-outside-cache", formula.ContentHash(checkBytes))
+	escaping.Metadata[beadmeta.CheckPathMetadataKey] = outside
+	if _, err := runRalphCheck(store, escaping, subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+		t.Fatalf("hashed check outside repo cache: err = %v, want escapes trusted roots", err)
+	}
+	if err := os.WriteFile(checkPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("rewrite check: %v", err)
+	}
+	if _, err := runRalphCheck(store, newControl("check-edited", formula.ContentHash(checkBytes)), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+		t.Fatalf("edited check: err = %v, want escapes trusted roots", err)
+	}
+}
+
+// Cooking a ralph step with an absolute check path records the script hash so
+// the runner can later verify it; a relative or unreadable path records none.
+func TestCookStampsRalphCheckHash(t *testing.T) {
+	formulatest.EnableV2ForTest(t)
+	tmp := t.TempDir()
+	formulas := filepath.Join(tmp, "formulas")
+	checks := filepath.Join(tmp, "assets", "scripts", "checks")
+	for _, dir := range []string{formulas, checks} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	checkBytes := []byte("#!/bin/sh\nexit 0\n")
+	if err := os.WriteFile(filepath.Join(checks, "ok.sh"), checkBytes, 0o755); err != nil {
+		t.Fatalf("write check: %v", err)
+	}
+	text := `formula = "stamp"
+version = 2
+contract = "graph.v2"
+
+[[steps]]
+id = "gate"
+title = "Gate"
+
+[steps.ralph]
+max_attempts = 2
+
+[steps.ralph.check]
+mode = "exec"
+path = "../assets/scripts/checks/ok.sh"
+timeout = "30s"
+`
+	if err := os.WriteFile(filepath.Join(formulas, "stamp.toml"), []byte(text), 0o644); err != nil {
+		t.Fatalf("write formula: %v", err)
+	}
+	store := beads.NewMemStore()
+	if _, err := molecule.Cook(context.Background(), store, "stamp", []string{formulas}, molecule.Options{}); err != nil {
+		t.Fatalf("Cook: %v", err)
+	}
+	open, err := store.ListOpen()
+	if err != nil {
+		t.Fatalf("list open: %v", err)
+	}
+	for _, b := range open {
+		if b.Metadata[beadmeta.KindMetadataKey] != beadmeta.KindRalph {
+			continue
+		}
+		if got, want := b.Metadata[beadmeta.CheckHashMetadataKey], formula.ContentHash(checkBytes); got != want {
+			t.Fatalf("control %s = %q, want %q", beadmeta.CheckHashMetadataKey, got, want)
+		}
+		return
+	}
+	t.Fatal("no ralph control bead cooked")
+}

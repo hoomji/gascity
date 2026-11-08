@@ -57,6 +57,7 @@ const (
 	BudgetDeferredUntilMetadataKey = "gc.budget_deferred_until"
 	CancelRequestedMetadataKey     = "gc.cancel_requested"
 	CheckInfraRetryMetadataKey     = "gc.check_infra_retry"
+	CheckHashMetadataKey           = "gc.check_hash"
 	CheckModeMetadataKey           = "gc.check_mode"
 	CheckPathMetadataKey           = "gc.check_path"
 	CheckTimeoutMetadataKey        = "gc.check_timeout"
@@ -525,6 +526,7 @@ var KnownMetadataKeys = []string{
 	BudgetDeferredUntilMetadataKey,
 	CancelRequestedMetadataKey,
 	CheckInfraRetryMetadataKey,
+	CheckHashMetadataKey,
 	CheckModeMetadataKey,
 	CheckPathMetadataKey,
 	CheckTimeoutMetadataKey,
