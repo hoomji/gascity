@@ -2,6 +2,8 @@ package formula
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -46,6 +48,22 @@ func ApplyRalph(steps []*Step) ([]*Step, error) {
 	return result, nil
 }
 
+// CheckScriptHash returns the SHA-256 hex digest of the exec check script at
+// path, or "" when path is not absolute or the file cannot be read. Cooking
+// records it as gc.check_hash so the ralph runner can later prove the script at
+// a since-repinned repo-cache path is the one the workflow was cooked with. An
+// empty result only means no provenance was recorded; it never fails a cook.
+func CheckScriptHash(path string) string {
+	if !filepath.IsAbs(path) {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return ContentHash(data)
+}
+
 func expandRalph(step *Step) ([]*Step, error) {
 	if step.Ralph == nil {
 		return nil, fmt.Errorf("expanding ralph: step %q missing ralph spec", step.ID)
@@ -80,6 +98,9 @@ func expandRalph(step *Step) ([]*Step, error) {
 	}
 	if step.Timeout != "" {
 		controlMeta[beadmeta.StepTimeoutMetadataKey] = step.Timeout
+	}
+	if hash := CheckScriptHash(step.Ralph.Check.Path); hash != "" {
+		controlMeta[beadmeta.CheckHashMetadataKey] = hash
 	}
 	control.Metadata = withMetadata(control.Metadata, controlMeta)
 	control.Needs = appendUniqueCopy(control.Needs, iterationID)
