@@ -246,6 +246,24 @@
               "null"
             ]
           },
+          "FallbackOptionDefaults": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "FallbackProviders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "HooksInstalled": {
             "type": [
               "boolean",
@@ -553,6 +571,7 @@
           "PromptTemplate",
           "Session",
           "Provider",
+          "FallbackProviders",
           "Upstream",
           "Args",
           "StartCommand",

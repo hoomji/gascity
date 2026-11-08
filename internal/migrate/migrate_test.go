@@ -1118,6 +1118,8 @@ func TestAgentConfigFromAgentCoversPersistedFields(t *testing.T) {
 		Nudge:                  "nudge text",
 		Session:                "acp",
 		Provider:               "claude",
+		FallbackProviders:      []string{"codex"},
+		FallbackOptionDefaults: map[string]map[string]string{"codex": {"effort": "high"}},
 		ContextAdvisory:        &config.ContextAdvisory{Enabled: &trueVal, WindowTokens: intPtr(1_000_000), Tiers: []config.ContextAdvisoryTier{{Threshold: intPtr(75), Message: &advisoryMessage, Enabled: &trueVal}}},
 		Upstream:               "anthropic",
 		StartCommand:           "claude --dangerously",
@@ -1179,8 +1181,9 @@ func TestAgentConfigFromAgentCoversPersistedFields(t *testing.T) {
 		"BindingName":                  true,
 		"PackName":                     true,
 		// Runtime-only provenance consumed inside internal/config.
-		"source": true,
-		"layout": true,
+		"FallbackProvidersFromDefaults": true,
+		"source":                        true,
+		"layout":                        true,
 		// v0.15.1 tombstones — still on Agent but intentionally not propagated
 		// by migrate (removed in v0.16).
 		"Skills":       true,
