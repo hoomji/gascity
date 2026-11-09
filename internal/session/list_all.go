@@ -37,13 +37,13 @@ import (
 // error is wrapped with context naming which leg failed so logs are
 // diagnosable.
 func ListAllSessionBeads(store beads.SessionStore, base beads.ListQuery) ([]beads.Bead, error) {
-	return listAllSessionBeadsRouted(store, base, beads.Store.List)
+	return listAllSessionBeadsRouted(store, base, beads.SessionStore.List)
 }
 
 // ListAllSessionBeadsContext is ListAllSessionBeads with cancellation: both
-// union legs list through beads.ListWithContext, so a disconnected caller
-// kills the backing bd children instead of abandoning them. A dead context
-// surfaces as ctx.Err().
+// union legs list through the session handle's context-aware path, so a
+// disconnected caller kills the backing bd children instead of abandoning
+// them. A dead context surfaces as ctx.Err().
 func ListAllSessionBeadsContext(ctx context.Context, store beads.SessionStore, base beads.ListQuery) ([]beads.Bead, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -51,14 +51,24 @@ func ListAllSessionBeadsContext(ctx context.Context, store beads.SessionStore, b
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return listAllSessionBeadsRouted(store, base, func(s beads.Store, q beads.ListQuery) ([]beads.Bead, error) {
-		return beads.ListWithContext(ctx, s, q)
+	return listAllSessionBeadsRouted(store, base, func(s beads.SessionStore, q beads.ListQuery) ([]beads.Bead, error) {
+		// The handle does not implement beads.ContextLister itself, so the
+		// capability is resolved through it with beads.As: the same
+		// ListWithContext contract (the context-aware path, else a per-leg
+		// cancellation check, else List) without unwrapping the handle.
+		if lister, ok := beads.As[beads.ContextLister](s); ok {
+			return lister.ListContext(ctx, q)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return s.List(q)
 	})
 }
 
 // listAllSessionBeadsRouted is the shared union body behind
 // ListAllSessionBeads and ListAllSessionBeadsContext.
-func listAllSessionBeadsRouted(store beads.SessionStore, base beads.ListQuery, legList func(beads.Store, beads.ListQuery) ([]beads.Bead, error)) ([]beads.Bead, error) {
+func listAllSessionBeadsRouted(store beads.SessionStore, base beads.ListQuery, legList func(beads.SessionStore, beads.ListQuery) ([]beads.Bead, error)) ([]beads.Bead, error) {
 	if store == (beads.SessionStore{}) {
 		return nil, nil
 	}
@@ -71,7 +81,7 @@ func listAllSessionBeadsRouted(store beads.SessionStore, base beads.ListQuery, l
 	byTypeQuery.Type = BeadType
 	byTypeQuery.Label = ""
 	byTypeQuery.Limit = 0
-	byType, typeErr := legList(store.Store, byTypeQuery)
+	byType, typeErr := legList(store, byTypeQuery)
 	if typeErr != nil && !beads.IsPartialResult(typeErr) {
 		return nil, fmt.Errorf("listing session beads by type: %w", typeErr)
 	}
@@ -80,7 +90,7 @@ func listAllSessionBeadsRouted(store beads.SessionStore, base beads.ListQuery, l
 	byLabelQuery.Type = ""
 	byLabelQuery.Label = LabelSession
 	byLabelQuery.Limit = 0
-	byLabel, labelErr := legList(store.Store, byLabelQuery)
+	byLabel, labelErr := legList(store, byLabelQuery)
 	if labelErr != nil && !beads.IsPartialResult(labelErr) {
 		return nil, fmt.Errorf("listing session beads by label: %w", labelErr)
 	}
