@@ -298,7 +298,6 @@ func newWispGCForConfig(cfg *config.City) wispGC {
 	return newWispGC(cfg.Daemon.WispGCIntervalDuration(), cfg.Daemon.WispTTLDuration(), mailRetentionTTL)
 }
 
-
 func (m *memoryWispGC) shouldRun(now time.Time) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
