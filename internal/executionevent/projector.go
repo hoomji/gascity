@@ -404,7 +404,7 @@ func stepRowsOf(rootID string, rows []beads.Bead) []stepRow {
 // same closed rows and both tiers, so a row lands in a root's group exactly
 // when the per-root listing would have returned it.
 func chunkStepRows(store beads.GraphStore, rootIDs []string) (map[string][]beads.Bead, bool) {
-	lister, ok := store.Store.(beads.MetadataAnyLister)
+	lister, ok := beads.As[beads.MetadataAnyLister](store)
 	if !ok || len(rootIDs) == 0 {
 		return nil, false
 	}
