@@ -240,7 +240,7 @@ func (s blindWriteRefusingStore) ListByMetadata(filters map[string]string, limit
 // ListByMetadataAny is a read, so it passes through when the inner store has
 // the capability; without it the caller's per-value fallback runs instead.
 func (s blindWriteRefusingStore) ListByMetadataAny(key string, values []string, limit int, opts ...beads.QueryOpt) ([]beads.Bead, error) {
-	if lister, ok := s.inner.(beads.MetadataAnyLister); ok {
+	if lister, ok := beads.As[beads.MetadataAnyLister](s.inner); ok {
 		return lister.ListByMetadataAny(key, values, limit, opts...)
 	}
 	return s.inner.List(beads.ListByMetadataAnyQuery(key, values, limit, opts...))

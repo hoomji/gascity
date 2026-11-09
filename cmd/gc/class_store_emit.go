@@ -881,11 +881,11 @@ func (s *emittingClassStore) ReadyOrdered(query beads.ReadyQuery, order beads.Re
 // not promote an optional capability: without it the sweeps that discover it by
 // type assertion would silently pay one listing per value.
 func (s *emittingClassStore) ListByMetadataAny(key string, values []string, limit int, opts ...beads.QueryOpt) ([]beads.Bead, error) {
-	if lister, ok := s.Store.(beads.MetadataAnyLister); ok {
+	if lister, ok := beads.As[beads.MetadataAnyLister](s.Store); ok {
 		return lister.ListByMetadataAny(key, values, limit, opts...)
 	}
 	query := beads.ListByMetadataAnyQuery(key, values, limit, opts...)
-	rows, err := s.Store.List(query)
+	rows, err := s.List(query)
 	exact := rows[:0]
 	for _, row := range rows {
 		if query.MetadataAny.Matches(row) {

@@ -82,8 +82,10 @@ type backstopPredicate interface {
 // observed activity after the previous attempt. The predicate owns the bound.
 type activityDecayingBackstop interface {
 	// decay re-arms the predicate's pacing window for target and reports
-	// whether it did; true ends this tick for the session.
-	decay(store beads.Store, s *beads.Bead, target backstopTarget, sessName string, last, now time.Time, stdout io.Writer) bool
+	// whether it did; true ends this tick for the session. The predicate
+	// writes through the store it carries; the engine passes only the
+	// session evidence.
+	decay(s *beads.Bead, target backstopTarget, sessName string, last, now time.Time, stdout io.Writer) bool
 }
 
 // decayedWindow gives a decaying predicate the chance to re-arm instead of
@@ -91,7 +93,6 @@ type activityDecayingBackstop interface {
 // the grace check already grants the first free pass.
 func decayedWindow(
 	pred backstopPredicate,
-	store beads.Store,
 	s *beads.Bead,
 	target backstopTarget,
 	sessName string,
@@ -106,7 +107,7 @@ func decayedWindow(
 	if !ok {
 		return false
 	}
-	return decayer.decay(store, s, target, sessName, last, now, stdout)
+	return decayer.decay(s, target, sessName, last, now, stdout)
 }
 
 // backstopHoldObserver is an optional predicate extension. A predicate that
@@ -343,7 +344,7 @@ func runNudgeBackstop(
 			continue
 		}
 
-		if decayedWindow(pred, store, s, target, sessName, attempts, last, now, stdout) {
+		if decayedWindow(pred, s, target, sessName, attempts, last, now, stdout) {
 			clearBackstopHold(pred, store, s, stdout)
 			continue
 		}

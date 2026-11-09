@@ -7540,7 +7540,13 @@ func resolveDispatchOptionOverrides(candidate startCandidate, cityPath string, c
 	if holdsAssignedWork || err != nil {
 		return overrides
 	}
-	return triggerOrClaimedWorkOptionOverrides(candidate, cityPath, cfg, store, rp, sources, assignees)
+	// The trigger read below needs only Get; it takes the read as a func so
+	// the session store itself stays in this frame.
+	var getTrigger func(string) (beads.Bead, error)
+	if store != nil {
+		getTrigger = store.Get
+	}
+	return triggerOrClaimedWorkOptionOverrides(candidate, cityPath, cfg, getTrigger, rp, sources, assignees)
 }
 
 // triggerOrClaimedWorkOptionOverrides picks the dispatch options for a session
@@ -7550,8 +7556,8 @@ func resolveDispatchOptionOverrides(candidate startCandidate, cityPath string, c
 // the newest claim's pins apply, and a claim without pins keeps the provider
 // defaults rather than reviving a stale trigger's. With no claim anywhere the
 // trigger's pins apply.
-func triggerOrClaimedWorkOptionOverrides(candidate startCandidate, cityPath string, cfg *config.City, store beads.Store, rp *config.ResolvedProvider, sources dispatchOptionSources, assignees []string) map[string]string {
-	trigger, haveTrigger := launchStepTriggerBead(candidate, cityPath, cfg, store, sources, assignees)
+func triggerOrClaimedWorkOptionOverrides(candidate startCandidate, cityPath string, cfg *config.City, getTrigger func(string) (beads.Bead, error), rp *config.ResolvedProvider, sources dispatchOptionSources, assignees []string) map[string]string {
+	trigger, haveTrigger := launchStepTriggerBead(candidate, cityPath, cfg, getTrigger, sources, assignees)
 	if haveTrigger && triggerBeadIsClaimed(trigger) {
 		overrides, _ := workBeadOptionOverrides(trigger, rp)
 		return overrides
@@ -7574,10 +7580,11 @@ func triggerOrClaimedWorkOptionOverrides(candidate startCandidate, cityPath stri
 // launchStepTriggerBead reads the candidate's trigger bead when it is still
 // this session's launch step. The bead is read through sources.trigger (the
 // city's residency contract) when one is supplied; a miss there does not fall
-// back to store. Without a resolver the session store is read only when the
-// gc.trigger_bead_store_ref stamp names that same store, so a foreign rig stamp
-// fails closed rather than reading a same-id bead from the wrong store.
-func launchStepTriggerBead(candidate startCandidate, cityPath string, cfg *config.City, store beads.Store, sources dispatchOptionSources, assignees []string) (beads.Bead, bool) {
+// back to getTrigger. Without a resolver the session store is read, through
+// getTrigger, only when the gc.trigger_bead_store_ref stamp names that same
+// store, so a foreign rig stamp fails closed rather than reading a same-id
+// bead from the wrong store. A nil getTrigger means no session store.
+func launchStepTriggerBead(candidate startCandidate, cityPath string, cfg *config.City, getTrigger func(string) (beads.Bead, error), sources dispatchOptionSources, assignees []string) (beads.Bead, bool) {
 	triggerID := strings.TrimSpace(candidate.info.TriggerBeadID)
 	if triggerID == "" {
 		return beads.Bead{}, false
@@ -7589,8 +7596,8 @@ func launchStepTriggerBead(candidate startCandidate, cityPath string, cfg *confi
 	switch {
 	case sources.trigger != nil:
 		trigger, err = sources.trigger(triggerID)
-	case store != nil && namedTriggerRefIsSameStore(candidate.info.TriggerBeadStoreRef, loadedCityName(cfg, cityPath)):
-		trigger, err = store.Get(triggerID)
+	case getTrigger != nil && namedTriggerRefIsSameStore(candidate.info.TriggerBeadStoreRef, loadedCityName(cfg, cityPath)):
+		trigger, err = getTrigger(triggerID)
 	default:
 		return beads.Bead{}, false
 	}

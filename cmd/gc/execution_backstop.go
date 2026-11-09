@@ -553,7 +553,7 @@ func (p poolExecutionBackstop) content(s beads.Bead) string {
 // A seat marked started never re-arms either: it is held as executing and gets
 // the held-claim nudge up to the attempt cap, so a re-arm would only re-nudge a
 // seat waiting on a human (TestExecutionBackstopNeverDrainsAStartedSeatWaitingOnAHuman).
-func (p poolExecutionBackstop) decay(store beads.Store, s *beads.Bead, target backstopTarget, sessName string, last, now time.Time, stdout io.Writer) bool {
+func (p poolExecutionBackstop) decay(s *beads.Bead, target backstopTarget, sessName string, last, now time.Time, stdout io.Writer) bool {
 	if p.escalated(s) || p.markedStarted(*s, s.Metadata[executionClaimNudgeWorkKey]) || !p.renewedSince(sessName, last) {
 		return false
 	}
@@ -562,7 +562,7 @@ func (p poolExecutionBackstop) decay(store beads.Store, s *beads.Bead, target ba
 		return false
 	}
 	attempts := atoiOr0(s.Metadata[executionClaimNudgeCountKey])
-	if !writeExecutionClaimMarker(store, s, target, 0, decays+1, now, stdout) {
+	if !writeExecutionClaimMarker(p.store, s, target, 0, decays+1, now, stdout) {
 		return false
 	}
 	fmt.Fprintf(stdout, //nolint:errcheck // best-effort

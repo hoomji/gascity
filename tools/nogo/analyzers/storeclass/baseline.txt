@@ -1555,7 +1555,6 @@ cmd/gc/session_reconciler.go	sessionHasOpenAssignedWorkForTier	raw-param	1
 cmd/gc/session_reconciler.go	sessionHasReadyAssignedWorkForTier	mint	1
 cmd/gc/session_reconciler.go	sessionHasReadyAssignedWorkForTier	raw-param	1
 cmd/gc/session_reconciler.go	strandedAssignedWork	raw-field	1
-cmd/gc/session_reconciler.go	triggerBeadOptionOverrides	raw-param	1
 cmd/gc/session_reconciler.go	v2SignaledStopHeldForAttach	raw-param	1
 cmd/gc/session_reconciler_interrupted_close.go	finishInterruptedClose	raw-param	1
 cmd/gc/session_reconciler_interrupted_close.go	rollBackInterruptedClose	raw-param	1
@@ -1666,11 +1665,11 @@ cmd/gc/wisp_gc_work_lane.go	workMoleculeGC.pass	raw-param	2
 cmd/gc/wisp_step_api.go	activeWorkStepReader	raw-param	1
 cmd/gc/wisp_step_api.go	activeWorkStepScopeStore	raw-param	2
 cmd/gc/wisp_step_api.go	activeWorkStepScopeStore	raw-result	1
+cmd/gc/wisp_step_inject.go	activeWispStepInProcess	unwrap	1
 cmd/gc/wisp_step_inject.go	openWispStepStore	raw-result	1
 cmd/gc/wisp_step_inject.go	resolveActiveWispStep	raw-param	2
 cmd/gc/wisp_step_inject.go	sameStoreHandle	raw-param	2
 cmd/gc/wisp_step_inject.go	stepResolution.activeMoleculeIn	read-marker	1
-cmd/gc/wisp_step_inject.go	wispStepInjectionContentInProcess	unwrap	1
 cmd/gc/work_assignment.go	liveWorkAssignmentAssigneeMatches	raw-param	1
 cmd/gc/work_assignment.go	releaseAssignmentFenced	raw-param	1
 cmd/gc/work_assignment.go	releaseWorkAssignmentIfCurrent	cap-assert	1
@@ -1765,7 +1764,7 @@ internal/api/handler_status.go	statusReadyStoreWithTimeout	raw-param	1
 internal/api/handler_status.go	statusStoreWorkCounts	raw-param	1
 internal/api/handler_status.go	statusStoreWorkCountsFor	raw-param	1
 internal/api/handler_status.go	statusStoredWorkCounts	raw-param	1
-internal/api/huma_handlers_beads.go	Server.humaHandleBeadList	read-marker	1
+internal/api/huma_handlers_beads.go	Server.beadListUncached	read-marker	1
 internal/api/huma_handlers_beads.go	Server.humaHandleBeadReady	raw-param	1
 internal/api/huma_handlers_beads.go	Server.refuseClassFlip	raw-param	1
 internal/api/huma_handlers_beads.go	Server.storeClassHolds	raw-param	1

@@ -2350,40 +2350,34 @@ func defaultScaleCheckCounts(targets []defaultScaleCheckTarget) (map[string]int,
 	return counts, partialTemplates, errs
 }
 
-// controllerDemandReadyLeg is one store a demand pass reads, with the label
-// its read is traced under.
-type controllerDemandReadyLeg struct {
-	store beads.Store
-	label string
-}
-
 type controllerDemandReadyResult struct {
 	rows []beads.Bead
 	err  error
 }
 
-// readControllerDemandReadyLegs reads every leg's controller-demand ready set
+// readControllerDemandReadyLegs runs every leg's controller-demand ready read
 // concurrently, as the session census and assigned-work legs do, and returns
-// the results index-aligned with legs. Each read is a store round trip (a bd
+// the results index-aligned with reads. Each read is a store round trip (a bd
 // subprocess on a Dolt-backed store), so a serial loop paid the sum of them on
-// every pass. A store named by two legs is read once when cache is non-nil,
-// because the cache memoizes per store.
+// every pass. A store named by two legs is read once when the cache is
+// non-nil, because the cache memoizes per store. The reads arrive as funcs so
+// the stores stay with the caller that owns them.
 //
 // A panicking read is re-raised on the caller's goroutine once every leg has
 // returned, exactly as the serial loop let it escape: the demand gather turns
 // an inline probe panic into the whole gather's error with an empty view
 // (TestGatherDemandSurvivesCollectorPanic), and a panic left on a spawned
 // goroutine would instead kill the process.
-func readControllerDemandReadyLegs(cache *readyDemandCache, legs []controllerDemandReadyLeg) []controllerDemandReadyResult {
-	results := make([]controllerDemandReadyResult, len(legs))
-	if len(legs) == 1 {
-		results[0].rows, results[0].err = cache.controllerDemandReady(legs[0].store, legs[0].label)
+func readControllerDemandReadyLegs(reads []func() controllerDemandReadyResult) []controllerDemandReadyResult {
+	results := make([]controllerDemandReadyResult, len(reads))
+	if len(reads) == 1 {
+		results[0] = reads[0]()
 		return results
 	}
-	panics := make([]any, len(legs))
+	panics := make([]any, len(reads))
 	var wg sync.WaitGroup
-	for idx, leg := range legs {
-		idx, leg := idx, leg
+	for idx, read := range reads {
+		idx, read := idx, read
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -2392,7 +2386,7 @@ func readControllerDemandReadyLegs(cache *readyDemandCache, legs []controllerDem
 					panics[idx] = p
 				}
 			}()
-			results[idx].rows, results[idx].err = cache.controllerDemandReady(leg.store, leg.label)
+			results[idx] = read()
 		}()
 	}
 	wg.Wait()
@@ -2489,11 +2483,14 @@ func defaultScaleCheckCountsAndDemand(cfg *config.City, targets []defaultScaleCh
 	// The groups' ready reads run concurrently and are folded here in group
 	// order, so the counts stay deterministic while a city with many rigs pays
 	// the slowest read's latency instead of the sum of them.
-	legs := make([]controllerDemandReadyLeg, len(groupOrder))
+	reads := make([]func() controllerDemandReadyResult, len(groupOrder))
 	for i, group := range groupOrder {
-		legs[i] = controllerDemandReadyLeg{store: group.store, label: cache.storeLabel(group.store, group.storeKey)}
+		reads[i] = func() controllerDemandReadyResult {
+			rows, err := cache.controllerDemandReady(group.store, cache.storeLabel(group.store, group.storeKey))
+			return controllerDemandReadyResult{rows: rows, err: err}
+		}
 	}
-	groupReady := readControllerDemandReadyLegs(cache, legs)
+	groupReady := readControllerDemandReadyLegs(reads)
 	for groupIdx, group := range groupOrder {
 		key := group.storeKey
 		// Ready()/CachedReady() iteration surfaces actionable work

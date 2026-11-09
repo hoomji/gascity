@@ -861,7 +861,7 @@ func TestBeadPolicyStoreForwardsMetadataAnyAndCutsExactly(t *testing.T) {
 	for _, row := range got {
 		titles = append(titles, row.Title)
 	}
-	if len(titles) != 2 || !(titles[0] == "root-a" && titles[1] == "root-c" || titles[0] == "root-c" && titles[1] == "root-a") {
+	if len(titles) != 2 || (titles[0] != "root-a" || titles[1] != "root-c") && (titles[0] != "root-c" || titles[1] != "root-a") {
 		t.Fatalf("rows = %v, want exactly root-a and root-c", titles)
 	}
 }
