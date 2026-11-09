@@ -1161,6 +1161,8 @@ func TestAgentConfigFromAgentCoversPersistedFields(t *testing.T) {
 		ResumeCommand:          "claude --resume {{.SessionKey}} --dangerously",
 		WakeMode:               "fresh",
 		MouseMode:              "on",
+		FallbackProviders:      []string{"codex", "claude"},
+		FallbackOptionDefaults: map[string]map[string]string{"codex": {"effort": "max"}},
 	}
 
 	omitted := map[string]bool{
@@ -1179,8 +1181,9 @@ func TestAgentConfigFromAgentCoversPersistedFields(t *testing.T) {
 		"BindingName":                  true,
 		"PackName":                     true,
 		// Runtime-only provenance consumed inside internal/config.
-		"source": true,
-		"layout": true,
+		"source":                        true,
+		"layout":                        true,
+		"FallbackProvidersFromDefaults": true,
 		// v0.15.1 tombstones — still on Agent but intentionally not propagated
 		// by migrate (removed in v0.16).
 		"Skills":       true,
