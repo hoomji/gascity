@@ -105,7 +105,7 @@ var reviewedMarkers = map[string]reviewedMarker{
 		"federated", 1,
 		"first-owner attachment probe (S3a): graph store or, for a v1 poured molecule, the work store",
 	},
-	"internal/api/huma_handlers_beads.go (*Server).humaHandleBeadList": {
+	"internal/api/huma_handlers_beads.go (*Server).beadListUncached": {
 		"federated", 1,
 		"/beads fan-out leg: work legs and the class binding each list only their own rows",
 	},
