@@ -4725,7 +4725,7 @@ type gatedWispGC struct {
 
 func (g gatedWispGC) shouldRun(time.Time) bool { return true }
 
-func (g gatedWispGC) runGC(beads.GraphStore, beads.SessionStore, beads.MailStore, time.Time) (int, error) {
+func (g gatedWispGC) runGC(wispGCLegs, beads.GraphStore, beads.SessionStore, beads.MailStore, time.Time) (int, error) {
 	g.runs.Add(1)
 	g.started <- struct{}{}
 	<-g.release

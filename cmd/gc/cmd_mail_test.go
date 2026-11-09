@@ -5764,7 +5764,7 @@ func mailInjectOnce(t *testing.T, mp mail.Provider) string {
 func TestMailCheckInjectOncePerChange(t *testing.T) {
 	injectSessionEnv(t, "session-one")
 	store := beads.NewMemStore()
-	mp := beadmail.New(store)
+	mp := newTestBeadMail(store)
 	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
 
 	first := mailInjectOnce(t, mp)
@@ -5794,7 +5794,7 @@ func TestMailCheckInjectOncePerChange(t *testing.T) {
 
 func TestMailCheckInjectNewSessionGetsFullBlock(t *testing.T) {
 	injectSessionEnv(t, "session-one")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
 	mailInjectOnce(t, mp)
 
@@ -5807,7 +5807,7 @@ func TestMailCheckInjectNewSessionGetsFullBlock(t *testing.T) {
 func TestMailCheckInjectFallsBackToAliasKey(t *testing.T) {
 	injectSessionEnv(t, "")
 	t.Setenv("GC_ALIAS", "worker")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
 
 	mailInjectOnce(t, mp)
@@ -5818,7 +5818,7 @@ func TestMailCheckInjectFallsBackToAliasKey(t *testing.T) {
 
 func TestMailCheckInjectReadMailThenNewMail(t *testing.T) {
 	injectSessionEnv(t, "session-one")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	first, err := mp.Send("mayor", "worker", "", "Fix the auth bug")
 	if err != nil {
 		t.Fatalf("Send: %v", err)
@@ -5840,7 +5840,7 @@ func TestMailCheckInjectReadMailThenNewMail(t *testing.T) {
 
 func TestMailCheckInjectAlwaysRepeatsByteForByte(t *testing.T) {
 	injectSessionEnv(t, "session-one")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
 
 	t.Setenv("GC_INJECT_ALWAYS", "1")
@@ -5858,7 +5858,7 @@ func TestMailCheckInjectAlwaysRepeatsByteForByte(t *testing.T) {
 
 func TestMailCheckInjectWithoutSessionIdentityAlwaysEmits(t *testing.T) {
 	injectSessionEnv(t, "")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
 
 	first := mailInjectOnce(t, mp)
@@ -5869,7 +5869,7 @@ func TestMailCheckInjectWithoutSessionIdentityAlwaysEmits(t *testing.T) {
 
 func TestMailCheckInjectFailedWriteIsNotRemembered(t *testing.T) {
 	injectSessionEnv(t, "session-one")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
 
 	var stderr bytes.Buffer
@@ -5883,7 +5883,7 @@ func TestMailCheckInjectFailedWriteIsNotRemembered(t *testing.T) {
 
 func TestMailCheckInjectContextResetShowsFullBlock(t *testing.T) {
 	injectSessionEnv(t, "session-one")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	mp.Send("mayor", "worker", "", "Fix the auth bug") //nolint:errcheck
 	prompt := func(providerSession string) string {
 		withHookStdin(t, []byte(`{"session_id":"`+providerSession+`"}`))
@@ -5906,7 +5906,7 @@ func TestMailCheckInjectContextResetShowsFullBlock(t *testing.T) {
 // the memory on the local path as it does on the API path.
 func TestMailCheckInjectEmptyInboxClearsMemory(t *testing.T) {
 	injectSessionEnv(t, "session-one")
-	mp := beadmail.New(beads.NewMemStore())
+	mp := newTestBeadMail(beads.NewMemStore())
 	msg, err := mp.Send("mayor", "worker", "", "Fix the auth bug")
 	if err != nil {
 		t.Fatalf("Send: %v", err)

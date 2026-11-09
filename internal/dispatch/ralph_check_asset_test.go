@@ -625,7 +625,7 @@ func TestRunRalphCheckAcceptsCrossPackCheckAfterRepin(t *testing.T) {
 	}
 	subject := beads.Bead{ID: "run-cross-pack", Type: "task"}
 
-	result, err := runRalphCheck(store, newControl("check-cross-pack", formula.ContentHash(checkBytes)), subject, 1, opts)
+	result, err := runRalphCheck(beadstest.Graph(store), newControl("check-cross-pack", formula.ContentHash(checkBytes)), subject, 1, opts)
 	if err != nil {
 		t.Fatalf("cross-pack check with matching cooked hash should stay trusted: %v", err)
 	}
@@ -636,10 +636,10 @@ func TestRunRalphCheckAcceptsCrossPackCheckAfterRepin(t *testing.T) {
 	// Negative cases: the same path is rejected when no hash was cooked, when
 	// the hash no longer matches the bytes on disk, or when the script lives
 	// outside the repo cache.
-	if _, err := runRalphCheck(store, newControl("check-no-hash", ""), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+	if _, err := runRalphCheck(beadstest.Graph(store), newControl("check-no-hash", ""), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
 		t.Fatalf("check without gc.check_hash: err = %v, want escapes trusted roots", err)
 	}
-	if _, err := runRalphCheck(store, newControl("check-bad-hash", strings.Repeat("0", 64)), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+	if _, err := runRalphCheck(beadstest.Graph(store), newControl("check-bad-hash", strings.Repeat("0", 64)), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
 		t.Fatalf("check with mismatched gc.check_hash: err = %v, want escapes trusted roots", err)
 	}
 	outside := filepath.Join(tmp, "elsewhere", "approved.sh")
@@ -651,13 +651,13 @@ func TestRunRalphCheckAcceptsCrossPackCheckAfterRepin(t *testing.T) {
 	}
 	escaping := newControl("check-outside-cache", formula.ContentHash(checkBytes))
 	escaping.Metadata[beadmeta.CheckPathMetadataKey] = outside
-	if _, err := runRalphCheck(store, escaping, subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+	if _, err := runRalphCheck(beadstest.Graph(store), escaping, subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
 		t.Fatalf("hashed check outside repo cache: err = %v, want escapes trusted roots", err)
 	}
 	if err := os.WriteFile(checkPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
 		t.Fatalf("rewrite check: %v", err)
 	}
-	if _, err := runRalphCheck(store, newControl("check-edited", formula.ContentHash(checkBytes)), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
+	if _, err := runRalphCheck(beadstest.Graph(store), newControl("check-edited", formula.ContentHash(checkBytes)), subject, 1, opts); err == nil || !strings.Contains(err.Error(), "escapes trusted roots") {
 		t.Fatalf("edited check: err = %v, want escapes trusted roots", err)
 	}
 }
@@ -698,7 +698,7 @@ timeout = "30s"
 		t.Fatalf("write formula: %v", err)
 	}
 	store := beads.NewMemStore()
-	if _, err := molecule.Cook(context.Background(), store, "stamp", []string{formulas}, molecule.Options{}); err != nil {
+	if _, err := molecule.Cook(context.Background(), beadstest.GraphMolecule(store), "stamp", []string{formulas}, molecule.Options{}); err != nil {
 		t.Fatalf("Cook: %v", err)
 	}
 	open, err := store.ListOpen()
