@@ -1053,7 +1053,7 @@ func TestExtmsgNotifyUnderLaneProposesANotice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const golden = "<system-reminder>\nYou have a deferred reminder that was queued until a safe boundary:\n\n- [extmsg] new message in #ops\n\nHandle them after this turn.\n</system-reminder>\n"
+	const golden = "<system-reminder>\nYou have a deferred reminder that was queued until a safe boundary:\n\n- [extmsg] new message in #ops\n\nHandle these reminders now, before responding to the user.\n</system-reminder>\n"
 	if text != golden {
 		t.Fatalf("delivered text = %q, want %q", text, golden)
 	}

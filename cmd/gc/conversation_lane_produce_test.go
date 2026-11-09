@@ -83,7 +83,7 @@ func assertLaneNotice(t *testing.T, op opjournal.Op, principal string, wake opjo
 
 // reminderGolden is the delivered text of one notice labeled label.
 func reminderGolden(label, text string) string {
-	return "<system-reminder>\nYou have a deferred reminder that was queued until a safe boundary:\n\n- [" + label + "] " + text + "\n\nHandle them after this turn.\n</system-reminder>\n"
+	return "<system-reminder>\nYou have a deferred reminder that was queued until a safe boundary:\n\n- [" + label + "] " + text + "\n\nHandle these reminders now, before responding to the user.\n</system-reminder>\n"
 }
 
 func TestMailNotifyUnderLaneProposesANotice(t *testing.T) {

@@ -169,7 +169,7 @@ var reviewedResidueCallers = map[string]int{
 	"handler_status.go Server.statusWorkCounts CityBeadStore":         1,
 	"handler_status.go statusListStoreWithTimeout ScopedStoreLike":    1,
 	"handler_status.go statusReadyStoreWithTimeout ScopedStoreLike":   1,
-	"huma_handlers_beads.go Server.humaHandleBeadList BeadStores":     1,
+	"huma_handlers_beads.go Server.beadListUncached BeadStores":       1,
 	"huma_handlers_beads.go Server.humaHandleBeadReady BeadStores":    1,
 	"huma_handlers_beads.go Server.humaHandleBeadReady CityBeadStore": 1,
 	"huma_handlers_orders.go orderStoreInfosForState BeadStore":       1,
