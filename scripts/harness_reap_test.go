@@ -190,9 +190,11 @@ func waitForPIDFile(t *testing.T, path string) int {
 }
 
 // processGone reports whether pid has left the process table, polling until
-// within elapses. A zombie awaiting init's reap still answers to signal 0, so
-// this tolerates a short settle window rather than sampling once.
-func processGone(pid int, within time.Duration) bool {
+// the settle window elapses. A zombie awaiting init's reap still answers to
+// signal 0, so this tolerates a short settle window rather than sampling
+// once.
+func processGone(pid int) bool {
+	const within = 20 * time.Second
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
 		if err := syscall.Kill(pid, 0); err != nil {
@@ -235,7 +237,7 @@ exec sleep %d
 		t.Fatalf("signal runner: %v", err)
 	}
 
-	if !processGone(descendant, 20*time.Second) {
+	if !processGone(descendant) {
 		t.Fatalf("descendant pid %d survived the runner's termination: the shard runner orphaned its test process tree", descendant)
 	}
 }
@@ -282,7 +284,7 @@ func TestGoTestShardWatchdogKillsARunThatDefeatsGoTimeout(t *testing.T) {
 	if out := fixture.output(); !strings.Contains(out, "watchdog") {
 		t.Fatalf("runner gave no watchdog diagnostic; output:\n%s", out)
 	}
-	if !processGone(wedged, 20*time.Second) {
+	if !processGone(wedged) {
 		t.Fatalf("wedged run pid %d survived the watchdog: it must escalate past ignored signals", wedged)
 	}
 }

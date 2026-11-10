@@ -125,7 +125,7 @@ exec sleep %d
 		t.Fatal("a survivor of the bound kill still holds the caller's stdout 20s later")
 	}
 
-	if !processGone(grandchild, 20*time.Second) {
+	if !processGone(grandchild) {
 		t.Fatalf("grandchild pid %d survived the bound kill: the wrapper must leave no survivor", grandchild)
 	}
 }
@@ -170,11 +170,146 @@ func TestBoundedRunPassesThroughProductStatus(t *testing.T) {
 	}
 }
 
+// TestBoundedRunPerBinaryLetsChurningBinariesOutliveTheBudget is the gs-jfy
+// fix-round regression: `go test -timeout` bounds each test binary, not the
+// whole multi-package invocation, so a run whose total exceeds timeout+grace
+// while no single binary does is healthy and must NOT be killed. The product
+// churns six 2s binaries past an 8s per-binary budget (~12s total); the
+// wall-clock bound a33b43357 put on unit-core kills it at 8s instead.
+func TestBoundedRunPerBinaryLetsChurningBinariesOutliveTheBudget(t *testing.T) {
+	root := repoRoot(t)
+	boundedRun := filepath.Join(root, "scripts", "bounded-run")
+	if _, err := os.Stat(boundedRun); err != nil {
+		t.Fatalf("bounded wrapper is missing: %v", err)
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "runner.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("create runner log: %v", err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+
+	// Each child argv[0] ends in .test, the shape the per-binary watchdog
+	// matches; a subshell per child keeps argv[0] spoofing (exec -a) from
+	// replacing the loop itself.
+	product := fmt.Sprintf(`for i in 1 2 3 4 5 6; do ( exec -a %s sleep 2 ); done`,
+		shellQuote(filepath.Join(dir, "pkg.test")))
+	cmd := harnessBash(fmt.Sprintf(`exec %s 8s churn --per-binary --quit-grace 1 -- bash -c %s`,
+		shellQuote(boundedRun), shellQuote(product)))
+	cmd.Dir = root
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	start := time.Now()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start bounded-run: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+	if err := waitWithin(t, cmd, 120*time.Second); err != nil {
+		t.Fatalf("bounded-run killed a healthy churning run: %v\n%s", err, readLogFile(t, logPath))
+	}
+	elapsed := time.Since(start)
+	// A run that finished before the budget would prove nothing: the whole
+	// point is the total outlived the per-binary budget.
+	if elapsed <= 8*time.Second {
+		t.Fatalf("churning run finished in %s, before its 8s budget; the fixture must outlive the budget to prove per-binary scoping", elapsed)
+	}
+	if out := readLogFile(t, logPath); strings.Contains(out, "exceeded its") {
+		t.Fatalf("per-binary watchdog fired on a run whose binaries stayed under budget:\n%s", out)
+	}
+}
+
+// TestBoundedRunPerBinaryKillsAnAgedOutTestBinary pins the other half of the
+// gs-jfy contract: a test binary that itself outlives timeout+grace IS the
+// wedge the bound exists for, so the watchdog must kill the group, name the
+// culprit binary and the per-binary budget, and print the still-running list
+// with the rerun hint — the same diagnostics the wall-clock kill gives.
+func TestBoundedRunPerBinaryKillsAnAgedOutTestBinary(t *testing.T) {
+	root := repoRoot(t)
+	boundedRun := filepath.Join(root, "scripts", "bounded-run")
+	if _, err := os.Stat(boundedRun); err != nil {
+		t.Fatalf("bounded wrapper is missing: %v", err)
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "runner.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("create runner log: %v", err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+	pidFile := filepath.Join(dir, "wedged.pid")
+
+	// Ignored dispositions survive exec, so the spoofed .test binary below
+	// drops the watchdog's SIGQUIT the way a wedged runtime does; only the
+	// SIGKILL escalation ends it.
+	product := fmt.Sprintf(`trap '' TERM INT QUIT HUP
+echo $$ > %s
+exec -a %s sleep %d
+`, shellQuote(pidFile), shellQuote(filepath.Join(dir, "wedged.test")), fixtureLifetimeSeconds)
+	cmd := harnessBash(fmt.Sprintf(`exec %s 5s wedge --per-binary --quit-grace 2 --rerun-hint rerun-hint-marker -- bash -c %s`,
+		shellQuote(boundedRun), shellQuote(product)))
+	cmd.Dir = root
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	start := time.Now()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start bounded-run: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+	wedged := waitForPIDFile(t, pidFile)
+
+	waitErr := waitWithin(t, cmd, 90*time.Second)
+	elapsed := time.Since(start)
+	if waitErr == nil {
+		t.Fatalf("bounded-run exited 0; an aged-out test binary must be killed")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(waitErr, &exitErr) {
+		t.Fatalf("wait bounded-run: %v", waitErr)
+	}
+	// Bound 5s plus 2s quit grace: generous ceiling, but far short of the
+	// 300s fixture lifetime a missed kill would run to.
+	if elapsed > 45*time.Second {
+		t.Fatalf("bounded-run took %s to kill an aged-out test binary with a 5s budget and 2s grace", elapsed)
+	}
+
+	out := readLogFile(t, logPath)
+	for _, want := range []string{
+		"exceeded its 5s per-binary budget",
+		"wedged.test",
+		"still running:",
+		"rerun: rerun-hint-marker",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("bounded-run output lacks %q:\n%s", want, out)
+		}
+	}
+	if runtime.GOOS == "linux" && !strings.Contains(out, fmt.Sprintf("pid %d", wedged)) {
+		t.Errorf("bounded-run output does not name the aged-out binary pid %d:\n%s", wedged, out)
+	}
+	if !processGone(wedged) {
+		t.Fatalf("wedged binary pid %d survived the per-binary kill: the wrapper must leave no survivor", wedged)
+	}
+}
+
 // TestUnitCoreJobRunsUnderBoundedRun pins the ci-gke0 fix 2 wiring: the
 // unit-core sweep is a bare `go test -timeout` like each cmd/gc shard's
 // product run, so it runs under the same external supervision — the wrapper
 // budget derives from the fan-out's one shared go timeout plus the same
-// watchdog grace the shards use, never a second number.
+// watchdog grace the shards use, never a second number. The sweep covers many
+// packages in one invocation, so unlike the single-package shards it runs
+// under --per-binary: a wall-clock bound fires on a healthy run whose total
+// legitimately exceeds timeout+grace (gs-jfy fix round).
 func TestUnitCoreJobRunsUnderBoundedRun(t *testing.T) {
 	script := localParallelScript(t)
 	// Unresolved body: resolveShellVars would substitute the deadline the
@@ -184,6 +319,7 @@ func TestUnitCoreJobRunsUnderBoundedRun(t *testing.T) {
 		`add_job "unit-core"`,
 		"scripts/bounded-run",
 		"${unit_core_deadline}s",
+		"--per-binary",
 		"--rerun-hint",
 	} {
 		if !strings.Contains(body, want) {
@@ -222,4 +358,15 @@ func TestPrePushSuiteRunsUnderBoundedRun(t *testing.T) {
 			t.Fatalf("run_suite does not enforce a wall-clock bound over the push-time suite (lacks %q):\n%s", want, runSuite)
 		}
 	}
+}
+
+// readLogFile returns the runner log at path. Callers read only after the
+// runner has exited, so the file is complete.
+func readLogFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read runner log: %v", err)
+	}
+	return string(data)
 }

@@ -70,8 +70,12 @@ tests passed (`TestPrePushSuiteFailsClosedOnSIGPIPE`).
 (`GC_PREPUSH_SUITE_TIMEOUT`, default 90m): a pre-push run can never outlive
 it. Every push-time `go test` additionally runs under its own bound a little
 above its `-timeout` — the cmd/gc shards in `scripts/test-go-test-shard`,
-the unit-core sweep through `scripts/bounded-run` — because go's in-process
-timeout cannot be relied on to end a wedged run (ci-gke0).
+the unit-core sweep through `scripts/bounded-run --per-binary` — because
+go's in-process timeout cannot be relied on to end a wedged run (ci-gke0).
+`-timeout` bounds each test binary, not a whole multi-package invocation, so
+the sweep's bound is per binary: it fires only once a `*.test` member
+outlives timeout+grace, never on a healthy run whose total legitimately
+exceeds it (gs-jfy fix round).
 `scripts/bounded-run` is the one portable supervisor (process-group
 TERM→KILL, names the bound, the still-running processes, and the rerun);
 a new push-time `go test` path uses it rather than minting another timeout.

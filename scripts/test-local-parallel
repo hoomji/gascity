@@ -118,13 +118,18 @@ if ! [[ "$go_test_timeout" =~ ^[0-9]+[smh]$ ]]; then
 fi
 
 # External watchdog budget for the unit-core `go test` (ci-gke0 fix 2): the
-# same supervision the cmd/gc shards get in scripts/test-go-test-shard — the
-# shared go timeout plus the same watchdog grace, a little above the go
-# timeout, enforced by scripts/bounded-run as a process-group kill. Without
-# it a unit-core run that defeats its own -timeout wedges the whole push, as
-# one did for 27+ minutes past -timeout 20m on 2026-11-06. An unparseable
-# budget disarms the bound rather than firing at a guessed one, exactly like
-# the shards.
+# shared go timeout plus the same watchdog grace the cmd/gc shards use, a
+# little above the go timeout, enforced by scripts/bounded-run as a
+# process-group kill. Unlike the single-package shards, the sweep runs under
+# --per-binary: -timeout bounds each test binary, not the whole invocation,
+# and a wall-clock bound fires on a healthy 35-45 minute run (gs-jfy fix
+# round: the 1800s bound killed unit-core with dispatch.test 52s old). The
+# bound fires only once a *.test member outlives timeout+grace — the wedge
+# that defeated -timeout on 2026-11-06 — while the push-suite whole-run bound
+# backstops a wedged `go` parent with no test children. Without any bound a
+# unit-core run that defeats its own -timeout wedges the whole push. An
+# unparseable budget disarms the bound rather than firing at a guessed one,
+# exactly like the shards.
 unit_core_deadline=""
 if [[ "${GO_TEST_WATCHDOG_GRACE:-10m}" != "off" ]]; then
   if unit_core_timeout_seconds="$(gc_harness_duration_seconds "$go_test_timeout")" &&
@@ -161,7 +166,7 @@ add_fsys_compile_job() {
 add_unit_core_job() {
   local core_test="GC_FAST_UNIT=1 go test -count=1 -timeout ${go_test_timeout} \$(go list ./... | grep -v '^github.com/gastownhall/gascity/cmd/gc$')"
   if [[ -n "${unit_core_deadline:-}" ]]; then
-    core_test="./scripts/bounded-run ${unit_core_deadline}s unit-core --rerun-hint 'make test-fast-parallel' -- env ${core_test}"
+    core_test="./scripts/bounded-run ${unit_core_deadline}s unit-core --per-binary --rerun-hint 'make test-fast-parallel' -- env ${core_test}"
   fi
   add_job "unit-core" "$core_test"
 }

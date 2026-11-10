@@ -214,6 +214,42 @@ gc_harness_list_group() {
   fi
 }
 
+# gc_harness_group_binaries_over_budget prints one line per member of process
+# group pgid whose argv[0] ends in ".test" and whose elapsed time is at least
+# budget seconds: "<pid> <age-seconds> <argv0>". It is the per-binary
+# watchdog's trigger (gs-jfy fix round): `go test -timeout` bounds each test
+# binary, not the whole multi-package invocation, so only an aged-out binary
+# proves a wedge — the parent `go` process legitimately outlives the budget
+# on a healthy 35-45 minute unit-core run. Best-effort like
+# gc_harness_list_group: when ps cannot list the group it prints nothing and
+# the watchdog keeps polling rather than firing blind.
+gc_harness_group_binaries_over_budget() {
+  local pgid="${1:-}" budget="${2:-0}"
+  [[ -n "$pgid" ]] || return 0
+  local group_key="pgid"
+  if ! ps -o "${group_key}=" -p $$ >/dev/null 2>&1; then
+    group_key="pgrp"
+  fi
+  local listing=""
+  if ! listing="$(ps -e -o "pid=,${group_key}=,etime=,args=" 2>/dev/null)"; then
+    return 0
+  fi
+  local pid grp etime rest argv0 age
+  while read -r pid grp etime rest; do
+    [[ -n "${pid:-}" ]] || continue
+    [[ "$grp" == "$pgid" ]] || continue
+    argv0="${rest%% *}"
+    case "$argv0" in
+      *.test) ;;
+      *) continue ;;
+    esac
+    age="$(gc_harness_etime_seconds "$etime")" || continue
+    if (( age >= budget )); then
+      printf '%s %s %s\n' "$pid" "$age" "$argv0"
+    fi
+  done <<< "$listing"
+}
+
 # gc_harness_watchdog kills process group pgid once fire_after seconds have
 # passed. SIGQUIT goes first on purpose: the Go runtime answers it by dumping
 # every goroutine's stack, which names the wedged test in the shard log. That
@@ -236,12 +272,54 @@ gc_harness_watchdog() {
   gc_harness_signal_group "$pgid" KILL
 }
 
+# gc_harness_watchdog_per_binary polls process group pgid and kills it only
+# once a *.test member has itself outlived fire_after seconds. Same kill
+# sequence and diagnostics as gc_harness_watchdog, but the deadline applies
+# per test binary rather than per run: a multi-package `go test` keeps every
+# binary under its own -timeout while the run as a whole legitimately exceeds
+# timeout+grace, so a wall-clock bound fires on healthy runs (gs-jfy fix
+# round: the 1800s bound killed unit-core with dispatch.test 52s old). The
+# poll interval scales with the budget (a tenth, 1-30s) so short test budgets
+# still detect promptly. A wedged `go` parent with no test children never
+# trips this; the push-suite whole-run bound backstops that shape instead.
+gc_harness_watchdog_per_binary() {
+  local pgid="${1}" fire_after="${2}" quit_grace="${3}" label="${4}"
+  local poll=$(( fire_after / 10 ))
+  (( poll >= 1 )) || poll=1
+  (( poll <= 30 )) || poll=30
+  local aged culprit_pid culprit_age culprit_argv0
+  while true; do
+    sleep "$poll"
+    gc_harness_group_alive "$pgid" || return 0
+    aged="$(gc_harness_group_binaries_over_budget "$pgid" "$fire_after")"
+    [[ -n "$aged" ]] || continue
+    aged="${aged%%$'\n'*}"
+    culprit_pid="${aged%% *}"
+    culprit_age="${aged#* }"
+    culprit_age="${culprit_age%% *}"
+    culprit_argv0="${aged#* * }"
+    printf 'harness watchdog: %s test binary pid %s (%s, age %ss) exceeded its %ss per-binary budget and defeated go'\''s own -timeout; dumping goroutine stacks (SIGQUIT) then killing the process group\n' \
+      "$label" "$culprit_pid" "$culprit_argv0" "$culprit_age" "$fire_after" >&2
+    gc_harness_list_group "$pgid"
+    if [[ -n "${GC_HARNESS_RERUN_HINT:-}" ]]; then
+      printf 'harness watchdog: rerun: %s\n' "$GC_HARNESS_RERUN_HINT" >&2
+    fi
+    gc_harness_signal_group "$pgid" QUIT
+    sleep "$quit_grace"
+    gc_harness_signal_group "$pgid" KILL
+    return 0
+  done
+}
+
 # gc_harness_run_supervised runs a command in its own process group under a
 # watchdog and returns the command's exit status.
 #
 #   gc_harness_run_supervised <label> <deadline-seconds|""> <quit-grace> -- cmd...
 #
-# An empty deadline runs without a watchdog. The caller is expected to trap
+# An empty deadline runs without a watchdog. GC_HARNESS_WATCHDOG_MODE selects
+# the watchdog: "wall-clock" (the default) fires once the run outlives the
+# deadline, "per-binary" fires only once a *.test member of the group does
+# (scripts/bounded-run --per-binary sets it). The caller is expected to trap
 # INT/TERM/EXIT and call gc_harness_terminate_supervised so a signal to the
 # runner tears down the run and its watchdog rather than orphaning them. That
 # signal trap must then exit or re-raise the signal, as both runners' traps
@@ -284,7 +362,11 @@ gc_harness_run_supervised() {
   if [[ -n "$deadline" ]]; then
     set -m
     gc_harness_launch_begin watchdog
-    gc_harness_watchdog "$job_pgid" "$deadline" "$quit_grace" "$label" &
+    if [[ "${GC_HARNESS_WATCHDOG_MODE:-wall-clock}" == "per-binary" ]]; then
+      gc_harness_watchdog_per_binary "$job_pgid" "$deadline" "$quit_grace" "$label" &
+    else
+      gc_harness_watchdog "$job_pgid" "$deadline" "$quit_grace" "$label" &
+    fi
     gc_harness_launch_publish
     watchdog_pgid="$gc_harness_watchdog_pgid"
     if (( monitor_was_on == 0 )); then
