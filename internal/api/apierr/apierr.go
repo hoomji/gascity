@@ -25,7 +25,11 @@ const URNPrefix = "urn:gascity:error:"
 // codePattern constrains a machine code to lowercase kebab-case so URNs stay
 // stable, greppable, and safe as a wire identifier. A subsystem prefix
 // (e.g. "sling-") is encouraged where the code is specific to one surface.
-var codePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+// Underscores are allowed ONLY for refusal codes a wire contract names in
+// snake_case (the Hoppy T3-borrow spine's unsupported_runtime,
+// unsafe_repo_config, not_found, forbidden): the consumer branches on the
+// exact code, so those register verbatim.
+var codePattern = regexp.MustCompile(`^[a-z][a-z0-9]*([-_][a-z0-9]+)*$`)
 
 // ProblemType is a registered error kind: a stable machine code, the default
 // HTTP status it maps to, a short static Title (RFC 9457), and an optional Doc
@@ -53,7 +57,7 @@ var (
 // no-op, which keeps catalog reloads and test re-imports safe.
 func Register(pt ProblemType) ProblemType {
 	if !codePattern.MatchString(pt.Code) {
-		panic(fmt.Sprintf("apierr: invalid code %q (want lowercase kebab-case)", pt.Code))
+		panic(fmt.Sprintf("apierr: invalid code %q (want lowercase kebab-case, underscores for spine-mandated codes only)", pt.Code))
 	}
 	if pt.Status < 400 || pt.Status > 599 {
 		panic(fmt.Sprintf("apierr: code %q has non-4xx/5xx status %d", pt.Code, pt.Status))

@@ -931,6 +931,14 @@ func finalizeInStore(opts SlingOpts, deps SlingDeps, beadStore beads.MoleculeTar
 		}
 	}
 
+	// Sling work-dir stamp. A bead routed to a lane whose agent runs in the
+	// rig checkout names that checkout now, rather than waiting for a claim
+	// that may diverge first (Entry 3's lanes never claimed). Best-effort and
+	// silent: failures trace, never warn (see stampSlingWorkDir).
+	if writer != nil && strings.TrimSpace(beadID) != "" {
+		stampSlingWorkDir(deps, beadStore, writer, a, beadID)
+	}
+
 	// Auto-convoy.
 	if !opts.NoConvoy && !opts.IsFormula && deps.Store != (beads.WorkStore{}) {
 		createAutoConvoy := true

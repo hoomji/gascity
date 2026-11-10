@@ -700,3 +700,21 @@ func TestPoolRuntimeSessionNameBoundsPoolSuffix(t *testing.T) {
 		t.Fatalf("poolRuntimeSessionName is not deterministic: %q vs %q", got, again)
 	}
 }
+
+// TestCreatePoolSessionBeadStampsHost pins the record half of the session host
+// field on the pool create path: the row names the creating host.
+func TestCreatePoolSessionBeadStampsHost(t *testing.T) {
+	want := session.LocalSessionHost()
+	if want == "" {
+		t.Skip("no hostname in this environment; nothing to stamp")
+	}
+	store := beads.NewMemStore()
+	now := time.Date(2026, 5, 1, 9, 15, 0, 0, time.UTC)
+	info, err := createPoolSessionBead(sessionFrontDoor(store), "gascity/claude", now, poolSessionCreateIdentity{})
+	if err != nil {
+		t.Fatalf("createPoolSessionBead: %v", err)
+	}
+	if info.Host != want {
+		t.Errorf("Info.Host = %q, want %q", info.Host, want)
+	}
+}

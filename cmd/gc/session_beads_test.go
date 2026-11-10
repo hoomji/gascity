@@ -10968,3 +10968,17 @@ func findClosedNamedSessionBeadForSessionName(store beads.Store, identity, sessi
 	bead, ok, _ := session.FindClosedNamedSessionBeadForSessionName(beadstest.Sessions(store), identity, sessionName)
 	return bead, ok
 }
+
+// TestSyncCreateMetadataStampsHost pins the record half of the session host
+// field on the legacy sync create path: the assembled metadata names the
+// creating host.
+func TestSyncCreateMetadataStampsHost(t *testing.T) {
+	want := session.LocalSessionHost()
+	if want == "" {
+		t.Skip("no hostname in this environment; nothing to stamp")
+	}
+	got := syncCreateMetadata(TemplateParams{TemplateName: "worker", InstanceName: "worker"}, "sn", "worker", "live-hash", "active", "tok", 0, time.Now().UTC())
+	if got[session.HostMetadataKey] != want {
+		t.Errorf("syncCreateMetadata host = %q, want %q", got[session.HostMetadataKey], want)
+	}
+}

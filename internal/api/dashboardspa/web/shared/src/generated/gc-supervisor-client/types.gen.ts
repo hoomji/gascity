@@ -1755,6 +1755,67 @@ export type FanoutPolicy = {
     MaxTotalPeerDeliveries: number;
 };
 
+export type FilesListEntry = {
+    /**
+     * Symlink target for symlink entries.
+     */
+    link_target?: string;
+    /**
+     * Entry name (not a path).
+     */
+    name: string;
+    /**
+     * Stat size in bytes; meaningful for files, 0 for directories.
+     */
+    size: number;
+    /**
+     * Entry type: file, dir, symlink, or other.
+     */
+    type: string;
+};
+
+export type FilesListResponse = {
+    /**
+     * Entries sorted by name.
+     */
+    entries: Array<FilesListEntry> | null;
+    /**
+     * Cleaned folder-relative directory listed.
+     */
+    path: string;
+    /**
+     * True when the listing hit the entry cap or skipped an unreadable entry, and is partial.
+     */
+    truncated?: boolean;
+};
+
+export type FilesReadResponse = {
+    /**
+     * File content: raw text when encoding is utf8, base64 when binary.
+     */
+    content: string;
+    /**
+     * Content encoding: utf8 or base64.
+     */
+    encoding: string;
+    /**
+     * Symlink target when the path read through a final-component symlink.
+     */
+    link_target?: string;
+    /**
+     * Cleaned folder-relative path read.
+     */
+    path: string;
+    /**
+     * Full file size in bytes (past any truncation).
+     */
+    size: number;
+    /**
+     * True when the content hit max_bytes and was cut.
+     */
+    truncated?: boolean;
+};
+
 export type FormulaDetailResponse = {
     deps: Array<FormulaPreviewEdgeResponse> | null;
     description: string;
@@ -1892,12 +1953,146 @@ export type FormulaVarDefResponse = {
     type: string;
 };
 
+export type GitBranchResponse = {
+    /**
+     * Current branch name; empty when detached.
+     */
+    branch: string;
+    /**
+     * True when HEAD is detached.
+     */
+    detached: boolean;
+    /**
+     * HEAD commit sha; empty when the repo has no commits yet.
+     */
+    sha?: string;
+};
+
+export type GitDiffBlob = {
+    /**
+     * File content: raw text when encoding is utf8, base64 when binary.
+     */
+    content: string;
+    /**
+     * Content encoding: utf8 or base64.
+     */
+    encoding: string;
+    /**
+     * True when the content hit max_bytes and was cut.
+     */
+    truncated?: boolean;
+};
+
+export type GitDiffFile = {
+    /**
+     * Head-side content; absent when the file is deleted on this side.
+     */
+    after?: GitDiffBlob;
+    /**
+     * Base-side content; absent when the file is new on this side.
+     */
+    before?: GitDiffBlob;
+    /**
+     * Unified patch section for this file; empty for untracked files and headless repos.
+     */
+    patch?: string;
+    /**
+     * Repo-relative path.
+     */
+    path: string;
+    /**
+     * Change status: added, modified, deleted, renamed, or untracked.
+     */
+    status: string;
+    /**
+     * True when the patch or either blob hit max_bytes, or the stream bound cut the listing.
+     */
+    truncated?: boolean;
+};
+
+export type GitDiffResponse = {
+    /**
+     * Resolved base ref (base mode).
+     */
+    base_sha?: string;
+    /**
+     * Resolved commit (commit mode).
+     */
+    commit_sha?: string;
+    /**
+     * One entry per changed path.
+     */
+    files: Array<GitDiffFile> | null;
+    /**
+     * Resolved HEAD (uncommitted and base modes).
+     */
+    head_sha?: string;
+    /**
+     * Merge-base actually diffed (base mode); equals base_sha when the histories share no ancestor.
+     */
+    merge_base_sha?: string;
+    /**
+     * Diff mode served: uncommitted, base, or commit.
+     */
+    mode: string;
+    /**
+     * True when the stream bound cut the file list and it is partial.
+     */
+    truncated?: boolean;
+};
+
 export type GitStatus = {
     ahead: number;
     behind: number;
     branch: string;
     changed_files: number;
     clean: boolean;
+};
+
+export type GitStatusEntry = {
+    /**
+     * Repo-relative path.
+     */
+    path: string;
+    /**
+     * True when the index side codes a change (staged); an unstaged change has staged false and a non-untracked state.
+     */
+    staged: boolean;
+    /**
+     * Change state: added, modified, deleted, renamed, unmerged, or untracked.
+     */
+    state: string;
+};
+
+export type GitStatusResponse = {
+    /**
+     * Commits ahead of the upstream.
+     */
+    ahead?: number;
+    /**
+     * Commits behind the upstream.
+     */
+    behind?: number;
+    /**
+     * Current branch name; empty when detached.
+     */
+    branch: string;
+    /**
+     * True when HEAD is detached.
+     */
+    detached: boolean;
+    /**
+     * One entry per changed path; renames report the new path.
+     */
+    entries: Array<GitStatusEntry> | null;
+    /**
+     * True when the listing hit the stream bound and entries is partial.
+     */
+    truncated?: boolean;
+    /**
+     * Tracking branch (e.g. origin/main); empty when none.
+     */
+    upstream?: string;
 };
 
 export type GroupCreatedEventPayload = {
@@ -4342,6 +4537,10 @@ export type SessionResponse = {
     context_window?: number;
     created_at: string;
     display_name?: string;
+    /**
+     * The machine the session's agent process runs on, as a hostname. Empty for rows created before servers stamped it; v1 cities are single-host, so absent reads as local.
+     */
+    host?: string;
     id: string;
     kind?: string;
     last_active?: string;
@@ -21662,6 +21861,303 @@ export type PostV0CityByCityNameSessionByIdWakeResponses = {
 };
 
 export type PostV0CityByCityNameSessionByIdWakeResponse = PostV0CityByCityNameSessionByIdWakeResponses[keyof PostV0CityByCityNameSessionByIdWakeResponses];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListData = {
+    body?: never;
+    path: {
+        /**
+         * City name.
+         */
+        cityName: string;
+        /**
+         * Session ID, alias, or runtime session_name.
+         */
+        id: string;
+    };
+    query?: {
+        /**
+         * Folder-relative directory to list. Omitted or empty lists the folder root.
+         */
+        path?: string;
+    };
+    url: '/v0/city/{cityName}/session/{id}/workspace/files/list';
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorModel;
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
+     * Not Found
+     */
+    404: ErrorModel;
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListError = GetV0CityByCityNameSessionByIdWorkspaceFilesListErrors[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesListErrors];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListResponses = {
+    /**
+     * OK
+     */
+    200: FilesListResponse;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse = GetV0CityByCityNameSessionByIdWorkspaceFilesListResponses[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesListResponses];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadData = {
+    body?: never;
+    path: {
+        /**
+         * City name.
+         */
+        cityName: string;
+        /**
+         * Session ID, alias, or runtime session_name.
+         */
+        id: string;
+    };
+    query: {
+        /**
+         * Folder-relative file path to read.
+         */
+        path: string;
+        /**
+         * Byte cap for the content; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).
+         */
+        max_bytes?: number;
+    };
+    url: '/v0/city/{cityName}/session/{id}/workspace/files/read';
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorModel;
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
+     * Not Found
+     */
+    404: ErrorModel;
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadError = GetV0CityByCityNameSessionByIdWorkspaceFilesReadErrors[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesReadErrors];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponses = {
+    /**
+     * OK
+     */
+    200: FilesReadResponse;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse = GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponses[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponses];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitBranchData = {
+    body?: never;
+    path: {
+        /**
+         * City name.
+         */
+        cityName: string;
+        /**
+         * Session ID, alias, or runtime session_name.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/v0/city/{cityName}/session/{id}/workspace/git/branch';
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitBranchErrors = {
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
+     * Not Found
+     */
+    404: ErrorModel;
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitBranchError = GetV0CityByCityNameSessionByIdWorkspaceGitBranchErrors[keyof GetV0CityByCityNameSessionByIdWorkspaceGitBranchErrors];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponses = {
+    /**
+     * OK
+     */
+    200: GitBranchResponse;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse = GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponses[keyof GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponses];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitDiffData = {
+    body?: never;
+    path: {
+        /**
+         * City name.
+         */
+        cityName: string;
+        /**
+         * Session ID, alias, or runtime session_name.
+         */
+        id: string;
+    };
+    query?: {
+        /**
+         * What to diff: uncommitted (worktree and index against HEAD, plus untracked), base (base's merge-base with HEAD against HEAD), or commit (one commit against its first parent). Omitted is uncommitted.
+         */
+        mode?: 'uncommitted' | 'base' | 'commit';
+        /**
+         * Base ref for mode=base; required in that mode, ignored otherwise.
+         */
+        base?: string;
+        /**
+         * Commit for mode=commit; required in that mode, ignored otherwise.
+         */
+        commit?: string;
+        /**
+         * Repo-relative path filter; repeatable, every match listed. A filter is a file or a directory (which matches everything under it). Absolute paths and .. escapes are refused.
+         */
+        path?: Array<string> | null;
+        /**
+         * Per-file byte cap for each patch section and each before/after blob; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).
+         */
+        max_bytes?: number;
+    };
+    url: '/v0/city/{cityName}/session/{id}/workspace/git/diff';
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitDiffErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorModel;
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
+     * Not Found
+     */
+    404: ErrorModel;
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitDiffError = GetV0CityByCityNameSessionByIdWorkspaceGitDiffErrors[keyof GetV0CityByCityNameSessionByIdWorkspaceGitDiffErrors];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponses = {
+    /**
+     * OK
+     */
+    200: GitDiffResponse;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse = GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponses[keyof GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponses];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitStatusData = {
+    body?: never;
+    path: {
+        /**
+         * City name.
+         */
+        cityName: string;
+        /**
+         * Session ID, alias, or runtime session_name.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/v0/city/{cityName}/session/{id}/workspace/git/status';
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitStatusErrors = {
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
+     * Not Found
+     */
+    404: ErrorModel;
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitStatusError = GetV0CityByCityNameSessionByIdWorkspaceGitStatusErrors[keyof GetV0CityByCityNameSessionByIdWorkspaceGitStatusErrors];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponses = {
+    /**
+     * OK
+     */
+    200: GitStatusResponse;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse = GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponses[keyof GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponses];
 
 export type GetV0CityByCityNameSessionsData = {
     body?: never;

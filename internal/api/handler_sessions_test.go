@@ -9087,3 +9087,15 @@ func TestHandleSessionListActiveBeadSkipsSuspendedRig(t *testing.T) {
 		t.Fatalf("session %s not listed in %+v", info.ID, resp.Items)
 	}
 }
+
+// TestSessionToResponseMapsHost pins the schema half of the session host
+// field: the record's host projects onto the wire response verbatim.
+func TestSessionToResponseMapsHost(t *testing.T) {
+	resp := sessionToResponse(session.Info{ID: "s-1", Host: "db-host-1"}, nil)
+	if resp.Host != "db-host-1" {
+		t.Errorf("sessionToResponse host = %q, want %q", resp.Host, "db-host-1")
+	}
+	if resp := sessionToResponse(session.Info{ID: "s-2"}, nil); resp.Host != "" {
+		t.Errorf("sessionToResponse host without a record host = %q, want empty", resp.Host)
+	}
+}

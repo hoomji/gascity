@@ -13,7 +13,9 @@ import (
 var _ huma.StatusError = (*ErrorModel)(nil)
 
 func TestRegister_RejectsMalformedCode(t *testing.T) {
-	for _, bad := range []string{"", "Bad", "has_underscore", "-leading", "trailing-", "double--dash", "UPPER"} {
+	// has_underscore is NOT here: underscores are the documented exception
+	// for spine-mandated snake_case codes (TestCodePatternAcceptsSpineSnakeCodes).
+	for _, bad := range []string{"", "Bad", "-leading", "trailing-", "double--dash", "UPPER", "_leading", "trailing_", "double__underscore", "mixed_-_seps"} {
 		t.Run(bad, func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
@@ -22,6 +24,19 @@ func TestRegister_RejectsMalformedCode(t *testing.T) {
 			}()
 			Register(ProblemType{Code: bad, Status: 400, Title: "x"})
 		})
+	}
+}
+
+// TestCodePatternAcceptsSpineSnakeCodes pins the kebab-case exception: refusal
+// codes the Hoppy T3-borrow spine names in snake_case pass validation, so
+// they register verbatim (the consumer branches on the exact code). The
+// catalog's own snake_case entries prove end-to-end registration: package
+// init would panic otherwise.
+func TestCodePatternAcceptsSpineSnakeCodes(t *testing.T) {
+	for _, code := range []string{"unsupported_runtime", "unsafe_repo_config", "not_found", "forbidden"} {
+		if !codePattern.MatchString(code) {
+			t.Errorf("codePattern rejects spine code %q", code)
+		}
 	}
 }
 

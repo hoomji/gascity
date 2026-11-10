@@ -166,4 +166,24 @@ var (
 	SlingCrossRig               = Register(ProblemType{Code: "sling-cross-rig", Status: http.StatusBadRequest, Title: "Sling Cross-Rig"})
 	SlingCrossStoreRoute        = Register(ProblemType{Code: "sling-cross-store-route", Status: http.StatusBadRequest, Title: "Sling Cross-Store Route"})
 	SlingSourceWorkflowConflict = Register(ProblemType{Code: "sling-source-workflow-conflict", Status: http.StatusConflict, Title: "Sling Source Workflow Conflict"})
+
+	// Supervisor workspace reads (Hoppy T3-borrow spine TB-AD-11/12). The
+	// codes are snake_case, verbatim from the spine: the consumer branches on
+	// the exact code (see the codePattern exception).
+	//
+	// UnsupportedRuntime refuses a session whose folder this supervisor
+	// cannot serve: the session runs on another runtime host, or its folder
+	// is empty, missing, or not a directory.
+	UnsupportedRuntime = Register(ProblemType{Code: "unsupported_runtime", Status: http.StatusConflict, Title: "Unsupported Runtime"})
+	// UnsafeRepoConfig refuses to run git in a repository whose local,
+	// worktree, or included config sets a key the hardened helper forbids.
+	UnsafeRepoConfig = Register(ProblemType{Code: "unsafe_repo_config", Status: http.StatusConflict, Title: "Unsafe Repository Config"})
+	// WorkspaceNotFound is a path inside the folder that names nothing: a
+	// missing file or directory, a ref that resolves to no commit, or a
+	// folder that holds no git repository.
+	WorkspaceNotFound = Register(ProblemType{Code: "not_found", Status: http.StatusNotFound, Title: "Not Found"})
+	// WorkspaceForbidden refuses a path escape (absolute, ..-climbing, or a
+	// symlink out of the folder) and a forbidden folder (/, $HOME, or an
+	// ancestor of $HOME).
+	WorkspaceForbidden = Register(ProblemType{Code: "forbidden", Status: http.StatusForbidden, Title: "Forbidden"})
 )

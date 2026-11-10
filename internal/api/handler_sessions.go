@@ -36,6 +36,7 @@ type sessionResponse struct {
 	SessionName string `json:"session_name"`
 	WorkDir     string `json:"work_dir,omitempty"`
 	WorkerDir   string `json:"worker_dir,omitempty" doc:"The agent process's canonical working directory (a per-bead worktree when it has one), which work_dir may not be."`
+	Host        string `json:"host,omitempty" doc:"The machine the session's agent process runs on, as a hostname. Empty for rows created before servers stamped it; v1 cities are single-host, so absent reads as local."`
 	CreatedAt   string `json:"created_at"`
 	LastActive  string `json:"last_active,omitempty"`
 	// LastNudgeDeliveredAt is the most recent successful nudge delivery
@@ -166,6 +167,7 @@ func sessionToResponse(info session.Info, cfg *config.City) sessionResponse {
 		SessionName: info.SessionName,
 		WorkDir:     info.WorkDir,
 		WorkerDir:   strings.TrimSpace(info.WorkerDir),
+		Host:        info.Host,
 		CreatedAt:   info.CreatedAt.Format(time.RFC3339),
 		Attached:    info.Attached,
 		Rig:         rig,

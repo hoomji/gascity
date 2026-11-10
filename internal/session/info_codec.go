@@ -45,6 +45,7 @@ var infoKeyCodec = []infoKeySpec{
 	{"agent_name", func(i *Info, v string) { i.AgentName = v }},
 	{"command", func(i *Info, v string) { i.Command = v }},
 	{"work_dir", func(i *Info, v string) { i.WorkDir = v }},
+	{HostMetadataKey, func(i *Info, v string) { i.Host = v }},
 	{"session_key", func(i *Info, v string) { i.SessionKey = v }},
 	{"resume_flag", func(i *Info, v string) { i.ResumeFlag = v }},
 	{"resume_style", func(i *Info, v string) { i.ResumeStyle = v }},

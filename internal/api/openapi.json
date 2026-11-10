@@ -3318,6 +3318,7 @@
               "urn:gascity:error:mail-not-found",
               "urn:gascity:error:method-not-allowed",
               "urn:gascity:error:not-implemented",
+              "urn:gascity:error:not_found",
               "urn:gascity:error:op-already-failed",
               "urn:gascity:error:op-journal-unavailable",
               "urn:gascity:error:op-not-found",
@@ -3343,6 +3344,8 @@
               "urn:gascity:error:sling-source-workflow-conflict",
               "urn:gascity:error:store-unavailable",
               "urn:gascity:error:transcript-cursor-invalidated",
+              "urn:gascity:error:unsafe_repo_config",
+              "urn:gascity:error:unsupported_runtime",
               "urn:gascity:error:validation-failed",
               "urn:gascity:error:wait-not-found",
               "urn:gascity:error:wake-will-not-start",
@@ -3377,6 +3380,7 @@
               "urn:gascity:error:mail-not-found",
               "urn:gascity:error:method-not-allowed",
               "urn:gascity:error:not-implemented",
+              "urn:gascity:error:not_found",
               "urn:gascity:error:op-already-failed",
               "urn:gascity:error:op-journal-unavailable",
               "urn:gascity:error:op-not-found",
@@ -3402,6 +3406,8 @@
               "urn:gascity:error:sling-source-workflow-conflict",
               "urn:gascity:error:store-unavailable",
               "urn:gascity:error:transcript-cursor-invalidated",
+              "urn:gascity:error:unsafe_repo_config",
+              "urn:gascity:error:unsupported_runtime",
               "urn:gascity:error:validation-failed",
               "urn:gascity:error:wait-not-found",
               "urn:gascity:error:wake-will-not-start",
@@ -4333,6 +4339,99 @@
         ],
         "type": "object"
       },
+      "FilesListEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "link_target": {
+            "description": "Symlink target for symlink entries.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Entry name (not a path).",
+            "type": "string"
+          },
+          "size": {
+            "description": "Stat size in bytes; meaningful for files, 0 for directories.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": {
+            "description": "Entry type: file, dir, symlink, or other.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "size"
+        ],
+        "type": "object"
+      },
+      "FilesListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "description": "Entries sorted by name.",
+            "items": {
+              "$ref": "#/components/schemas/FilesListEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Cleaned folder-relative directory listed.",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "True when the listing hit the entry cap or skipped an unreadable entry, and is partial.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "FilesReadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "File content: raw text when encoding is utf8, base64 when binary.",
+            "type": "string"
+          },
+          "encoding": {
+            "description": "Content encoding: utf8 or base64.",
+            "type": "string"
+          },
+          "link_target": {
+            "description": "Symlink target when the path read through a final-component symlink.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Cleaned folder-relative path read.",
+            "type": "string"
+          },
+          "size": {
+            "description": "Full file size in bytes (past any truncation).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "True when the content hit max_bytes and was cut.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "size",
+          "content",
+          "encoding"
+        ],
+        "type": "object"
+      },
       "FormulaDetailResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4769,6 +4868,128 @@
         ],
         "type": "object"
       },
+      "GitBranchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "branch": {
+            "description": "Current branch name; empty when detached.",
+            "type": "string"
+          },
+          "detached": {
+            "description": "True when HEAD is detached.",
+            "type": "boolean"
+          },
+          "sha": {
+            "description": "HEAD commit sha; empty when the repo has no commits yet.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch",
+          "detached"
+        ],
+        "type": "object"
+      },
+      "GitDiffBlob": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "File content: raw text when encoding is utf8, base64 when binary.",
+            "type": "string"
+          },
+          "encoding": {
+            "description": "Content encoding: utf8 or base64.",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "True when the content hit max_bytes and was cut.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content",
+          "encoding"
+        ],
+        "type": "object"
+      },
+      "GitDiffFile": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/GitDiffBlob",
+            "description": "Head-side content; absent when the file is deleted on this side."
+          },
+          "before": {
+            "$ref": "#/components/schemas/GitDiffBlob",
+            "description": "Base-side content; absent when the file is new on this side."
+          },
+          "patch": {
+            "description": "Unified patch section for this file; empty for untracked files and headless repos.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Repo-relative path.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Change status: added, modified, deleted, renamed, or untracked.",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "True when the patch or either blob hit max_bytes, or the stream bound cut the listing.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "status"
+        ],
+        "type": "object"
+      },
+      "GitDiffResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "base_sha": {
+            "description": "Resolved base ref (base mode).",
+            "type": "string"
+          },
+          "commit_sha": {
+            "description": "Resolved commit (commit mode).",
+            "type": "string"
+          },
+          "files": {
+            "description": "One entry per changed path.",
+            "items": {
+              "$ref": "#/components/schemas/GitDiffFile"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "head_sha": {
+            "description": "Resolved HEAD (uncommitted and base modes).",
+            "type": "string"
+          },
+          "merge_base_sha": {
+            "description": "Merge-base actually diffed (base mode); equals base_sha when the histories share no ancestor.",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Diff mode served: uncommitted, base, or commit.",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "True when the stream bound cut the file list and it is partial.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode",
+          "files"
+        ],
+        "type": "object"
+      },
       "GitStatus": {
         "additionalProperties": false,
         "properties": {
@@ -4797,6 +5018,76 @@
           "changed_files",
           "ahead",
           "behind"
+        ],
+        "type": "object"
+      },
+      "GitStatusEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Repo-relative path.",
+            "type": "string"
+          },
+          "staged": {
+            "description": "True when the index side codes a change (staged); an unstaged change has staged false and a non-untracked state.",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "Change state: added, modified, deleted, renamed, unmerged, or untracked.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "state",
+          "staged"
+        ],
+        "type": "object"
+      },
+      "GitStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ahead": {
+            "description": "Commits ahead of the upstream.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "behind": {
+            "description": "Commits behind the upstream.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "branch": {
+            "description": "Current branch name; empty when detached.",
+            "type": "string"
+          },
+          "detached": {
+            "description": "True when HEAD is detached.",
+            "type": "boolean"
+          },
+          "entries": {
+            "description": "One entry per changed path; renames report the new path.",
+            "items": {
+              "$ref": "#/components/schemas/GitStatusEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "True when the listing hit the stream bound and entries is partial.",
+            "type": "boolean"
+          },
+          "upstream": {
+            "description": "Tracking branch (e.g. origin/main); empty when none.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch",
+          "detached",
+          "entries"
         ],
         "type": "object"
       },
@@ -9830,6 +10121,10 @@
             "type": "string"
           },
           "display_name": {
+            "type": "string"
+          },
+          "host": {
+            "description": "The machine the session's agent process runs on, as a hostname. Empty for rows created before servers stamped it; v1 cities are single-host, so absent reads as local.",
             "type": "string"
           },
           "id": {
@@ -57161,6 +57456,932 @@
           }
         },
         "summary": "Post v0 city by city name session by ID wake"
+      }
+    },
+    "/v0/city/{cityName}/session/{id}/workspace/files/list": {
+      "get": {
+        "operationId": "get-v0-city-by-city-name-session-by-id-workspace-files-list",
+        "parameters": [
+          {
+            "description": "City name.",
+            "in": "path",
+            "name": "cityName",
+            "required": true,
+            "schema": {
+              "description": "City name.",
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session ID, alias, or runtime session_name.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Session ID, alias, or runtime session_name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Folder-relative directory to list. Omitted or empty lists the folder root.",
+            "explode": false,
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "description": "Folder-relative directory to list. Omitted or empty lists the folder root.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilesListResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-GC-Cache-Age-S": {
+                "schema": {
+                  "description": "Seconds since the server's bead cache last took in fresh data from its store: a full re-scan, or a write, event or row re-read it applied. It is the cache's age, not each row's, so it grows between re-scans and while the city is suspended. An endpoint reports it only when its body is read from the cache, and not every such endpoint does; 0 when this one does not, the store it read has no cache, or the cache has never been primed.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Cache-Refresh": {
+                "schema": {
+                  "description": "What bounds X-GC-Cache-Age-S. scheduled: the cache re-scans its store every X-GC-Cache-Refresh-Interval-S seconds. paused: the server has paused those re-scans while the city is suspended with no session running. failing: the cache's last re-scan of its store failed; it retries with backoff. rebuilding: the body is a response the server saved X-GC-Cache-Age-S seconds ago, served while it builds a fresh one. Omitted when the body was not read from a primed cache, except rebuilding: a saved /status response reports rebuilding whatever it was built from, and its X-GC-Cache-Refresh-Interval-S is then 0.",
+                  "enum": [
+                    "scheduled",
+                    "paused",
+                    "failing",
+                    "rebuilding"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-GC-Cache-Refresh-Interval-S": {
+                "schema": {
+                  "description": "Seconds between the scheduled re-scans of its store by the bead cache X-GC-Cache-Age-S describes (its current adaptive cadence). 0 when the body was not read from a primed cache.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Index": {
+                "schema": {
+                  "description": "City event sequence captured before this response's state was read. Resume or block after it to observe every change made through this server that the body does not reflect; a change another process writes directly to the city's stores is reflected once this server applies its event.",
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          }
+        },
+        "summary": "Get v0 city by city name session by ID workspace files list"
+      }
+    },
+    "/v0/city/{cityName}/session/{id}/workspace/files/read": {
+      "get": {
+        "operationId": "get-v0-city-by-city-name-session-by-id-workspace-files-read",
+        "parameters": [
+          {
+            "description": "City name.",
+            "in": "path",
+            "name": "cityName",
+            "required": true,
+            "schema": {
+              "description": "City name.",
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session ID, alias, or runtime session_name.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Session ID, alias, or runtime session_name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Folder-relative file path to read.",
+            "explode": false,
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "description": "Folder-relative file path to read.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Byte cap for the content; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).",
+            "explode": false,
+            "in": "query",
+            "name": "max_bytes",
+            "schema": {
+              "default": 524288,
+              "description": "Byte cap for the content; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).",
+              "format": "int64",
+              "maximum": 16777216,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilesReadResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-GC-Cache-Age-S": {
+                "schema": {
+                  "description": "Seconds since the server's bead cache last took in fresh data from its store: a full re-scan, or a write, event or row re-read it applied. It is the cache's age, not each row's, so it grows between re-scans and while the city is suspended. An endpoint reports it only when its body is read from the cache, and not every such endpoint does; 0 when this one does not, the store it read has no cache, or the cache has never been primed.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Cache-Refresh": {
+                "schema": {
+                  "description": "What bounds X-GC-Cache-Age-S. scheduled: the cache re-scans its store every X-GC-Cache-Refresh-Interval-S seconds. paused: the server has paused those re-scans while the city is suspended with no session running. failing: the cache's last re-scan of its store failed; it retries with backoff. rebuilding: the body is a response the server saved X-GC-Cache-Age-S seconds ago, served while it builds a fresh one. Omitted when the body was not read from a primed cache, except rebuilding: a saved /status response reports rebuilding whatever it was built from, and its X-GC-Cache-Refresh-Interval-S is then 0.",
+                  "enum": [
+                    "scheduled",
+                    "paused",
+                    "failing",
+                    "rebuilding"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-GC-Cache-Refresh-Interval-S": {
+                "schema": {
+                  "description": "Seconds between the scheduled re-scans of its store by the bead cache X-GC-Cache-Age-S describes (its current adaptive cadence). 0 when the body was not read from a primed cache.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Index": {
+                "schema": {
+                  "description": "City event sequence captured before this response's state was read. Resume or block after it to observe every change made through this server that the body does not reflect; a change another process writes directly to the city's stores is reflected once this server applies its event.",
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          }
+        },
+        "summary": "Get v0 city by city name session by ID workspace files read"
+      }
+    },
+    "/v0/city/{cityName}/session/{id}/workspace/git/branch": {
+      "get": {
+        "operationId": "get-v0-city-by-city-name-session-by-id-workspace-git-branch",
+        "parameters": [
+          {
+            "description": "City name.",
+            "in": "path",
+            "name": "cityName",
+            "required": true,
+            "schema": {
+              "description": "City name.",
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session ID, alias, or runtime session_name.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Session ID, alias, or runtime session_name.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitBranchResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-GC-Cache-Age-S": {
+                "schema": {
+                  "description": "Seconds since the server's bead cache last took in fresh data from its store: a full re-scan, or a write, event or row re-read it applied. It is the cache's age, not each row's, so it grows between re-scans and while the city is suspended. An endpoint reports it only when its body is read from the cache, and not every such endpoint does; 0 when this one does not, the store it read has no cache, or the cache has never been primed.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Cache-Refresh": {
+                "schema": {
+                  "description": "What bounds X-GC-Cache-Age-S. scheduled: the cache re-scans its store every X-GC-Cache-Refresh-Interval-S seconds. paused: the server has paused those re-scans while the city is suspended with no session running. failing: the cache's last re-scan of its store failed; it retries with backoff. rebuilding: the body is a response the server saved X-GC-Cache-Age-S seconds ago, served while it builds a fresh one. Omitted when the body was not read from a primed cache, except rebuilding: a saved /status response reports rebuilding whatever it was built from, and its X-GC-Cache-Refresh-Interval-S is then 0.",
+                  "enum": [
+                    "scheduled",
+                    "paused",
+                    "failing",
+                    "rebuilding"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-GC-Cache-Refresh-Interval-S": {
+                "schema": {
+                  "description": "Seconds between the scheduled re-scans of its store by the bead cache X-GC-Cache-Age-S describes (its current adaptive cadence). 0 when the body was not read from a primed cache.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Index": {
+                "schema": {
+                  "description": "City event sequence captured before this response's state was read. Resume or block after it to observe every change made through this server that the body does not reflect; a change another process writes directly to the city's stores is reflected once this server applies its event.",
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          }
+        },
+        "summary": "Get v0 city by city name session by ID workspace git branch"
+      }
+    },
+    "/v0/city/{cityName}/session/{id}/workspace/git/diff": {
+      "get": {
+        "operationId": "get-v0-city-by-city-name-session-by-id-workspace-git-diff",
+        "parameters": [
+          {
+            "description": "City name.",
+            "in": "path",
+            "name": "cityName",
+            "required": true,
+            "schema": {
+              "description": "City name.",
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session ID, alias, or runtime session_name.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Session ID, alias, or runtime session_name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "What to diff: uncommitted (worktree and index against HEAD, plus untracked), base (base's merge-base with HEAD against HEAD), or commit (one commit against its first parent). Omitted is uncommitted.",
+            "explode": false,
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "uncommitted",
+              "description": "What to diff: uncommitted (worktree and index against HEAD, plus untracked), base (base's merge-base with HEAD against HEAD), or commit (one commit against its first parent). Omitted is uncommitted.",
+              "enum": [
+                "uncommitted",
+                "base",
+                "commit"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Base ref for mode=base; required in that mode, ignored otherwise.",
+            "explode": false,
+            "in": "query",
+            "name": "base",
+            "schema": {
+              "description": "Base ref for mode=base; required in that mode, ignored otherwise.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Commit for mode=commit; required in that mode, ignored otherwise.",
+            "explode": false,
+            "in": "query",
+            "name": "commit",
+            "schema": {
+              "description": "Commit for mode=commit; required in that mode, ignored otherwise.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Repo-relative path filter; repeatable, every match listed. A filter is a file or a directory (which matches everything under it). Absolute paths and .. escapes are refused.",
+            "explode": true,
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "description": "Repo-relative path filter; repeatable, every match listed. A filter is a file or a directory (which matches everything under it). Absolute paths and .. escapes are refused.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Per-file byte cap for each patch section and each before/after blob; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).",
+            "explode": false,
+            "in": "query",
+            "name": "max_bytes",
+            "schema": {
+              "default": 524288,
+              "description": "Per-file byte cap for each patch section and each before/after blob; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).",
+              "format": "int64",
+              "maximum": 16777216,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitDiffResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-GC-Cache-Age-S": {
+                "schema": {
+                  "description": "Seconds since the server's bead cache last took in fresh data from its store: a full re-scan, or a write, event or row re-read it applied. It is the cache's age, not each row's, so it grows between re-scans and while the city is suspended. An endpoint reports it only when its body is read from the cache, and not every such endpoint does; 0 when this one does not, the store it read has no cache, or the cache has never been primed.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Cache-Refresh": {
+                "schema": {
+                  "description": "What bounds X-GC-Cache-Age-S. scheduled: the cache re-scans its store every X-GC-Cache-Refresh-Interval-S seconds. paused: the server has paused those re-scans while the city is suspended with no session running. failing: the cache's last re-scan of its store failed; it retries with backoff. rebuilding: the body is a response the server saved X-GC-Cache-Age-S seconds ago, served while it builds a fresh one. Omitted when the body was not read from a primed cache, except rebuilding: a saved /status response reports rebuilding whatever it was built from, and its X-GC-Cache-Refresh-Interval-S is then 0.",
+                  "enum": [
+                    "scheduled",
+                    "paused",
+                    "failing",
+                    "rebuilding"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-GC-Cache-Refresh-Interval-S": {
+                "schema": {
+                  "description": "Seconds between the scheduled re-scans of its store by the bead cache X-GC-Cache-Age-S describes (its current adaptive cadence). 0 when the body was not read from a primed cache.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Index": {
+                "schema": {
+                  "description": "City event sequence captured before this response's state was read. Resume or block after it to observe every change made through this server that the body does not reflect; a change another process writes directly to the city's stores is reflected once this server applies its event.",
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          }
+        },
+        "summary": "Get v0 city by city name session by ID workspace git diff"
+      }
+    },
+    "/v0/city/{cityName}/session/{id}/workspace/git/status": {
+      "get": {
+        "operationId": "get-v0-city-by-city-name-session-by-id-workspace-git-status",
+        "parameters": [
+          {
+            "description": "City name.",
+            "in": "path",
+            "name": "cityName",
+            "required": true,
+            "schema": {
+              "description": "City name.",
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session ID, alias, or runtime session_name.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Session ID, alias, or runtime session_name.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-GC-Cache-Age-S": {
+                "schema": {
+                  "description": "Seconds since the server's bead cache last took in fresh data from its store: a full re-scan, or a write, event or row re-read it applied. It is the cache's age, not each row's, so it grows between re-scans and while the city is suspended. An endpoint reports it only when its body is read from the cache, and not every such endpoint does; 0 when this one does not, the store it read has no cache, or the cache has never been primed.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Cache-Refresh": {
+                "schema": {
+                  "description": "What bounds X-GC-Cache-Age-S. scheduled: the cache re-scans its store every X-GC-Cache-Refresh-Interval-S seconds. paused: the server has paused those re-scans while the city is suspended with no session running. failing: the cache's last re-scan of its store failed; it retries with backoff. rebuilding: the body is a response the server saved X-GC-Cache-Age-S seconds ago, served while it builds a fresh one. Omitted when the body was not read from a primed cache, except rebuilding: a saved /status response reports rebuilding whatever it was built from, and its X-GC-Cache-Refresh-Interval-S is then 0.",
+                  "enum": [
+                    "scheduled",
+                    "paused",
+                    "failing",
+                    "rebuilding"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-GC-Cache-Refresh-Interval-S": {
+                "schema": {
+                  "description": "Seconds between the scheduled re-scans of its store by the bead cache X-GC-Cache-Age-S describes (its current adaptive cadence). 0 when the body was not read from a primed cache.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "X-GC-Index": {
+                "schema": {
+                  "description": "City event sequence captured before this response's state was read. Resume or block after it to observe every change made through this server that the body does not reflect; a change another process writes directly to the city's stores is reflected once this server applies its event.",
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
+          }
+        },
+        "summary": "Get v0 city by city name session by ID workspace git status"
       }
     },
     "/v0/city/{cityName}/sessions": {

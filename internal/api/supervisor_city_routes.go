@@ -397,6 +397,23 @@ func (sm *SupervisorMux) registerCityRoutes() {
 		describes("Reads the session's turn identity, read-only: where its turns are read from (source), how far that answer can be trusted (capabilities), and what one read saw now (observation, current, recent). "+
 			"A session whose turns cannot be identified answers 200 with source none and observation unsupported, never a 5xx; a source that cannot be read now answers 200 with observation unavailable, meaning its turns are unknown, not idle. "+
 			"An open session that no runtime is bound to runs no turn: it answers observed with no current turn, as POST /session/{id}/stop reads it. A closed or unknown session is 404. The read aims nothing at a turn: POST /session/{id}/stop interrupts the turn its turn field names, or whatever turn is current when it names none."))
+	// Supervisor workspace reads (Hoppy T3-borrow spine TB-AD-11/12): read-only
+	// git views over a session's folder. 403 is a forbidden folder or an
+	// escaping path filter; 404 is an unknown session, a folder with no git
+	// repository, or a ref that resolves to nothing; 409 is a session on
+	// another host, a session with no usable folder, or a repository whose
+	// config refuses reads.
+	cityGet(sm, "/session/{id}/workspace/git/status", (*Server).humaHandleWorkspaceGitStatus, errorStatuses(http.StatusForbidden, http.StatusNotFound, http.StatusConflict))
+	cityGet(sm, "/session/{id}/workspace/git/branch", (*Server).humaHandleWorkspaceGitBranch, errorStatuses(http.StatusForbidden, http.StatusNotFound, http.StatusConflict))
+	cityGet(sm, "/session/{id}/workspace/git/diff", (*Server).humaHandleWorkspaceGitDiff, errorStatuses(http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict),
+		func(o *huma.Operation) { o.RejectUnknownQueryParameters = true })
+	// Supervisor workspace file reads: 400 is a directory read as a file, a
+	// non-regular file, or a symlink loop; 403 is an escape; 404 is a missing
+	// path; 409 shares the git routes' folder gate.
+	cityGet(sm, "/session/{id}/workspace/files/read", (*Server).humaHandleWorkspaceFilesRead, errorStatuses(http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict),
+		func(o *huma.Operation) { o.RejectUnknownQueryParameters = true })
+	cityGet(sm, "/session/{id}/workspace/files/list", (*Server).humaHandleWorkspaceFilesList, errorStatuses(http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict),
+		func(o *huma.Operation) { o.RejectUnknownQueryParameters = true })
 	cityGet(sm, "/pending", (*Server).humaHandleCityPending, errorStatuses(http.StatusNotFound, http.StatusServiceUnavailable))
 	cityPatch(sm, "/session/{id}", (*Server).humaHandleSessionPatch, errorStatuses(http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable))
 	cityPost(sm, "/session/{id}/permission-mode", (*Server).humaHandleSessionPermissionMode, errorStatuses(http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusNotImplemented, http.StatusServiceUnavailable))

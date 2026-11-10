@@ -244,6 +244,13 @@ type Info struct {
 	// canonical→legacy precedence. Additive, internal-only (absent from the HTTP
 	// wire).
 	WorkerDir string // worker_dir (raw)
+	// Host is the RAW host metadata (HostMetadataKey), the machine the
+	// session's agent process runs on. Every create path stamps the creating
+	// host; rows created before the field existed carry "" (fail-open: v1
+	// cities are single-host, so absent reads as local). Unlike the
+	// neighboring internal-only mirrors, this one IS on the HTTP wire:
+	// sessionToResponse projects it as the session's host.
+	Host string // host (raw)
 
 	// --- state / bookkeeping cluster (controller read surface) ---
 	//
@@ -1026,6 +1033,7 @@ func (m *Manager) createStarted(ctx context.Context, spec CreateOptions) (Info, 
 		if meta["session_origin"] == "" {
 			meta["session_origin"] = spec.defaultSessionOrigin()
 		}
+		StampHost(meta)
 		createdBead, createErr := m.store.Create(beads.Bead{
 			Title: title,
 			Type:  BeadType,
@@ -1340,6 +1348,7 @@ func (m *Manager) createBeadOnly(spec CreateOptions) (Info, error) {
 		if meta["session_origin"] == "" {
 			meta["session_origin"] = spec.defaultSessionOrigin()
 		}
+		StampHost(meta)
 		createdBead, createErr := m.store.Create(beads.Bead{
 			Title: title,
 			Type:  BeadType,

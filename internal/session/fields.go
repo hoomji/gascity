@@ -431,6 +431,18 @@ var registry = slices.Concat([]Field{
 	{Key: aliasHistoryMetadataKey, Class: ClassAssignmentIdentity, Writers: sites(legacy("internal/session/alias.go", "UpdatedAliasMetadata"))},
 	{Key: "common_name", Class: ClassLaunchConfig, NoWriter: "retired: no production writer; name lookups still query it"},
 	{Key: "work_dir", Class: ClassLaunchConfig, Writers: sites(legacyCreate, v2("cmd/gc/allocator_create.go", "createEffects.verifiedMetadata"))},
+	// Host is the creating machine's hostname, stamped by every create path
+	// through StampHost (which keeps an explicitly named host). Consumers
+	// compare it against their own hostname to decide whether a session runs
+	// locally; rows created before the field existed carry "" (fail-open).
+	{Key: HostMetadataKey, Class: ClassLaunchConfig, Writers: sites(
+		opCreate,
+		op(srcManager, "Manager.createStarted"),
+		legacyCreate,
+		v2("cmd/gc/allocator_create_named.go", "createEffects.writeNamed"),
+		legacy(srcPoolNames, "createPoolSessionBeadWithIdentifiers"),
+		op("cmd/gc/adoption_barrier.go", "runAdoptionBarrier"),
+	), Readers: sites(op("internal/api/handler_sessions.go", "sessionToResponse"))},
 	{Key: beadmeta.WorkDirMetadataKey, Class: ClassLaunchConfig, Writers: sites(legacy("cmd/gc/build_desired_state.go", "computePoolTriggerBindingPatch"), v2("cmd/gc/allocator_create.go", "createEffects.verifiedMetadata"))},
 	{Key: "continuation_epoch", Class: ClassLaunchConfig, Writers: sites(legacyPreWake, opMint, opUnmint)},
 	{Key: "transport", Class: ClassLaunchConfig, Writers: sites(op(srcManager, "Manager.persistTransport"))},

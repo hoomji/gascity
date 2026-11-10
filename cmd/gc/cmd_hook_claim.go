@@ -29,6 +29,7 @@ import (
 	"github.com/gastownhall/gascity/internal/pathutil"
 	"github.com/gastownhall/gascity/internal/runtime"
 	"github.com/gastownhall/gascity/internal/session"
+	"github.com/gastownhall/gascity/internal/sling"
 	"github.com/gastownhall/gascity/internal/worktree"
 )
 
@@ -2688,10 +2689,20 @@ func hookClaimIdentityPatch(bead beads.Bead, opts hookClaimOptions, ops hookClai
 	// while the session dir is at best the same tree reached another way. The seam
 	// is nil when a test constructs hookClaimOps directly instead of going through
 	// applyDefaults; like every other identity source here, an unavailable one
-	// stamps nothing rather than guessing a path. The store-dir refusal applies
-	// here too: a rig-scoped session can legitimately be running IN the shared rig
-	// checkout, and that tree is no more the workspace of this bead than it was
-	// when the branch was read from it directly.
+	// stamps nothing rather than guessing a path.
+	//
+	// The dir stamp and the branch read split at the store gate (gs-b2f patch
+	// 2): a rig-scoped session legitimately running IN the shared rig checkout
+	// names that checkout as the bead's gc.work_dir — it is where the work
+	// happens, and the supervisor's workspace reads resolve the folder from it
+	// — while the shared tree stays out of the branch candidates, because the
+	// checkout sits on whatever branch someone last left it on and that branch
+	// must never become the bead's durable execution identity (#6290). The
+	// split is three-way, not two: the dir fires on SHOWN coverage (the store
+	// dir itself, or a tree git proves the store's repository answers for),
+	// while a tree git cannot verify (dubious ownership, a killed probe)
+	// records nothing at all, preserving the fail-closed posture those
+	// refusals pin.
 	//
 	// The precondition is hookClaimRecordsNoWorkDir, NOT an empty dirs: those are
 	// different states and only the first one is this fallback's case. A bead whose
@@ -2716,6 +2727,9 @@ func hookClaimIdentityPatch(bead beads.Bead, opts hookClaimOptions, ops hookClai
 			if tree, admitted := storeHead.Admit(sessionDir); admitted {
 				patch[beadmeta.WorkDirMetadataKey] = sessionDir
 				trees = []hookClaimWorkTree{tree}
+			} else if storeHead.dirCoverageShown(sessionDir) {
+				// Covered but branchless: name the folder, read no branch.
+				patch[beadmeta.WorkDirMetadataKey] = sessionDir
 			}
 		}
 	}
@@ -2848,13 +2862,9 @@ func (s hookClaimStoreHead) Admit(candidate string) (hookClaimWorkTree, bool) {
 
 	// Two names that clean alike are the same path, which settles the case without
 	// running anything, and settles it for a recorded path that no longer exists
-	// where git can answer nothing at all. It holds only when neither name folds a
-	// "..": filepath.Clean removes a ".." by folding the element before it away,
-	// which names the same directory only when that element is not a symlink, so
-	// "<root>/link/../shared" cleans to "<root>/shared" while actually naming
-	// whatever sits beside the link's target.
-	foldsDotDot := hookClaimPathFoldsDotDot(cand) || hookClaimPathFoldsDotDot(s.dir)
-	if !foldsDotDot && filepath.Clean(cand) == filepath.Clean(s.dir) {
+	// where git can answer nothing at all. See hookClaimSameCleanPath for the
+	// ".."-folding caveat.
+	if hookClaimSameCleanPath(cand, s.dir) {
 		return hookClaimWorkTree{}, false
 	}
 
@@ -2910,6 +2920,45 @@ func (s hookClaimStoreHead) Admit(candidate string) (hookClaimWorkTree, bool) {
 		return hookClaimWorkTree{}, false
 	}
 	return hookClaimWorkTree{Dir: cand, RepoDir: candRepo}, true
+}
+
+// hookClaimSameCleanPath reports whether two names clean alike without folding
+// "..": the same path, settled without running anything. It holds only when
+// neither name folds a "..": filepath.Clean removes a ".." by folding the
+// element before it away, which names the same directory only when that
+// element is not a symlink, so "<root>/link/../shared" cleans to
+// "<root>/shared" while actually naming whatever sits beside the link's
+// target.
+func hookClaimSameCleanPath(a, b string) bool {
+	if hookClaimPathFoldsDotDot(a) || hookClaimPathFoldsDotDot(b) {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+// dirCoverageShown reports whether candidate is SHOWN to lie inside the
+// store's checkout: either it is the store dir itself (exact clean-path
+// match, no git needed) or git identified both repositories and they agree.
+// It answers the session-fallback dir stamp's question, which is narrower
+// than Admit's: Admit refuses whenever coverage is not DISPROVED — including
+// when git cannot answer at all — while the dir stamp fires only when
+// coverage is PROVED. A store-covered session dir is where the work happens,
+// so it names the bead's folder; an unverifiable tree (dubious ownership, a
+// killed probe) records nothing, preserving the fail-closed posture those
+// refusals pin.
+func (s hookClaimStoreHead) dirCoverageShown(candidate string) bool {
+	cand := strings.TrimSpace(candidate)
+	if cand == "" || s.dir == "" {
+		return false
+	}
+	if hookClaimSameCleanPath(cand, s.dir) {
+		return true
+	}
+	if s.probe != hookClaimProbeAnswered {
+		return false
+	}
+	candRepo, candProbe := hookClaimHeadRepoDir(cand)
+	return candProbe == hookClaimProbeAnswered && hookClaimSameDir(candRepo, s.repoDir)
 }
 
 // hookClaimDirLooksLikeRepo reports whether dir carries a repository on disk, asked
@@ -3165,13 +3214,9 @@ func hookClaimWorkerTrees(bead beads.Bead, store hookClaimStoreHead) []hookClaim
 // not-yet-published bead) or all eight (evidence already complete; this is
 // just keeping the branch in sync).
 func hookClaimWorktreeEvidenceIsWholeOrAbsent(bead beads.Bead) bool {
-	present := 0
-	for _, key := range beadmeta.WorktreeOwnershipEvidenceKeys {
-		if strings.TrimSpace(bead.Metadata[key]) != "" {
-			present++
-		}
-	}
-	return present == 0 || present == len(beadmeta.WorktreeOwnershipEvidenceKeys)
+	// One implementation, shared with the sling stamp (sling stampSlingWorkDir
+	// holds the same gate): the guard must not drift between the two sites.
+	return sling.WorktreeEvidenceWholeOrAbsent(bead.Metadata)
 }
 
 // hookClaimManagedWorktreeDir returns the checkout a bead's complete
