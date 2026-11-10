@@ -1946,6 +1946,11 @@ resource = "http_test_server"
 calls = 1
 
 [[count]]
+path = "internal/api/workspace_git_test.go"
+resource = "subprocess"
+calls = 1
+
+[[count]]
 path = "internal/api/writeauth_test.go"
 resource = "http_test_server"
 calls = 2
