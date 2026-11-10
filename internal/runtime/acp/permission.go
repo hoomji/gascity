@@ -343,6 +343,9 @@ func (sc *sessionConn) oldestPermission() *runtime.PendingInteraction {
 func (sc *sessionConn) resolvePermission(resp runtime.InteractionResponse) (pendingPermission, []byte, error) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
+	if resp.Text != "" {
+		return pendingPermission{}, nil, fmt.Errorf("%w: ACP permission replies carry no text", runtime.ErrInteractionTextUnsupported)
+	}
 	idx := -1
 	for i, pp := range sc.permissions {
 		if resp.RequestID == "" || pp.requestID() == resp.RequestID {
@@ -486,7 +489,10 @@ func (p *Provider) Pending(name string) (*runtime.PendingInteraction, error) {
 // option of the matching ACP kind, and cancel answers the canceled outcome. An
 // unknown action or an option kind the agent did not offer returns an error
 // wrapping runtime.ErrInteractionResponseInvalid, and the request stays
-// pending. A RequestID that names no outstanding request (it was answered,
+// pending. Text beside an answer is refused with an error wrapping
+// runtime.ErrInteractionTextUnsupported, before the action is read: the
+// permission reply carries no text channel, so the text is never silently
+// dropped. A RequestID that names no outstanding request (it was answered,
 // canceled, or belongs to an earlier incarnation), or none outstanding at
 // all, returns an error wrapping runtime.ErrInteractionGone. An empty
 // RequestID answers the oldest request. If the reply cannot be written,

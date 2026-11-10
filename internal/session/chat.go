@@ -620,6 +620,10 @@ var (
 	// ErrInteractionMismatch reports that the response does not match the
 	// currently pending interaction request.
 	ErrInteractionMismatch = errors.New("pending interaction does not match request")
+	// ErrInteractionTextUnsupported reports that the response carries typed
+	// reply text the session's provider cannot deliver beside an answer.
+	// The interaction stays pending; answering again without text works.
+	ErrInteractionTextUnsupported = errors.New("session provider does not support text with interactive responses")
 	// ErrPendingInteraction reports that the session is blocked on a pending
 	// approval or question and cannot accept a new user turn. It is the
 	// runtime sentinel, so a refusal raised by the provider itself (for
@@ -2124,6 +2128,9 @@ func (m *Manager) respond(id string, response runtime.InteractionResponse, send 
 		if err := send(ip, sessName, response); err != nil {
 			if errors.Is(err, runtime.ErrInteractionUnsupported) {
 				return ErrInteractionUnsupported
+			}
+			if errors.Is(err, runtime.ErrInteractionTextUnsupported) {
+				return fmt.Errorf("%w: %w", ErrInteractionTextUnsupported, err)
 			}
 			if errors.Is(err, runtime.ErrInteractionGone) {
 				return fmt.Errorf("%w: %w", ErrInteractionMismatch, err)

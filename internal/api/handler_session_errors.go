@@ -37,6 +37,8 @@ func writeSessionManagerError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "invalid", err.Error())
 	case errors.Is(err, session.ErrInteractionUnsupported):
 		writeError(w, http.StatusNotImplemented, "unsupported", err.Error())
+	case errors.Is(err, session.ErrInteractionTextUnsupported):
+		writeError(w, http.StatusUnprocessableEntity, "interaction_text_unsupported", err.Error())
 	case errors.Is(err, session.ErrTurnInterruptUnsupported):
 		writeError(w, http.StatusNotImplemented, turnInterruptUnsupportedCode, err.Error())
 	case errors.Is(err, session.ErrPendingInteraction):

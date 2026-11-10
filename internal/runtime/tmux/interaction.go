@@ -984,6 +984,13 @@ var (
 // menu does not offer runtime.ErrInteractionActionUnavailable (or, for an
 // action no prompt offers, runtime.ErrInteractionResponseInvalid). An answer
 // naming no request when no prompt shows is a no-op.
+//
+// Text beside an approval answer is delivered as a follow-up message once
+// the prompt clears (sendTypedReply): typing it before the clear could land
+// in the prompt itself. A delivery that fails returns an error naming the
+// typed reply, after the answer already landed; the caller resends the text
+// as a plain message instead of answering again. Text beside a question
+// answer is the option selector (respondQuestion), never a follow-up.
 func (t *Tmux) Respond(name string, response runtime.InteractionResponse) error {
 	return t.respond(context.Background(), name, response)
 }
@@ -1065,12 +1072,48 @@ func (t *Tmux) respond(ctx context.Context, name string, response runtime.Intera
 			return err
 		}
 		if cleared {
+			if response.Text != "" {
+				if err := t.sendTypedReply(inputCtx(ctx), target, response.Text); err != nil {
+					return err
+				}
+			}
 			t.approvalDedup().clear(name)
 			return nil
 		}
 	}
 
 	return fmt.Errorf("approval prompt did not clear within %s of the answer", respondVerifyTimeout)
+}
+
+// sendTypedReply delivers text sent beside an approval answer as a follow-up
+// message: the literal text, then Enter to submit it. It runs only after the
+// prompt the answer cleared is verified gone, so the text can never land in
+// the prompt itself (typing into a live prompt can select one of its
+// options). Long or multiline text goes through the paste path, as nudges
+// do. A session that is gone wraps runtime.ErrSessionNotFound and an
+// unreachable server runtime.ErrRuntimeUnavailable, as the answer key does;
+// the answer already landed, so the caller resends the text as a plain
+// message rather than answering again.
+func (t *Tmux) sendTypedReply(ctx context.Context, target, text string) error {
+	if err := t.sendLiteralText(ctx, target, text); err != nil {
+		return typedReplyError(err)
+	}
+	if _, err := t.runCtx(ctx, "send-keys", "-t", target, "Enter"); err != nil {
+		return typedReplyError(err)
+	}
+	return nil
+}
+
+// typedReplyError reports a typed-reply delivery failure in the runtime
+// vocabulary: the answer already landed, so the error names the reply.
+func typedReplyError(err error) error {
+	switch {
+	case errors.Is(err, ErrSessionNotFound):
+		return fmt.Errorf("delivering the typed reply after the answer: %w: %w", runtime.ErrSessionNotFound, err)
+	case errors.Is(err, ErrNoServer):
+		return fmt.Errorf("delivering the typed reply after the answer: %w: %w", runtime.ErrRuntimeUnavailable, err)
+	}
+	return fmt.Errorf("delivering the typed reply after the answer: %w", err)
 }
 
 // respondQuestion answers the question page q that target shows: action

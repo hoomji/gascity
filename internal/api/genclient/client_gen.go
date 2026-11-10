@@ -5789,7 +5789,7 @@ type SessionRespondInputBody struct {
 	// RequestId Pending interaction request ID (optional).
 	RequestId *string `json:"request_id,omitempty"`
 
-	// Text Optional response text.
+	// Text Optional typed reply delivered with the answer: a terminal transport types it as a follow-up message once the prompt clears. A provider whose permission protocol carries no text channel refuses the response with 422 interaction-text-unsupported and leaves the interaction pending.
 	Text *string `json:"text,omitempty"`
 }
 

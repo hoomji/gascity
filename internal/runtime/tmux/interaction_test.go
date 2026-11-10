@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -853,6 +854,42 @@ func TestRespond_DenySendsTheNoOptionNotThree(t *testing.T) {
 	}
 	if len(sent) != 1 || sent[0] != "4" {
 		t.Fatalf("send-keys payloads = %q, want exactly [\"4\"] (the \"No\" option)", sent)
+	}
+}
+
+// TestRespond_DeliversTypedReplyAfterTheAnswer targets the typed-reply
+// contract on tmux: text beside an answer is typed as a follow-up message
+// once the prompt clears, never into the prompt itself.
+func TestRespond_DeliversTypedReplyAfterTheAnswer(t *testing.T) {
+	session := "typed-reply"
+	fe := &fakeExecutor{
+		agentPane: true,
+		// pre-verify capture, #{pane_in_mode} probe (not parked),
+		// send-keys for the answer, the verify capture showing the prompt
+		// cleared, then send-keys for the typed text and for Enter.
+		outs: []string{
+			readApprovalFixture(t, "bash-automode-option.txt"),
+			"0",
+			"",
+			readApprovalFixture(t, "idle-after-deny-80x24.txt"),
+			"",
+			"",
+		},
+	}
+	provider := &Provider{tm: &Tmux{exec: fe}}
+	const typed = "please use ls instead of rm"
+	if err := provider.Respond(session, runtime.InteractionResponse{Action: "deny", Text: typed}); err != nil {
+		t.Fatalf("Respond(deny with text): %v", err)
+	}
+	var sent []string
+	for _, call := range fe.calls {
+		if sendsKeys(call) {
+			sent = append(sent, call[len(call)-1])
+		}
+	}
+	want := []string{"4", typed, "Enter"}
+	if !slices.Equal(sent, want) {
+		t.Fatalf("send-keys payloads = %q, want %q (answer, typed reply, submit)", sent, want)
 	}
 }
 

@@ -746,6 +746,19 @@ func TestLaneRespondRefusalOffersAResendOnlyWhenNothingWasSent(t *testing.T) {
 	}
 }
 
+// TestLaneRespondRefusalTextUnsupported: a lane respond the provider refused
+// for its typed reply answers the same named 422 as OJ-4's path, so the
+// refusal does not depend on which executor ran the answer.
+func TestLaneRespondRefusalTextUnsupported(t *testing.T) {
+	err := laneRespondRefusal(opjournal.Op{
+		ID: "gc-op-1", Kind: opjournal.KindRespond, Executor: opjournal.ExecutorLane,
+		Status: opjournal.StatusClosed, Outcome: opjournal.Outcome{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonRefusedTextUnsupported},
+	})
+	if err == nil || statusOf(err) != http.StatusUnprocessableEntity || !strings.Contains(err.Error(), "interaction_text_unsupported") {
+		t.Fatalf("refusal = %v (%d), want 422 interaction_text_unsupported", err, statusOf(err))
+	}
+}
+
 // rollBackRespond restarts e's API with respond unlisted again, as a
 // rollback leaves it, and ops.control set to control ("" leaves it unset,
 // at its builtin default): /respond takes OJ-4's path.

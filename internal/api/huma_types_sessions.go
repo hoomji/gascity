@@ -244,7 +244,7 @@ type SessionRespondInput struct {
 	Body           struct {
 		RequestID string            `json:"request_id,omitempty" doc:"Pending interaction request ID (optional)."`
 		Action    string            `json:"action" minLength:"1" doc:"Response action (e.g. allow, deny)."`
-		Text      string            `json:"text,omitempty" doc:"Optional response text."`
+		Text      string            `json:"text,omitempty" doc:"Optional typed reply delivered with the answer: a terminal transport types it as a follow-up message once the prompt clears. A provider whose permission protocol carries no text channel refuses the response with 422 interaction-text-unsupported and leaves the interaction pending."`
 		Metadata  map[string]string `json:"metadata,omitempty" doc:"Optional response metadata."`
 	}
 }

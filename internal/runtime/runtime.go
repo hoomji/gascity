@@ -58,6 +58,14 @@ var ErrInteractionActionUnavailable = errors.New("pending interaction has no opt
 // A response naming no outstanding request is ErrInteractionGone instead.
 var ErrInteractionResponseInvalid = errors.New("interaction response is invalid")
 
+// ErrInteractionTextUnsupported reports that a provider cannot deliver typed
+// reply text beside an answer: its permission protocol carries the answer
+// only (ACP's RequestPermissionOutcome is an outcome plus an option, with no
+// text channel). The interaction stays pending so the caller can answer
+// again without text. A provider that can deliver the text (a terminal
+// transport types it after the answer) never returns this.
+var ErrInteractionTextUnsupported = errors.New("interaction response text is unsupported")
+
 // ErrNudgeRefusedPendingInteraction reports that a nudge was refused because
 // the session is blocked on a pending interaction, such as a tool-call
 // approval a client has not answered yet. Delivery layers translate it into

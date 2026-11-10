@@ -468,6 +468,35 @@ func TestPermissionRespondInvalidKeepsPending(t *testing.T) {
 	assertOutcome(t, f.waitReplies(t, 1)[0], "7", selected("yes"))
 }
 
+// TestPermissionRespondTextRefused targets the typed-reply contract: ACP's
+// permission reply carries an outcome plus an option only, so text beside an
+// answer is refused instead of silently dropped, the request stays pending,
+// and nothing is written to the agent.
+func TestPermissionRespondTextRefused(t *testing.T) {
+	f := startPermissionFake(t, nil, "7")
+	pending := f.prompt(t)
+
+	err := f.p.Respond(f.name, runtime.InteractionResponse{RequestID: pending.RequestID, Action: "deny", Text: "please use ls instead of rm"})
+	if !errors.Is(err, runtime.ErrInteractionTextUnsupported) {
+		t.Fatalf("Respond(deny with text) = %v, want ErrInteractionTextUnsupported", err)
+	}
+
+	still, err := f.p.Pending(f.name)
+	if err != nil {
+		t.Fatalf("Pending: %v", err)
+	}
+	if still == nil || still.RequestID != pending.RequestID {
+		t.Fatalf("Pending after refused text = %#v, want %q still pending", still, pending.RequestID)
+	}
+	if got := f.replies(t); len(got) != 0 {
+		t.Fatalf("agent received replies %v for a refused response", got)
+	}
+	if err := f.p.Respond(f.name, runtime.InteractionResponse{RequestID: pending.RequestID, Action: "deny"}); err != nil {
+		t.Fatalf("Respond(deny): %v", err)
+	}
+	assertOutcome(t, f.waitReplies(t, 1)[0], "7", selected("no"))
+}
+
 func TestPermissionFIFO(t *testing.T) {
 	f := startPermissionFake(t, nil, `"perm-a"`, "2")
 	first := f.prompt(t)

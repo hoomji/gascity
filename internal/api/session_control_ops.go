@@ -85,6 +85,12 @@ const (
 const (
 	refusedSessionStarting = "session_starting"
 	refusedWillNotStart    = "will_not_start"
+	// refusedTextUnsupported refuses a respond whose typed reply text the
+	// session's provider cannot deliver. It matches
+	// opjournal.ReasonRefusedTextUnsupported, the reason the conversation
+	// lane closes the same refusal with, so both executors journal one
+	// reason.
+	refusedTextUnsupported = "text_unsupported"
 	// refusedTargetMoved closes a kill whose session moved to another
 	// generation than the one its op is scoped to, as gc session kill does.
 	refusedTargetMoved = "target_moved"
@@ -120,6 +126,7 @@ var syncVerbSentinels = legacyop.Sentinels{
 	Refusals: []legacyop.Refusal{
 		{Err: session.ErrSessionStarting, Why: refusedSessionStarting},
 		{Err: session.ErrRuntimeLeaseBusy, Why: refusedSessionStarting},
+		{Err: session.ErrInteractionTextUnsupported, Why: refusedTextUnsupported},
 		{Err: session.ErrSessionStopping, Why: "session_stopping"},
 		{Err: session.ErrSessionKillPending, Why: "kill_pending"},
 		{Err: session.ErrIllegalTransition, Why: "illegal_transition"},
@@ -132,6 +139,7 @@ var syncVerbSentinels = legacyop.Sentinels{
 var replaySentinels = map[string]error{
 	legacyop.RefusedNotASession: session.ErrNotSession,
 	refusedSessionStarting:      session.ErrSessionStarting,
+	refusedTextUnsupported:      session.ErrInteractionTextUnsupported,
 	"session_stopping":          session.ErrSessionStopping,
 	"kill_pending":              session.ErrSessionKillPending,
 	"illegal_transition":        session.ErrIllegalTransition,

@@ -101,3 +101,20 @@ func TestTurnInterruptUnsupportedIsNotImplemented(t *testing.T) {
 		t.Errorf("humaSessionManagerError = %v, want 501 turn_interrupt_unsupported", got)
 	}
 }
+
+// TestInteractionTextUnsupportedIsUnprocessable: text beside an answer that
+// the session's provider cannot deliver answers 422
+// interaction_text_unsupported in both error mappers — a named refusal, never
+// a silent drop and never a state conflict.
+func TestInteractionTextUnsupportedIsUnprocessable(t *testing.T) {
+	err := fmt.Errorf("respond: %w", session.ErrInteractionTextUnsupported)
+	rec := httptest.NewRecorder()
+	writeSessionManagerError(rec, err)
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "interaction_text_unsupported") {
+		t.Errorf("writeSessionManagerError = %d %s, want 422 interaction_text_unsupported", rec.Code, rec.Body.String())
+	}
+	var se huma.StatusError
+	if got := humaSessionManagerError(err); !errors.As(got, &se) || se.GetStatus() != http.StatusUnprocessableEntity || !strings.Contains(got.Error(), "interaction_text_unsupported") {
+		t.Errorf("humaSessionManagerError = %v, want 422 interaction_text_unsupported", got)
+	}
+}

@@ -3309,6 +3309,7 @@
               "urn:gascity:error:gateway-timeout",
               "urn:gascity:error:idempotency-in-flight",
               "urn:gascity:error:idempotency-mismatch",
+              "urn:gascity:error:interaction-text-unsupported",
               "urn:gascity:error:internal",
               "urn:gascity:error:invalid-cursor",
               "urn:gascity:error:invalid-idempotency-key",
@@ -3368,6 +3369,7 @@
               "urn:gascity:error:gateway-timeout",
               "urn:gascity:error:idempotency-in-flight",
               "urn:gascity:error:idempotency-mismatch",
+              "urn:gascity:error:interaction-text-unsupported",
               "urn:gascity:error:internal",
               "urn:gascity:error:invalid-cursor",
               "urn:gascity:error:invalid-idempotency-key",
@@ -9743,7 +9745,7 @@
             "type": "string"
           },
           "text": {
-            "description": "Optional response text.",
+            "description": "Optional typed reply delivered with the answer: a terminal transport types it as a follow-up message once the prompt clears. A provider whose permission protocol carries no text channel refuses the response with 422 interaction-text-unsupported and leaves the interaction pending.",
             "type": "string"
           }
         },

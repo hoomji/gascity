@@ -4295,7 +4295,7 @@ export type SessionRespondInputBody = {
      */
     request_id?: string;
     /**
-     * Optional response text.
+     * Optional typed reply delivered with the answer: a terminal transport types it as a follow-up message once the prompt clears. A provider whose permission protocol carries no text channel refuses the response with 422 interaction-text-unsupported and leaves the interaction pending.
      */
     text?: string;
 };

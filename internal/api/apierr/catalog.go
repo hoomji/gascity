@@ -48,6 +48,12 @@ var (
 	// dispatch (unknown/unwired sink, policy) — distinct from validation-failed,
 	// which is huma's schema-validation auto-stamp.
 	WebhookRejected = Register(ProblemType{Code: "webhook-rejected", Status: http.StatusUnprocessableEntity, Title: "Webhook Rejected"})
+	// InteractionTextUnsupported is typed reply text beside an interaction
+	// answer that the session's provider cannot deliver (its permission
+	// protocol carries the answer only). The request is well-formed; the
+	// client recovers by answering again without text. The interaction stays
+	// pending.
+	InteractionTextUnsupported = Register(ProblemType{Code: "interaction-text-unsupported", Status: http.StatusUnprocessableEntity, Title: "Interaction Text Unsupported"})
 	// DemandOnlySingleton refuses a session create or wake for a pool agent
 	// with max_active_sessions = 1 and no [[named_session]]: the controller
 	// starts its one session only from pool demand. The request is well-formed;

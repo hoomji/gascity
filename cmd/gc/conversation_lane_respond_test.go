@@ -418,6 +418,8 @@ func TestLaneRespondResultMapping(t *testing.T) {
 		{"acp request gone", mismatch(fmt.Errorf("no outstanding permission request %q: %w", "acp-7", runtime.ErrInteractionGone)), stale},
 		{"acp option not offered", mismatch(fmt.Errorf("%w: action %q has no allow_always option for request %q", runtime.ErrInteractionResponseInvalid, "approve_always", "acp-7")), refused},
 		{"no pending", session.ErrNoPendingInteraction, stale},
+		{"typed reply unsupported", fmt.Errorf("deny with note: %w", runtime.ErrInteractionTextUnsupported), opjournal.Rejected{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonRefusedTextUnsupported}},
+		{"typed reply unsupported in session vocabulary", fmt.Errorf("responding: %w: %w", session.ErrInteractionTextUnsupported, runtime.ErrInteractionTextUnsupported), opjournal.Rejected{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonRefusedTextUnsupported}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := laneRespondResult(context.Background(), tc.err, true); got != tc.want {

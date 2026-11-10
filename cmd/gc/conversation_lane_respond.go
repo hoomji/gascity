@@ -127,6 +127,8 @@ func laneRespondResult(ctx context.Context, err error, unfenced bool) opjournal.
 		return opjournal.Settled{Via: laneViaLive}
 	case errors.Is(err, session.ErrInteractionUnsupported), errors.Is(err, runtime.ErrInteractionUnsupported):
 		return opjournal.Rejected{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonUnsupported}
+	case errors.Is(err, session.ErrInteractionTextUnsupported), errors.Is(err, runtime.ErrInteractionTextUnsupported):
+		return opjournal.Rejected{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonRefusedTextUnsupported}
 	case errors.Is(err, runtime.ErrInteractionActionUnavailable), errors.Is(err, runtime.ErrInteractionResponseInvalid):
 		return opjournal.Rejected{Arm: opjournal.ArmFailed, Reason: laneRespondRefusedAction}
 	case errors.Is(err, runtime.ErrInteractionGone), errors.Is(err, session.ErrNoPendingInteraction), errors.Is(err, session.ErrInteractionMismatch):
