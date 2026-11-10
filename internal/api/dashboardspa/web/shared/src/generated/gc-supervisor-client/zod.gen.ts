@@ -969,12 +969,59 @@ export const zFormulaListBody = z.object({
     total: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
 });
 
+export const zGitBranchResponse = z.object({
+    branch: z.string(),
+    detached: z.boolean(),
+    sha: z.string().optional()
+});
+
+export const zGitDiffBlob = z.object({
+    content: z.string(),
+    encoding: z.string(),
+    truncated: z.boolean().optional()
+});
+
+export const zGitDiffFile = z.object({
+    after: zGitDiffBlob.optional(),
+    before: zGitDiffBlob.optional(),
+    patch: z.string().optional(),
+    path: z.string(),
+    status: z.string(),
+    truncated: z.boolean().optional()
+});
+
+export const zGitDiffResponse = z.object({
+    base_sha: z.string().optional(),
+    commit_sha: z.string().optional(),
+    files: z.array(zGitDiffFile).nullable(),
+    head_sha: z.string().optional(),
+    merge_base_sha: z.string().optional(),
+    mode: z.string(),
+    truncated: z.boolean().optional()
+});
+
 export const zGitStatus = z.object({
     ahead: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     behind: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     branch: z.string(),
     changed_files: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     clean: z.boolean()
+});
+
+export const zGitStatusEntry = z.object({
+    path: z.string(),
+    staged: z.boolean(),
+    state: z.string()
+});
+
+export const zGitStatusResponse = z.object({
+    ahead: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    behind: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    branch: z.string(),
+    detached: z.boolean(),
+    entries: z.array(zGitStatusEntry).nullable(),
+    truncated: z.boolean().optional(),
+    upstream: z.string().optional()
 });
 
 export const zGroupCreatedEventPayload = z.object({
@@ -11687,6 +11734,48 @@ export const zPostV0CityByCityNameSessionByIdWakePath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameSessionByIdWakeResponse = zOkWithIdResponseBody;
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceGitBranchPath = z.object({
+    cityName: z.string().min(1).regex(/\S/),
+    id: z.string()
+});
+
+/**
+ * OK
+ */
+export const zGetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse = zGitBranchResponse;
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceGitDiffPath = z.object({
+    cityName: z.string().min(1).regex(/\S/),
+    id: z.string()
+});
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceGitDiffQuery = z.object({
+    mode: z.enum([
+        'uncommitted',
+        'base',
+        'commit'
+    ]).optional().default('uncommitted'),
+    base: z.string().optional(),
+    commit: z.string().optional(),
+    path: z.array(z.string()).nullish(),
+    max_bytes: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(16777216)).optional().default(BigInt(524288))
+});
+
+/**
+ * OK
+ */
+export const zGetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse = zGitDiffResponse;
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceGitStatusPath = z.object({
+    cityName: z.string().min(1).regex(/\S/),
+    id: z.string()
+});
+
+/**
+ * OK
+ */
+export const zGetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse = zGitStatusResponse;
 
 export const zGetV0CityByCityNameSessionsPath = z.object({
     cityName: z.string().min(1).regex(/\S/)

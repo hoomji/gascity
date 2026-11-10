@@ -18,6 +18,7 @@ go_test(
         "clone_scrub_test.go",
         "clone_test.go",
         "git_test.go",
+        "hardened_test.go",
         "revision_test.go",
         "runctx_orphan_unix_test.go",
         "sshkeepalive_test.go",

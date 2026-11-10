@@ -2043,6 +2043,27 @@ func (e GetV0CityByCityNameSessionByIdTranscriptParamsFormat) Valid() bool {
 	}
 }
 
+// Defines values for GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode.
+const (
+	Base        GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode = "base"
+	Commit      GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode = "commit"
+	Uncommitted GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode = "uncommitted"
+)
+
+// Valid indicates whether the value is a known member of the GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode enum.
+func (e GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode) Valid() bool {
+	switch e {
+	case Base:
+		return true
+	case Commit:
+		return true
+	case Uncommitted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetV0CityByCityNameWorkReadyParamsSort.
 const (
 	Newest GetV0CityByCityNameWorkReadyParamsSort = "newest"
@@ -3751,6 +3772,72 @@ type FormulaVarDefResponse struct {
 	Type        string      `json:"type"`
 }
 
+// GitBranchResponse defines model for GitBranchResponse.
+type GitBranchResponse struct {
+	// Branch Current branch name; empty when detached.
+	Branch string `json:"branch"`
+
+	// Detached True when HEAD is detached.
+	Detached bool `json:"detached"`
+
+	// Sha HEAD commit sha; empty when the repo has no commits yet.
+	Sha *string `json:"sha,omitempty"`
+}
+
+// GitDiffBlob defines model for GitDiffBlob.
+type GitDiffBlob struct {
+	// Content File content: raw text when encoding is utf8, base64 when binary.
+	Content string `json:"content"`
+
+	// Encoding Content encoding: utf8 or base64.
+	Encoding string `json:"encoding"`
+
+	// Truncated True when the content hit max_bytes and was cut.
+	Truncated *bool `json:"truncated,omitempty"`
+}
+
+// GitDiffFile defines model for GitDiffFile.
+type GitDiffFile struct {
+	After  *GitDiffBlob `json:"after,omitempty"`
+	Before *GitDiffBlob `json:"before,omitempty"`
+
+	// Patch Unified patch section for this file; empty for untracked files and headless repos.
+	Patch *string `json:"patch,omitempty"`
+
+	// Path Repo-relative path.
+	Path string `json:"path"`
+
+	// Status Change status: added, modified, deleted, renamed, or untracked.
+	Status string `json:"status"`
+
+	// Truncated True when the patch or either blob hit max_bytes, or the stream bound cut the listing.
+	Truncated *bool `json:"truncated,omitempty"`
+}
+
+// GitDiffResponse defines model for GitDiffResponse.
+type GitDiffResponse struct {
+	// BaseSha Resolved base ref (base mode).
+	BaseSha *string `json:"base_sha,omitempty"`
+
+	// CommitSha Resolved commit (commit mode).
+	CommitSha *string `json:"commit_sha,omitempty"`
+
+	// Files One entry per changed path.
+	Files *[]GitDiffFile `json:"files"`
+
+	// HeadSha Resolved HEAD (uncommitted and base modes).
+	HeadSha *string `json:"head_sha,omitempty"`
+
+	// MergeBaseSha Merge-base actually diffed (base mode); equals base_sha when the histories share no ancestor.
+	MergeBaseSha *string `json:"merge_base_sha,omitempty"`
+
+	// Mode Diff mode served: uncommitted, base, or commit.
+	Mode string `json:"mode"`
+
+	// Truncated True when the stream bound cut the file list and it is partial.
+	Truncated *bool `json:"truncated,omitempty"`
+}
+
 // GitStatus defines model for GitStatus.
 type GitStatus struct {
 	Ahead        int64  `json:"ahead"`
@@ -3758,6 +3845,42 @@ type GitStatus struct {
 	Branch       string `json:"branch"`
 	ChangedFiles int64  `json:"changed_files"`
 	Clean        bool   `json:"clean"`
+}
+
+// GitStatusEntry defines model for GitStatusEntry.
+type GitStatusEntry struct {
+	// Path Repo-relative path.
+	Path string `json:"path"`
+
+	// Staged True when the index side codes a change (staged); an unstaged change has staged false and a non-untracked state.
+	Staged bool `json:"staged"`
+
+	// State Change state: added, modified, deleted, renamed, unmerged, or untracked.
+	State string `json:"state"`
+}
+
+// GitStatusResponse defines model for GitStatusResponse.
+type GitStatusResponse struct {
+	// Ahead Commits ahead of the upstream.
+	Ahead *int64 `json:"ahead,omitempty"`
+
+	// Behind Commits behind the upstream.
+	Behind *int64 `json:"behind,omitempty"`
+
+	// Branch Current branch name; empty when detached.
+	Branch string `json:"branch"`
+
+	// Detached True when HEAD is detached.
+	Detached bool `json:"detached"`
+
+	// Entries One entry per changed path; renames report the new path.
+	Entries *[]GitStatusEntry `json:"entries"`
+
+	// Truncated True when the listing hit the stream bound and entries is partial.
+	Truncated *bool `json:"truncated,omitempty"`
+
+	// Upstream Tracking branch (e.g. origin/main); empty when none.
+	Upstream *string `json:"upstream,omitempty"`
 }
 
 // GroupCreatedEventPayload defines model for GroupCreatedEventPayload.
@@ -13423,6 +13546,27 @@ type PostV0CityByCityNameSessionByIdWakeParams struct {
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
+
+// GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams defines parameters for GetV0CityByCityNameSessionByIdWorkspaceGitDiff.
+type GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams struct {
+	// Mode What to diff: uncommitted (worktree and index against HEAD, plus untracked), base (base's merge-base with HEAD against HEAD), or commit (one commit against its first parent). Omitted is uncommitted.
+	Mode *GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode `form:"mode,omitempty" json:"mode,omitempty"`
+
+	// Base Base ref for mode=base; required in that mode, ignored otherwise.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
+
+	// Commit Commit for mode=commit; required in that mode, ignored otherwise.
+	Commit *string `form:"commit,omitempty" json:"commit,omitempty"`
+
+	// Path Repo-relative path filter; repeatable, every match listed. A filter is a file or a directory (which matches everything under it). Absolute paths and .. escapes are refused.
+	Path *[]string `form:"path,omitempty" json:"path,omitempty"`
+
+	// MaxBytes Per-file byte cap for each patch section and each before/after blob; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).
+	MaxBytes *int64 `form:"max_bytes,omitempty" json:"max_bytes,omitempty"`
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode defines parameters for GetV0CityByCityNameSessionByIdWorkspaceGitDiff.
+type GetV0CityByCityNameSessionByIdWorkspaceGitDiffParamsMode string
 
 // GetV0CityByCityNameSessionsParams defines parameters for GetV0CityByCityNameSessions.
 type GetV0CityByCityNameSessionsParams struct {
@@ -25928,6 +26072,15 @@ type ClientInterface interface {
 	// PostV0CityByCityNameSessionByIdWake request
 	PostV0CityByCityNameSessionByIdWake(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdWakeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetV0CityByCityNameSessionByIdWorkspaceGitBranch request
+	GetV0CityByCityNameSessionByIdWorkspaceGitBranch(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceGitDiff request
+	GetV0CityByCityNameSessionByIdWorkspaceGitDiff(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceGitStatus request
+	GetV0CityByCityNameSessionByIdWorkspaceGitStatus(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetV0CityByCityNameSessions request
 	GetV0CityByCityNameSessions(ctx context.Context, cityName string, params *GetV0CityByCityNameSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -28419,6 +28572,42 @@ func (c *Client) PostV0CityByCityNameSessionByIdUnpin(ctx context.Context, cityN
 
 func (c *Client) PostV0CityByCityNameSessionByIdWake(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdWakeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostV0CityByCityNameSessionByIdWakeRequest(c.Server, cityName, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetV0CityByCityNameSessionByIdWorkspaceGitBranch(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdWorkspaceGitBranchRequest(c.Server, cityName, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetV0CityByCityNameSessionByIdWorkspaceGitDiff(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdWorkspaceGitDiffRequest(c.Server, cityName, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetV0CityByCityNameSessionByIdWorkspaceGitStatus(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdWorkspaceGitStatusRequest(c.Server, cityName, id)
 	if err != nil {
 		return nil, err
 	}
@@ -38733,6 +38922,215 @@ func NewPostV0CityByCityNameSessionByIdWakeRequest(server string, cityName strin
 	return req, nil
 }
 
+// NewGetV0CityByCityNameSessionByIdWorkspaceGitBranchRequest generates requests for GetV0CityByCityNameSessionByIdWorkspaceGitBranch
+func NewGetV0CityByCityNameSessionByIdWorkspaceGitBranchRequest(server string, cityName string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "cityName", cityName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v0/city/%s/session/%s/workspace/git/branch", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetV0CityByCityNameSessionByIdWorkspaceGitDiffRequest generates requests for GetV0CityByCityNameSessionByIdWorkspaceGitDiff
+func NewGetV0CityByCityNameSessionByIdWorkspaceGitDiffRequest(server string, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "cityName", cityName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v0/city/%s/session/%s/workspace/git/diff", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Mode != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "mode", *params.Mode, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Commit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "commit", *params.Commit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.MaxBytes != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "max_bytes", *params.MaxBytes, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetV0CityByCityNameSessionByIdWorkspaceGitStatusRequest generates requests for GetV0CityByCityNameSessionByIdWorkspaceGitStatus
+func NewGetV0CityByCityNameSessionByIdWorkspaceGitStatusRequest(server string, cityName string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "cityName", cityName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v0/city/%s/session/%s/workspace/git/status", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetV0CityByCityNameSessionsRequest generates requests for GetV0CityByCityNameSessions
 func NewGetV0CityByCityNameSessionsRequest(server string, cityName string, params *GetV0CityByCityNameSessionsParams) (*http.Request, error) {
 	var err error
@@ -40647,6 +41045,15 @@ type ClientWithResponsesInterface interface {
 
 	// PostV0CityByCityNameSessionByIdWakeWithResponse request
 	PostV0CityByCityNameSessionByIdWakeWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdWakeParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameSessionByIdWakeResponse, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse request
+	GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceGitDiffWithResponse request
+	GetV0CityByCityNameSessionByIdWorkspaceGitDiffWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceGitStatusWithResponse request
+	GetV0CityByCityNameSessionByIdWorkspaceGitStatusWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse, error)
 
 	// GetV0CityByCityNameSessionsWithResponse request
 	GetV0CityByCityNameSessionsWithResponse(ctx context.Context, cityName string, params *GetV0CityByCityNameSessionsParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionsResponse, error)
@@ -45042,6 +45449,88 @@ func (r PostV0CityByCityNameSessionByIdWakeResponse) StatusCode() int {
 	return 0
 }
 
+type GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *GitBranchResponse
+	ApplicationproblemJSON403 *ErrorModel
+	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON422 *ErrorModel
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *GitDiffResponse
+	ApplicationproblemJSON400 *ErrorModel
+	ApplicationproblemJSON403 *ErrorModel
+	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON422 *ErrorModel
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *GitStatusResponse
+	ApplicationproblemJSON403 *ErrorModel
+	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON422 *ErrorModel
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetV0CityByCityNameSessionsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -47243,6 +47732,33 @@ func (c *ClientWithResponses) PostV0CityByCityNameSessionByIdWakeWithResponse(ct
 		return nil, err
 	}
 	return ParsePostV0CityByCityNameSessionByIdWakeResponse(rsp)
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse request returning *GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdWorkspaceGitBranch(ctx, cityName, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse(rsp)
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceGitDiffWithResponse request returning *GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdWorkspaceGitDiffWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdWorkspaceGitDiff(ctx, cityName, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse(rsp)
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceGitStatusWithResponse request returning *GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdWorkspaceGitStatusWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdWorkspaceGitStatus(ctx, cityName, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse(rsp)
 }
 
 // GetV0CityByCityNameSessionsWithResponse request returning *GetV0CityByCityNameSessionsResponse
@@ -57434,6 +57950,196 @@ func ParsePostV0CityByCityNameSessionByIdWakeResponse(rsp *http.Response) (*Post
 			return nil, err
 		}
 		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse parses an HTTP response from a GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse call
+func ParseGetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse(rsp *http.Response) (*GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitBranchResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse parses an HTTP response from a GetV0CityByCityNameSessionByIdWorkspaceGitDiffWithResponse call
+func ParseGetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse(rsp *http.Response) (*GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetV0CityByCityNameSessionByIdWorkspaceGitDiffResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitDiffResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse parses an HTTP response from a GetV0CityByCityNameSessionByIdWorkspaceGitStatusWithResponse call
+func ParseGetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse(rsp *http.Response) (*GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetV0CityByCityNameSessionByIdWorkspaceGitStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

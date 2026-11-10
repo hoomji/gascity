@@ -45,3 +45,36 @@ func TestWorkerDirFromInfoMatchesContract(t *testing.T) {
 		})
 	}
 }
+
+// TestWorkspaceDirFromInfoPrecedence pins the supervisor's folder rule: the
+// routed worktree (gc.work_dir) first, then the agent-process cwd
+// (worker_dir), then the legacy work_dir — each trimmed, first non-empty
+// wins, empty when nothing is recorded. It runs through
+// infoFromPersistedBead so the Info mirrors are covered, not just the
+// precedence.
+func TestWorkspaceDirFromInfoPrecedence(t *testing.T) {
+	cases := []struct {
+		name string
+		meta map[string]string
+		want string
+	}{
+		{"gc-only", map[string]string{beadmeta.WorkDirMetadataKey: "/w/gc"}, "/w/gc"},
+		{"worker-only", map[string]string{beadmeta.WorkerDirMetadataKey: "/w/worker"}, "/w/worker"},
+		{"legacy-only", map[string]string{"work_dir": "/w/legacy"}, "/w/legacy"},
+		{"all-gc-wins", map[string]string{beadmeta.WorkDirMetadataKey: "/w/gc", beadmeta.WorkerDirMetadataKey: "/w/worker", "work_dir": "/w/legacy"}, "/w/gc"},
+		{"worker-beats-legacy", map[string]string{beadmeta.WorkerDirMetadataKey: "/w/worker", "work_dir": "/w/legacy"}, "/w/worker"},
+		{"gc-whitespace-falls-through", map[string]string{beadmeta.WorkDirMetadataKey: "  ", beadmeta.WorkerDirMetadataKey: "/w/worker", "work_dir": "/w/legacy"}, "/w/worker"},
+		{"worker-whitespace-falls-through", map[string]string{beadmeta.WorkerDirMetadataKey: "  ", "work_dir": "/w/legacy"}, "/w/legacy"},
+		{"gc-trimmed", map[string]string{beadmeta.WorkDirMetadataKey: "  /w/gc  "}, "/w/gc"},
+		{"neither", map[string]string{}, ""},
+		{"all-whitespace", map[string]string{beadmeta.WorkDirMetadataKey: " ", beadmeta.WorkerDirMetadataKey: " ", "work_dir": " "}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := beads.Bead{ID: "s-1", Type: BeadType, Status: "open", Labels: []string{LabelSession}, Metadata: tc.meta}
+			if got := WorkspaceDirFromInfo(infoFromPersistedBead(b)); got != tc.want {
+				t.Fatalf("WorkspaceDirFromInfo(%v) = %q, want %q", tc.meta, got, tc.want)
+			}
+		})
+	}
+}
