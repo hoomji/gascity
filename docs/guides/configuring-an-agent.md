@@ -276,11 +276,45 @@ keystrokes and captures the pane). Set `session = "acp"` to drive the harness
 over the [Agent Client Protocol](/reference/exec-session-provider) (JSON-RPC over
 stdio) instead — the harness's resolved provider must declare `supports_acp = true`.
 
+Plain `claude` does not speak ACP, so `session = "acp"` on the `claude`
+provider fails its handshake. Install an ACP adapter into your city and
+declare a provider for it instead:
+
+```bash
+# inside your city directory
+npm install --prefix adapters @zed-industries/claude-code-acp@0.16.2
+```
+
+```toml
+# city.toml — /path/to/your-city is the city directory above
+[providers.claude-acp]
+command      = "/path/to/your-city/adapters/node_modules/.bin/claude-code-acp"
+supports_acp = true
+# The adapter spawns node and claude; extend PATH when they are not on the
+# default PATH.
+env = { PATH = "/path/to/node/bin:/path/to/claude/bin:/usr/local/bin:/usr/bin:/bin" }
+```
+
 ```toml
 # agents/reviewer/agent.toml
-provider = "claude"
+provider = "claude-acp"
 session  = "acp"        # drive over ACP instead of tmux
 ```
+
+Verify the adapter answers the protocol before pointing an agent at it —
+expect `protocolVersion` in the reply:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}' \
+  | /path/to/your-city/adapters/node_modules/.bin/claude-code-acp
+```
+
+<Note>
+The adapter package was renamed to `@agentclientprotocol/claude-agent-acp`,
+but the new line's latest release (0.102.0, checked 2026-11-10) does not
+install — pin the verified `@zed-industries/claude-code-acp@0.16.2` until
+the new line stabilizes.
+</Note>
 
 ## Axis 5 — Runtime (where it runs)
 
