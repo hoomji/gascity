@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -164,25 +165,26 @@ func resolveSessionWorkDirVia(front sessionFrontGetter, sessionID string) string
 
 // sessionStampableWorkDir returns the checkout of info that may be stamped onto a
 // work bead as gc.work_dir, or "" when info has none that qualifies. It is the
-// decidable half of hookResolveSessionWorkDir, split out so the pool refusal is
+// decidable half of hookResolveSessionWorkDir, split out so the refusal is
 // testable without a live city.
 //
-// A POOL-MANAGED session is refused outright: its WorkDir is the slot label
-// (worker-slots/worker-N), a SHARED directory rather than an isolated worktree,
-// so stamping it would turn a slot label into worktree-ownership evidence on the
-// bead (gc-j0cfh). The reconciler side refuses the same value for the same reason
-// (workDirStampHasOwnershipEvidence), and this keeps the claim path from becoming
-// a second way to mint it.
+// Pool sessions qualify: a pool session's WorkDir is where its beads' work
+// happens — the shared rig checkout for rig-lane pools, a slot checkout for
+// slot pools — and the claim names it so the bead carries its folder
+// (gs-b2f patch 2; the supervisor's workspace reads resolve it). gc-j0cfh's
+// clobber is prevented where it belongs instead: the stamp only fires when
+// the bead records no checkout under either key and its worktree evidence is
+// whole-or-absent, and a stamp alone (no ownership keys) reads as an
+// unmanaged workspace that steers neither seat placement nor demand.
 //
-// The classifier is isPoolManagedSessionInfo, this package's canonical one, not
-// the raw PoolManaged flag: a session carrying a pool_slot, or one whose origin is
-// ephemeral, is running in a shared slot directory for exactly the same gc-j0cfh
-// reason even when pool_managed was never stamped on its bead.
+// Only a relative dir is refused: it resolves differently per reader, so
+// stamping it would manufacture a path nobody owns.
 func sessionStampableWorkDir(info session.Info) string {
-	if isPoolManagedSessionInfo(info) {
+	dir := strings.TrimSpace(info.WorkDir)
+	if dir == "" || !filepath.IsAbs(dir) {
 		return ""
 	}
-	return strings.TrimSpace(info.WorkDir)
+	return dir
 }
 
 // hookClaimPoolSeatWorkDir returns the directory the controller started a pool
@@ -191,13 +193,14 @@ func sessionStampableWorkDir(info session.Info) string {
 // Manual is decided for the session's agent a, as the controller decides it
 // (isManualSessionInfoForAgent), so a user-created row persisted before the
 // manual-origin backfill (ephemeral origin, no pool marker) is manual here too.
-// It is sessionStampableWorkDir's complement: that one refuses a pool row's
-// directory because a slot label must never become worktree evidence on a bead,
-// while the fresh-claim tier needs exactly that directory to tell whether a
-// candidate's verified worktree is this seat's own (hookClaimSeatLeaves). A pool
-// seat started for a bead with managed-worktree evidence has gc.work_dir set to
-// the verified path (poolTriggerMetadata, computePoolTriggerBindingPatch); the
-// legacy key is the fallback for rows written before the canonical one.
+// It is sessionStampableWorkDir's complement: that one stamps a pool row's
+// directory onto beads that record no checkout (a shared checkout for rig-lane
+// pools, a slot checkout for slot pools), while the fresh-claim tier needs
+// exactly that directory to tell whether a candidate's verified worktree is
+// this seat's own (hookClaimSeatLeaves). A pool seat started for a bead with
+// managed-worktree evidence has gc.work_dir set to the verified path
+// (poolTriggerMetadata, computePoolTriggerBindingPatch); the legacy key is the
+// fallback for rows written before the canonical one.
 func hookClaimPoolSeatWorkDir(info *session.Info, a *config.Agent) string {
 	if info == nil || !isPoolManagedSessionInfo(*info) || isNamedSessionInfo(*info) || isManualSessionInfoForAgent(*info, a) {
 		return ""

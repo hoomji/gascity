@@ -343,11 +343,15 @@ func TestHookClaimIdentityPatchFallsBackToSessionWorkDir(t *testing.T) {
 	}
 }
 
-// TestHookClaimIdentityPatchRefusesSessionWorkDirThatIsTheStore pins that the
-// store refusal covers the session fallback too. A rig-scoped session can be
-// running IN the shared rig checkout, and that tree is no more the workspace of
-// this bead than it was when the branch was read from the store directly.
-func TestHookClaimIdentityPatchRefusesSessionWorkDirThatIsTheStore(t *testing.T) {
+// TestHookClaimIdentityPatchStampsSharedCheckoutDirWithoutBranch pins the split
+// gate on the session fallback (gs-b2f patch 2): a rig-scoped session running
+// IN the shared rig checkout names that checkout as the bead's gc.work_dir —
+// it is where the work happens, and the supervisor's workspace reads resolve
+// the folder from it (Hoppy T3-borrow spine TB-AD-11) — while the branch side
+// keeps #6290's refusal, because the shared checkout sits on whatever branch
+// someone last left it on and that branch must never become the bead's
+// durable execution identity.
+func TestHookClaimIdentityPatchStampsSharedCheckoutDirWithoutBranch(t *testing.T) {
 	bead := beads.Bead{ID: "hw-rig-scoped", Metadata: beads.StringMap{}}
 	ops := hookClaimOps{
 		ResolveWorkBranch:     hookClaimBranchByDir(map[string]string{hookClaimWorkBranchStoreDir: "someone-elses-branch"}),
@@ -357,12 +361,41 @@ func TestHookClaimIdentityPatchRefusesSessionWorkDirThatIsTheStore(t *testing.T)
 
 	patch := hookClaimIdentityPatch(bead, opts, ops, hookClaimWorkBranchStoreDir)
 
-	if got, ok := patch[beadmeta.WorkDirMetadataKey]; ok {
-		t.Errorf("stamped gc.work_dir=%q; the shared rig checkout is not a per-bead workspace", got)
+	if got := patch[beadmeta.WorkDirMetadataKey]; got != hookClaimWorkBranchStoreDir {
+		t.Errorf("gc.work_dir = %q; want the shared checkout the claiming session runs in", got)
 	}
 	if got, ok := patch[beadmeta.WorkBranchMetadataKey]; ok {
-		t.Errorf("stamped gc.work_branch=%q; expected no branch once the store is refused", got)
+		t.Errorf("stamped gc.work_branch=%q; the shared checkout's branch stays refused (#6290)", got)
 	}
+	assertNoWorkDirConflict(t, bead, patch)
+}
+
+// TestHookClaimIdentityPatchStampsSubdirOfLiveStoreRepo pins the git-shown arm
+// of the split gate (gs-b2f patch 2): the claiming session runs in a plain
+// subdirectory of the live store checkout — the Entry-3 lane shape — so git
+// proves the store's repository answers for it. The dir stamp fires (the
+// folder is shown, not guessed) while the branch stays refused.
+func TestHookClaimIdentityPatchStampsSubdirOfLiveStoreRepo(t *testing.T) {
+	f := newHookClaimStoreFixture(t)
+	bead := beads.Bead{ID: "hw-rig-scoped", Metadata: beads.StringMap{}}
+	ops := hookClaimOps{
+		ResolveSessionWorkDir: func(string) string { return f.subdir },
+	}
+	opts := hookClaimOptions{Env: []string{"GC_SESSION_ID=mc-sess1"}}
+
+	store, repo := hookClaimHeadRepoDir(f.store)
+	if store == "" || repo != hookClaimProbeAnswered {
+		t.Fatalf("fixture store must identify its repository, got %q probe %v", store, repo)
+	}
+	patch := hookClaimIdentityPatch(bead, opts, ops, f.store)
+
+	if got := patch[beadmeta.WorkDirMetadataKey]; got != f.subdir {
+		t.Errorf("gc.work_dir = %q; want the session subdir git shows the store answering for", got)
+	}
+	if got, ok := patch[beadmeta.WorkBranchMetadataKey]; ok {
+		t.Errorf("stamped gc.work_branch=%q; want no branch from the shared checkout", got)
+	}
+	assertNoWorkDirConflict(t, bead, patch)
 }
 
 // TestHookClaimIdentityPatchPrefersRecordedWorkDirOverSession keeps the session
@@ -441,27 +474,32 @@ func TestHookClaimIdentityPatchSkipsSessionFallbackOnPartialWorktreeEvidence(t *
 	assertNoWorkDirConflict(t, bead, patch)
 }
 
-// TestSessionStampableWorkDirRefusesPoolManaged covers gc-j0cfh: the WorkDir of a
-// pool-managed session is the slot label, a directory shared by every bead the
-// slot ever runs, so stamping it would manufacture worktree-ownership evidence
-// for a tree nobody owns.
-//
-// The refusal has to use this package's canonical classifier rather than the raw
-// PoolManaged flag, because a session can be in a pool without carrying it: a bead
-// stamped with pool_slot alone, or one whose origin is ephemeral, is running in the
-// same shared slot directory. Reading only PoolManaged stamps a slot label for both
-// of those, which is the exact minting this function exists to prevent.
-func TestSessionStampableWorkDirRefusesPoolManaged(t *testing.T) {
+// TestSessionStampableWorkDirStampsAbsolutePoolDir covers the pool half of the
+// gc.work_dir stamp (gs-b2f patch 2): a pool session's absolute WorkDir is
+// where its beads' work happens — a shared checkout for rig-lane pools, a slot
+// checkout for slot pools — so the claim stamps it. gc-j0cfh's clobber (a slot
+// label overwriting managed evidence) stays prevented where it belongs: the
+// stamp only fires when the bead records no checkout under either key and its
+// worktree evidence is whole-or-absent, and a stamp alone (no ownership keys)
+// reads as an unmanaged workspace that steers neither seat placement nor
+// demand. Only a relative dir is refused: it resolves differently per reader,
+// so stamping it would manufacture a path nobody owns.
+func TestSessionStampableWorkDirStampsAbsolutePoolDir(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		info session.Info
+		want string
 	}{
-		{"pool_managed flag", session.Info{PoolManaged: true, WorkDir: "/rigs/worker-slots/worker-3"}},
-		{"pool_slot without the flag", session.Info{PoolSlot: "worker-3", WorkDir: "/rigs/worker-slots/worker-3"}},
-		{"ephemeral origin", session.Info{SessionOrigin: "ephemeral", WorkDir: "/rigs/worker-slots/worker-4"}},
+		{"pool_managed flag", session.Info{PoolManaged: true, WorkDir: "/rigs/worker-slots/worker-3"}, "/rigs/worker-slots/worker-3"},
+		{"pool_slot without the flag", session.Info{PoolSlot: "worker-3", WorkDir: "/rigs/worker-slots/worker-3"}, "/rigs/worker-slots/worker-3"},
+		{"ephemeral origin", session.Info{SessionOrigin: "ephemeral", WorkDir: "/rigs/worker-slots/worker-4"}, "/rigs/worker-slots/worker-4"},
+		{"lane in the shared checkout", session.Info{PoolManaged: true, WorkDir: "/rigs/entry3-rig"}, "/rigs/entry3-rig"},
+		{"relative slot label refused", session.Info{PoolManaged: true, WorkDir: "worker-slots/worker-3"}, ""},
+		{"relative non-pool refused", session.Info{WorkDir: "relative/dir"}, ""},
+		{"empty refused", session.Info{}, ""},
 	} {
-		if got := sessionStampableWorkDir(tc.info); got != "" {
-			t.Errorf("sessionStampableWorkDir(%s) = %q; want empty, a slot label is not a worktree", tc.name, got)
+		if got := sessionStampableWorkDir(tc.info); got != tc.want {
+			t.Errorf("sessionStampableWorkDir(%s) = %q; want %q", tc.name, got, tc.want)
 		}
 	}
 
