@@ -12,6 +12,7 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/beads/beadstest"
 	"github.com/gastownhall/gascity/internal/convoy"
+	"github.com/gastownhall/gascity/internal/graphv2"
 )
 
 // seedDoneWorkflow builds a store holding a workflow root whose input convoy
@@ -129,6 +130,111 @@ func TestWorkflowRootIDForInputCheck(t *testing.T) {
 				t.Fatalf("workflowRootIDForInputCheck = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// seedRepointedWorkflow builds a store holding a build-basic-shaped workflow
+// root: gc.input_convoy_id was re-pointed at the implementation convoy (all
+// items closed) while gc.var.convoy_id still names the launch convoy.
+// launchMemberStatus controls whether the launch convoy's tracked source bead
+// is terminal ("closed") or still open ("open").
+func seedRepointedWorkflow(t *testing.T, launchMemberStatus string) (*beads.MemStore, beads.Bead, beads.Bead) {
+	t.Helper()
+	store := beads.NewMemStore()
+	source, err := store.Create(beads.Bead{Title: "source work"})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if launchMemberStatus == "closed" {
+		if err := store.Close(source.ID); err != nil {
+			t.Fatalf("close source: %v", err)
+		}
+	}
+	launch, err := store.Create(beads.Bead{Title: "launch convoy", Type: "convoy"})
+	if err != nil {
+		t.Fatalf("create launch convoy: %v", err)
+	}
+	if err := convoy.TrackItemIn(convoy.MemberClasses{Convoy: beadstest.Work(store)}, launch.ID, source.ID); err != nil {
+		t.Fatalf("track source: %v", err)
+	}
+	item, err := store.Create(beads.Bead{Title: "implementation item"})
+	if err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+	if err := store.Close(item.ID); err != nil {
+		t.Fatalf("close item: %v", err)
+	}
+	impl, err := store.Create(beads.Bead{Title: "implementation convoy", Type: "convoy"})
+	if err != nil {
+		t.Fatalf("create implementation convoy: %v", err)
+	}
+	if err := convoy.TrackItemIn(convoy.MemberClasses{Convoy: beadstest.Work(store)}, impl.ID, item.ID); err != nil {
+		t.Fatalf("track item: %v", err)
+	}
+	root, err := store.Create(beads.Bead{Title: "mol", Metadata: map[string]string{
+		beadmeta.KindMetadataKey:                        beadmeta.KindWorkflow,
+		beadmeta.InputConvoyIDMetadataKey:               impl.ID,
+		beadmeta.FormulaVarPrefix + graphv2.ConvoyIDVar: launch.ID,
+		beadmeta.RoutedToMetadataKey:                    "rig/worker",
+	}})
+	if err != nil {
+		t.Fatalf("create root: %v", err)
+	}
+	step, err := store.Create(beads.Bead{Title: "Publish", Metadata: map[string]string{
+		beadmeta.RootBeadIDMetadataKey:        root.ID,
+		beadmeta.ContinuationGroupMetadataKey: "pool-workflow",
+		beadmeta.RoutedToMetadataKey:          "rig/worker",
+	}})
+	if err != nil {
+		t.Fatalf("create tail step: %v", err)
+	}
+	return store, root, step
+}
+
+// After decompose re-points a build-basic root's gc.input_convoy_id at the
+// drained implementation convoy, the verdict still judges the launch convoy
+// named by gc.var.convoy_id: an open source bead there keeps the workflow
+// pending so the review and publish tail is claimed, not retired.
+func TestWorkflowInputDoneJudgesLaunchConvoyAfterInputRepoint(t *testing.T) {
+	store, root, step := seedRepointedWorkflow(t, "open")
+
+	rootID, done, err := workflowInputCompleteIn(store, root, nil)
+	if err != nil {
+		t.Fatalf("workflowInputDone(root): %v", err)
+	}
+	if done || rootID != root.ID {
+		t.Fatalf("root: done=%v rootID=%q, want done=false rootID=%q", done, rootID, root.ID)
+	}
+
+	rootID, done, err = workflowInputCompleteIn(store, step, nil)
+	if err != nil {
+		t.Fatalf("workflowInputDone(step): %v", err)
+	}
+	if done || rootID != root.ID {
+		t.Fatalf("step: done=%v rootID=%q, want done=false rootID=%q", done, rootID, root.ID)
+	}
+}
+
+// The re-point changes which convoy is judged, not what terminal means: a
+// launch convoy whose tracked source bead is terminal still retires the
+// workflow, even though gc.input_convoy_id names another convoy.
+func TestWorkflowInputDoneCompleteWhenLaunchConvoyTerminal(t *testing.T) {
+	store, root, step := seedRepointedWorkflow(t, "closed")
+
+	rootID, done, err := workflowInputCompleteIn(store, root, nil)
+	if err != nil {
+		t.Fatalf("workflowInputDone(root): %v", err)
+	}
+	if !done || rootID != root.ID {
+		t.Fatalf("root: done=%v rootID=%q, want done=true rootID=%q", done, rootID, root.ID)
+	}
+
+	rootID, done, err = workflowInputCompleteIn(store, step, nil)
+	if err != nil {
+		t.Fatalf("workflowInputDone(step): %v", err)
+	}
+	if !done || rootID != root.ID {
+		t.Fatalf("step: done=%v rootID=%q, want done=true rootID=%q", done, rootID, root.ID)
 	}
 }
 
@@ -493,6 +599,57 @@ func TestDoHookClaimStillClaimsWhenInputNotDone(t *testing.T) {
 	}
 	if claimedID != "root-1" {
 		t.Fatalf("claimed = %q, want root-1", claimedID)
+	}
+}
+
+// A build-basic tail step stays claimable after decompose re-points the root's
+// gc.input_convoy_id at the drained implementation convoy: the verdict judges
+// the launch convoy (gc.var.convoy_id) through the real workflowInputDone, so
+// the open source bead there keeps the workflow pending and the tail step is
+// claimed instead of retired.
+func TestDoHookClaimStillClaimsTailStepAfterInputRepoint(t *testing.T) {
+	store, _, step := seedRepointedWorkflow(t, "open")
+	output, err := json.Marshal([]beads.Bead{step})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	claimedID := ""
+	ops := hookClaimOps{
+		Runner: func(string, string) (string, error) { return string(output), nil },
+		Claim: func(_ context.Context, _ string, _ []string, beadID, assignee string) (beads.Bead, bool, error) {
+			claimedID = beadID
+			return beads.Bead{ID: beadID, Assignee: assignee, Status: "in_progress"}, true, nil
+		},
+		InputVerdict: func(ctx context.Context, _ string, _ []string, candidate beads.Bead, identityCandidates []string, _ workflowInputAbsenceProver) (workflowInputVerdict, error) {
+			return workflowInputDone(ctx, beadstest.Work(store), candidate, identityCandidates, nil)
+		},
+		RetireWorkflow: func(_ context.Context, _ string, _ []string, verdict workflowInputVerdict) error {
+			t.Fatalf("unexpected retirement of %s", verdict.RootID)
+			return nil
+		},
+		ListContinuation: func(_ context.Context, _ string, _ []string, _, _ string) ([]beads.Bead, error) {
+			return nil, nil
+		},
+		AssignContinuation: func(_ context.Context, _ string, _ []string, _, _ string) error { return nil },
+		ResolveWorkBranch:  func(hookClaimWorkTree) string { return "" },
+		StampWorkMeta: func(_ context.Context, _ string, _ []string, _, _ string, _ map[string]string) error {
+			return nil
+		},
+		PublishRunMap: func(_, _ string, _ ...string) error { return nil },
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doHookClaim("query", "/rig", hookClaimOptions{
+		Assignee:     "worker-1",
+		RouteTargets: []string{"rig/worker"},
+		JSON:         true,
+	}, ops, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("doHookClaim = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if claimedID != step.ID {
+		t.Fatalf("claimed = %q, want tail step %q", claimedID, step.ID)
 	}
 }
 
