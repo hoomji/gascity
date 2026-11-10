@@ -873,7 +873,9 @@ func (s *Server) rejectPendingInteraction(ctx context.Context, store beads.Sessi
 		if err != nil || pending == nil {
 			return nil, err
 		}
-		interaction := runtimePendingInteraction(pending)
+		// The submit-time check inspects presence only; it never reaches
+		// the wire, so it carries no read-time lineage.
+		interaction := runtimePendingInteraction(pending, interactionLineage{})
 		return &interaction, nil
 	})
 	if err != nil {

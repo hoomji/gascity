@@ -108,7 +108,7 @@ func TestHistorySnapshotStructuredMessagesPreferWorkerCarriedStructuredData(t *t
 		}},
 	}
 
-	messages, ids := historySnapshotStructuredMessages(snapshot, false)
+	messages, ids := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
 	if len(ids) != 2 || ids[0] != "assistant-1" || ids[1] != "tool-1" {
 		t.Fatalf("ids = %#v, want assistant/tool IDs", ids)
 	}
@@ -198,7 +198,7 @@ func TestHistorySnapshotStructuredMessagesCarriesUserPromptMetadata(t *testing.T
 		}},
 	}
 
-	messages, _ := historySnapshotStructuredMessages(snapshot, false)
+	messages, _ := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
 	if len(messages) != 1 {
 		t.Fatalf("messages = %+v, want one message", messages)
 	}
@@ -235,7 +235,7 @@ func TestHistorySnapshotStructuredMessagesRedactsThinkingSignatureUnlessIncluded
 		}},
 	}
 
-	redacted, _ := historySnapshotStructuredMessages(snapshot, false)
+	redacted, _ := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
 	if len(redacted) != 1 || len(redacted[0].Blocks) != 1 {
 		t.Fatalf("redacted messages = %+v, want one thinking block", redacted)
 	}
@@ -246,7 +246,7 @@ func TestHistorySnapshotStructuredMessagesRedactsThinkingSignatureUnlessIncluded
 		t.Fatalf("redacted signature = %q, want empty", redacted[0].Blocks[0].Signature)
 	}
 
-	included, _ := historySnapshotStructuredMessages(snapshot, true)
+	included, _ := historySnapshotStructuredMessages(snapshot, true, interactionLineage{})
 	if included[0].Blocks[0].Thinking != "private reasoning" {
 		t.Fatalf("included thinking = %q, want private reasoning", included[0].Blocks[0].Thinking)
 	}
@@ -270,7 +270,7 @@ func TestHistorySnapshotStructuredMessagesRedactsUnknownBlockSignatureUnlessIncl
 		}},
 	}
 
-	redacted, _ := historySnapshotStructuredMessages(snapshot, false)
+	redacted, _ := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
 	if len(redacted) != 1 || len(redacted[0].Blocks) != 1 {
 		t.Fatalf("redacted messages = %+v, want one unknown block", redacted)
 	}
@@ -278,7 +278,7 @@ func TestHistorySnapshotStructuredMessagesRedactsUnknownBlockSignatureUnlessIncl
 		t.Fatalf("redacted unknown signature = %q, want empty", redacted[0].Blocks[0].Signature)
 	}
 
-	included, _ := historySnapshotStructuredMessages(snapshot, true)
+	included, _ := historySnapshotStructuredMessages(snapshot, true, interactionLineage{})
 	if included[0].Blocks[0].Signature != "encrypted" {
 		t.Fatalf("included unknown signature = %q, want encrypted", included[0].Blocks[0].Signature)
 	}
@@ -291,10 +291,56 @@ func TestHistoryEntryToStructuredMessageUsesActorAsRole(t *testing.T) {
 		Actor:  worker.ActorTool,
 		Status: worker.ResultStatusFinal,
 		Blocks: []worker.HistoryBlock{{Kind: worker.BlockKindToolResult, ContentText: "done"}},
-	}, false)
+	}, false, interactionLineage{})
 
 	if message.Role != string(worker.ActorTool) {
 		t.Fatalf("role = %q, want actor role %q", message.Role, worker.ActorTool)
+	}
+}
+
+// TestHistorySnapshotStructuredMessagesStampsInteractionLineage proves the
+// helper-lineage contract on the interaction shape: every interaction block
+// in the projected history carries the session's bead linkage
+// (lead/parent/origin), resolved once per read.
+func TestHistorySnapshotStructuredMessagesStampsInteractionLineage(t *testing.T) {
+	snapshot := &worker.HistorySnapshot{
+		Entries: []worker.HistoryEntry{{
+			ID:     "assistant-1",
+			Kind:   "assistant",
+			Actor:  worker.ActorAssistant,
+			Status: worker.ResultStatusFinal,
+			Blocks: []worker.HistoryBlock{{
+				Kind: worker.BlockKindInteraction,
+				Interaction: &worker.HistoryInteraction{
+					RequestID: "req-1",
+					Kind:      "approval",
+					State:     worker.InteractionStatePending,
+					Prompt:    "approve?",
+				},
+			}},
+		}},
+	}
+	lin := interactionLineage{Lead: "bd-work", Parent: "bd-epic", Origin: "bd-root"}
+
+	messages, _ := historySnapshotStructuredMessages(snapshot, false, lin)
+	if len(messages) != 1 || len(messages[0].Blocks) != 1 {
+		t.Fatalf("messages = %+v, want one message with one block", messages)
+	}
+	got := messages[0].Blocks[0].Interaction
+	if got == nil {
+		t.Fatalf("interaction = nil, want the projected block")
+	}
+	if got.Lead != "bd-work" || got.Parent != "bd-epic" || got.Origin != "bd-root" {
+		t.Fatalf("interaction lineage = lead %q parent %q origin %q, want bd-work bd-epic bd-root",
+			got.Lead, got.Parent, got.Origin)
+	}
+
+	// Zero lineage stamps nothing: reads without an active bead keep the
+	// interaction shape unchanged.
+	unstamped, _ := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
+	plain := unstamped[0].Blocks[0].Interaction
+	if plain == nil || plain.Lead != "" || plain.Parent != "" || plain.Origin != "" {
+		t.Fatalf("unstamped interaction = %+v, want empty lineage", plain)
 	}
 }
 
@@ -314,7 +360,7 @@ func TestHistorySnapshotStructuredMessagesCarriesImageBlockMetadata(t *testing.T
 		}},
 	}
 
-	messages, ids := historySnapshotStructuredMessages(snapshot, false)
+	messages, ids := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
 	if len(ids) != 1 || ids[0] != "user-image" {
 		t.Fatalf("ids = %#v, want user-image", ids)
 	}
@@ -364,7 +410,7 @@ func TestHistorySnapshotStructuredMessagesDoNotInferProviderNativeFallbacks(t *t
 		}},
 	}
 
-	messages, _ := historySnapshotStructuredMessages(snapshot, false)
+	messages, _ := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
 	if got := messages[0].Blocks[0].Input; got != nil {
 		t.Fatalf("tool input = %+v, want nil without worker-carried structured input", got)
 	}
@@ -402,7 +448,7 @@ func TestHistorySnapshotStructuredMessagesUseWorkerCarriedContentText(t *testing
 		}},
 	}
 
-	messages, _ := historySnapshotStructuredMessages(snapshot, false)
+	messages, _ := historySnapshotStructuredMessages(snapshot, false, interactionLineage{})
 	if len(messages) != 1 || len(messages[0].Blocks) != 1 {
 		t.Fatalf("messages = %+v, want one tool-result block", messages)
 	}

@@ -2895,10 +2895,13 @@ export type PatchOkResponseBody = {
 
 export type PendingInteraction = {
     kind: string;
+    lead?: string;
     metadata?: {
         [key: string]: string;
     };
     options?: Array<string> | null;
+    origin?: string;
+    parent?: string;
     prompt?: string;
     request_id: string;
 };
@@ -4665,7 +4668,10 @@ export type SessionStructuredIdeSelection = {
 export type SessionStructuredInteraction = {
     action?: string;
     kind?: string;
+    lead?: string;
     options?: Array<string> | null;
+    origin?: string;
+    parent?: string;
     prompt?: string;
     request_id?: string;
     state: string;

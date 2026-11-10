@@ -101,7 +101,7 @@ func (s *Server) handleSessionTranscript(w http.ResponseWriter, r *http.Request)
 				writeTranscriptReadError(w, historyErr, "reading session history")
 				return
 			}
-			messages, _ := historySnapshotStructuredMessages(history, includeThinking)
+			messages, _ := historySnapshotStructuredMessages(history, includeThinking, s.activeBeadLineage(info))
 			projection := structuredSnapshotProjection(SessionStreamStructuredMessageEvent{
 				ID:                 info.ID,
 				Template:           info.Template,

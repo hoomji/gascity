@@ -55,21 +55,27 @@ type syntheticAssistantFrame struct {
 
 var sessionStreamPendingStallTimeout = 5 * time.Second
 
-func runtimePendingInteraction(pending *worker.PendingInteraction) runtime.PendingInteraction {
-	return runtime.PendingInteraction{
+// runtimePendingInteraction converts a worker pending interaction to the
+// wire shape, stamped with the session's bead linkage. The stream resolves
+// the lineage once per request and passes it down, so every pending event
+// on the stream carries the same read-time linkage.
+func runtimePendingInteraction(pending *worker.PendingInteraction, lin interactionLineage) runtime.PendingInteraction {
+	wire := runtime.PendingInteraction{
 		RequestID: pending.RequestID,
 		Kind:      pending.Kind,
 		Prompt:    pending.Prompt,
 		Options:   append([]string(nil), pending.Options...),
 		Metadata:  cloneStringMap(pending.Metadata),
 	}
+	lin.stamp(&wire)
+	return wire
 }
 
-func pendingInteractionKey(pending *worker.PendingInteraction) string {
+func pendingInteractionKey(pending *worker.PendingInteraction, lin interactionLineage) string {
 	if pending == nil {
 		return ""
 	}
-	encoded, err := json.Marshal(runtimePendingInteraction(pending))
+	encoded, err := json.Marshal(runtimePendingInteraction(pending, lin))
 	if err != nil {
 		log.Printf("session stream: pending interaction key encode failed for %s: %v", pending.RequestID, err)
 		return pending.RequestID
@@ -264,7 +270,7 @@ func (s *Server) emitClosedSessionSnapshotStructured(w http.ResponseWriter, info
 		s.emitStructuredFallbackSnapshot(w, info, "", includeThinking, resumeToken)
 		return
 	}
-	messages, _ := historySnapshotStructuredMessages(history, includeThinking)
+	messages, _ := historySnapshotStructuredMessages(history, includeThinking, s.activeBeadLineage(info))
 	projection := SessionStreamStructuredMessageEvent{
 		ID:                 info.ID,
 		Template:           info.Template,
@@ -411,7 +417,9 @@ func (s *Server) streamSessionTranscriptHistoryRaw(ctx context.Context, w http.R
 			}
 			return false
 		}
-		pendingKey := pendingInteractionKey(pending)
+		// Raw streams marshal the worker shape directly, so the key carries
+		// no read-time lineage: the pending event keeps today's bytes.
+		pendingKey := pendingInteractionKey(pending, interactionLineage{})
 		if pendingKey == lastPendingKey {
 			return false
 		}
@@ -599,6 +607,10 @@ func (s *Server) streamSessionTranscriptHistoryStructured(ctx context.Context, w
 	worker.PeekHandle
 }, initial *worker.HistorySnapshot, includeThinking bool, resumeToken, pendingRequestID, pendingKey string,
 ) {
+	// lin is the session's bead linkage, resolved once: every interaction
+	// block and pending event on this stream carries the same read-time
+	// lineage.
+	lin := s.activeBeadLineage(info)
 	logPath := sessionStreamTranscriptPath(ctx, handle)
 	poll := time.NewTicker(outputStreamPollInterval)
 	keepalive := time.NewTicker(sseKeepalive)
@@ -651,7 +663,7 @@ func (s *Server) streamSessionTranscriptHistoryStructured(ctx context.Context, w
 		}
 		currentActivity = historySnapshotActivity(snapshot)
 		hasStructuredProjection = true
-		messages, _ := historySnapshotStructuredMessages(snapshot, includeThinking)
+		messages, _ := historySnapshotStructuredMessages(snapshot, includeThinking, lin)
 		projection := SessionStreamStructuredMessageEvent{
 			ID:                 info.ID,
 			Template:           info.Template,
@@ -703,13 +715,13 @@ func (s *Server) streamSessionTranscriptHistoryStructured(ctx context.Context, w
 			writeSSEWithoutID(w, "activity", actData)
 			return true
 		}
-		pendingKey := pendingInteractionKey(pending)
+		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
 			return false
 		}
 		lastPendingID = pending.RequestID
 		lastPendingKey = pendingKey
-		pendingData, _ := json.Marshal(runtimePendingInteraction(pending))
+		pendingData, _ := json.Marshal(runtimePendingInteraction(pending, lin))
 		writeSSEWithoutID(w, "pending", pendingData)
 		return true
 	}
@@ -790,7 +802,10 @@ func (s *Server) streamSessionPeekRaw(ctx context.Context, w http.ResponseWriter
 
 	emitPending := func() {
 		pending, pErr := handle.Pending(ctx)
-		pendingKey := pendingInteractionKey(pending)
+		// Raw streams marshal the worker shape directly, so the key
+		// carries no read-time lineage: the pending event keeps today's
+		// bytes.
+		pendingKey := pendingInteractionKey(pending, interactionLineage{})
 		if pErr == nil && pending != nil && pendingKey != lastPeekPendingKey {
 			lastPeekPendingID = pending.RequestID
 			lastPeekPendingKey = pendingKey
@@ -855,6 +870,9 @@ func (s *Server) streamSessionPeekRaw(ctx context.Context, w http.ResponseWriter
 
 func (s *Server) streamSessionPeekStructured(ctx context.Context, w http.ResponseWriter, info session.Info, handle worker.Handle, includeThinking bool, resumeToken string,
 ) {
+	// lin is the session's bead linkage, resolved once: every pending
+	// event on this stream carries the same read-time lineage.
+	lin := s.activeBeadLineage(info)
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
 	pollC := poll.C
@@ -877,11 +895,11 @@ func (s *Server) streamSessionPeekStructured(ctx context.Context, w http.Respons
 			log.Printf("session stream structured: pending read failed for %s: %v", info.ID, err)
 			return
 		}
-		pendingKey := pendingInteractionKey(pending)
+		pendingKey := pendingInteractionKey(pending, lin)
 		if pending != nil && pendingKey != lastPendingKey {
 			lastPendingID = pending.RequestID
 			lastPendingKey = pendingKey
-			pendingData, _ := json.Marshal(runtimePendingInteraction(pending))
+			pendingData, _ := json.Marshal(runtimePendingInteraction(pending, lin))
 			writeSSEWithoutID(w, "pending", pendingData)
 		} else if pending == nil && lastPendingID != "" {
 			clearedData, _ := json.Marshal(SessionPendingClearedEvent{RequestID: lastPendingID})
@@ -1023,6 +1041,9 @@ func (s *Server) streamSessionTranscriptLogRawHuma(ctx context.Context, send sse
 	worker.InteractionHandle
 }, initial *worker.HistorySnapshot, req worker.HistoryRequest,
 ) {
+	// lin is the session's bead linkage, resolved once: every pending
+	// event on this stream carries the same read-time lineage.
+	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	send = cancelOnSendError(send, cancel)
@@ -1130,14 +1151,14 @@ func (s *Server) streamSessionTranscriptLogRawHuma(ctx context.Context, send sse
 			}
 			return false
 		}
-		pendingKey := pendingInteractionKey(pending)
+		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
 			return false
 		}
 		lastPendingID = pending.RequestID
 		lastPendingKey = pendingKey
 		seq++
-		_ = send(sse.Message{ID: seq, Data: runtimePendingInteraction(pending)})
+		_ = send(sse.Message{ID: seq, Data: runtimePendingInteraction(pending, lin)})
 		return true
 	}
 
@@ -1335,6 +1356,10 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 	worker.PeekHandle
 }, initial *worker.HistorySnapshot, includeThinking bool, resumeToken, pendingRequestID, pendingKey string,
 ) {
+	// lin is the session's bead linkage, resolved once: every interaction
+	// block and pending event on this stream carries the same read-time
+	// lineage.
+	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	send = cancelOnStringIDSendError(send, cancel)
@@ -1398,7 +1423,7 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 		}
 		currentActivity = historySnapshotActivity(snapshot)
 		hasStructuredProjection = true
-		messages, _ := historySnapshotStructuredMessages(snapshot, includeThinking)
+		messages, _ := historySnapshotStructuredMessages(snapshot, includeThinking, lin)
 		projection := SessionStreamStructuredMessageEvent{
 			ID:                 info.ID,
 			Template:           info.Template,
@@ -1448,13 +1473,13 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 			_ = send(StringIDMessage{Data: SessionActivityEvent{Activity: activity}})
 			return true
 		}
-		pendingKey := pendingInteractionKey(pending)
+		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
 			return false
 		}
 		lastPendingID = pending.RequestID
 		lastPendingKey = pendingKey
-		_ = send(StringIDMessage{Data: runtimePendingInteraction(pending)})
+		_ = send(StringIDMessage{Data: runtimePendingInteraction(pending, lin)})
 		return true
 	}
 
@@ -1518,6 +1543,9 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 }
 
 func (s *Server) streamSessionPeekRawHuma(ctx context.Context, send sse.Sender, info session.Info) {
+	// lin is the session's bead linkage, resolved once: every pending
+	// event on this stream carries the same read-time lineage.
+	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	send = cancelOnSendError(send, cancel)
@@ -1547,12 +1575,12 @@ func (s *Server) streamSessionPeekRawHuma(ctx context.Context, send sse.Sender, 
 
 	emitPending := func() {
 		pending, err := handle.Pending(ctx)
-		pendingKey := pendingInteractionKey(pending)
+		pendingKey := pendingInteractionKey(pending, lin)
 		if err == nil && pending != nil && pendingKey != lastPendingKey {
 			lastPendingID = pending.RequestID
 			lastPendingKey = pendingKey
 			seq++
-			_ = send(sse.Message{ID: seq, Data: runtimePendingInteraction(pending)})
+			_ = send(sse.Message{ID: seq, Data: runtimePendingInteraction(pending, lin)})
 		} else if pending == nil && lastPendingID != "" {
 			lastPendingID = ""
 			lastPendingKey = ""
@@ -1614,6 +1642,9 @@ func (s *Server) streamSessionPeekRawHuma(ctx context.Context, send sse.Sender, 
 }
 
 func (s *Server) streamSessionPeekStructuredHuma(ctx context.Context, send StringIDSender, info session.Info, handle worker.Handle, includeThinking bool, resumeToken string) {
+	// lin is the session's bead linkage, resolved once: every pending
+	// event on this stream carries the same read-time lineage.
+	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	send = cancelOnStringIDSendError(send, cancel)
@@ -1646,11 +1677,11 @@ func (s *Server) streamSessionPeekStructuredHuma(ctx context.Context, send Strin
 			log.Printf("session stream structured: pending read failed for %s: %v", info.ID, err)
 			return
 		}
-		pendingKey := pendingInteractionKey(pending)
+		pendingKey := pendingInteractionKey(pending, lin)
 		if pending != nil && pendingKey != lastPendingKey {
 			lastPendingID = pending.RequestID
 			lastPendingKey = pendingKey
-			_ = send(StringIDMessage{Data: runtimePendingInteraction(pending)})
+			_ = send(StringIDMessage{Data: runtimePendingInteraction(pending, lin)})
 		} else if pending == nil && lastPendingID != "" {
 			_ = send(StringIDMessage{Data: SessionPendingClearedEvent{RequestID: lastPendingID}})
 			lastPendingID = ""

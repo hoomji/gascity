@@ -646,6 +646,14 @@ type PendingInteraction struct {
 	Prompt    string            `json:"prompt,omitempty"`
 	Options   []string          `json:"options,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+	// Lead, Parent and Origin carry the bead linkage of the work the
+	// session is doing, stamped by the API at read time — providers leave
+	// them empty. Lead is the session's active bead, Parent its parent
+	// bead, Origin its workflow root bead, so a helper's request shows
+	// under its lead.
+	Lead   string `json:"lead,omitempty"`
+	Parent string `json:"parent,omitempty"`
+	Origin string `json:"origin,omitempty"`
 }
 
 // InteractionResponse is the client's answer to a pending interaction.

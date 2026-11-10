@@ -6913,6 +6913,9 @@
           "kind": {
             "type": "string"
           },
+          "lead": {
+            "type": "string"
+          },
           "metadata": {
             "additionalProperties": {
               "type": "string"
@@ -6927,6 +6930,12 @@
               "array",
               "null"
             ]
+          },
+          "origin": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
           },
           "prompt": {
             "type": "string"
@@ -10571,6 +10580,9 @@
           "kind": {
             "type": "string"
           },
+          "lead": {
+            "type": "string"
+          },
           "options": {
             "items": {
               "type": "string"
@@ -10579,6 +10591,12 @@
               "array",
               "null"
             ]
+          },
+          "origin": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
           },
           "prompt": {
             "type": "string"

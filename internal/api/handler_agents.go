@@ -10,9 +10,11 @@ import (
 
 	"github.com/gastownhall/gascity/internal/agent"
 	"github.com/gastownhall/gascity/internal/agentutil"
+	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/runtime"
+	"github.com/gastownhall/gascity/internal/session"
 	workdirutil "github.com/gastownhall/gascity/internal/workdir"
 )
 
@@ -447,6 +449,118 @@ func (s *Server) findActiveBeadForAssigneesWithFreshness(rig string, live bool, 
 		}
 	}
 	return ""
+}
+
+// interactionLineage is the bead linkage stamped onto pending and
+// interaction shapes at read time: Lead is the session's active bead (the
+// bead leading its current work), Parent that bead's parent bead, Origin
+// its workflow root bead. A helper's request carries this so it shows under
+// its lead. The zero value stamps nothing: fields stay empty when the
+// session has no active bead, or the bead has no parent or root.
+type interactionLineage struct {
+	Lead   string
+	Parent string
+	Origin string
+}
+
+// stamp fills the empty lineage fields of a pending interaction. A provider
+// never sets them (it knows no beads); filling rather than overwriting keeps
+// a future durable stamping authoritative over this read-time one.
+func (lin interactionLineage) stamp(pending *runtime.PendingInteraction) {
+	if pending == nil {
+		return
+	}
+	if pending.Lead == "" {
+		pending.Lead = lin.Lead
+	}
+	if pending.Parent == "" {
+		pending.Parent = lin.Parent
+	}
+	if pending.Origin == "" {
+		pending.Origin = lin.Origin
+	}
+}
+
+// activeBeadLineage resolves the bead linkage for a session: its active
+// bead leads, that bead's parent is the parent, its gc.root_bead_id the
+// origin. It reads through the same cached, suspension-aware scope as the
+// agents views, and degrades to the zero lineage when the session has no
+// active bead or the lookup fails, so a lineage miss never fails the read
+// it annotates.
+func (s *Server) activeBeadLineage(info session.Info) interactionLineage {
+	if s == nil || s.state == nil {
+		return interactionLineage{}
+	}
+	row := s.findActiveBeadRowForAssignees("", info.ID, info.SessionName, info.Alias, info.Template)
+	if row.ID == "" {
+		return interactionLineage{}
+	}
+	return interactionLineage{
+		Lead:   row.ID,
+		Parent: row.ParentID,
+		Origin: strings.TrimSpace(row.Metadata[beadmeta.RootBeadIDMetadataKey]),
+	}
+}
+
+// pendingLineageForSession resolves the bead linkage annotating a pending
+// read: the session's info, then its active bead's lineage. A session that
+// cannot be re-read degrades to the zero lineage (logged), so the
+// annotation never fails the read it accompanies.
+func (s *Server) pendingLineageForSession(store beads.SessionStore, id string) interactionLineage {
+	info, err := session.NewStore(store).Get(id)
+	if err != nil {
+		log.Printf("pending lineage: reading session %s: %v", id, err)
+		return interactionLineage{}
+	}
+	return s.activeBeadLineage(info)
+}
+
+// findActiveBeadRowForAssignees is findActiveBeadForAssignees' cached path
+// returning the matched row instead of its ID, so the caller can project
+// the bead's own linkage. It issues the same query in the same order (same
+// identity priority, store order and newest-first sort), so the row is the
+// match the ID lookup would return. It returns the zero bead when nothing
+// matches. Keep the two in sync.
+func (s *Server) findActiveBeadRowForAssignees(rig string, assignees ...string) beads.Bead {
+	var row beads.Bead
+	stores, rigNames := activeBeadSearchScope(workStoresByName(s.state.Stores(), s.state.CityName()), s.loadCacheColdRigs(), rig)
+	seen := make(map[string]bool, len(assignees))
+	var unique []string
+	for _, assignee := range assignees {
+		assignee = strings.TrimSpace(assignee)
+		if assignee == "" || seen[assignee] {
+			continue
+		}
+		seen[assignee] = true
+		unique = append(unique, assignee)
+	}
+	for _, assignee := range unique {
+		for _, rn := range rigNames {
+			query := beads.ListQuery{
+				Assignee: assignee,
+				Status:   "in_progress",
+				Limit:    1,
+				Sort:     beads.SortCreatedDesc,
+			}
+			if cached, ok := beads.As[beads.CachedLister](stores[rn]); ok {
+				matches, cacheOK := cached.CachedList(query)
+				if cacheOK {
+					if len(matches) > 0 {
+						return matches[0]
+					}
+					continue
+				}
+			}
+			matches, err := stores[rn].List(query)
+			if err != nil {
+				continue
+			}
+			if len(matches) > 0 {
+				return matches[0]
+			}
+		}
+	}
+	return row
 }
 
 // activeBeadSearchScope returns the stores an active-bead lookup may read and

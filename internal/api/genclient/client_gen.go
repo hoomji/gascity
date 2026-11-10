@@ -4616,8 +4616,11 @@ type PatchOKResponseBody struct {
 // PendingInteraction defines model for PendingInteraction.
 type PendingInteraction struct {
 	Kind      string             `json:"kind"`
+	Lead      *string            `json:"lead,omitempty"`
 	Metadata  *map[string]string `json:"metadata,omitempty"`
 	Options   *[]string          `json:"options,omitempty"`
+	Origin    *string            `json:"origin,omitempty"`
+	Parent    *string            `json:"parent,omitempty"`
 	Prompt    *string            `json:"prompt,omitempty"`
 	RequestId string             `json:"request_id"`
 }
@@ -6103,7 +6106,10 @@ type SessionStructuredIDESelection struct {
 type SessionStructuredInteraction struct {
 	Action    *string   `json:"action,omitempty"`
 	Kind      *string   `json:"kind,omitempty"`
+	Lead      *string   `json:"lead,omitempty"`
 	Options   *[]string `json:"options,omitempty"`
+	Origin    *string   `json:"origin,omitempty"`
+	Parent    *string   `json:"parent,omitempty"`
 	Prompt    *string   `json:"prompt,omitempty"`
 	RequestId *string   `json:"request_id,omitempty"`
 	State     string    `json:"state"`
