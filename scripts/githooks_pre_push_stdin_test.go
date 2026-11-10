@@ -56,12 +56,15 @@ cat > "$BD_STDIN_RECORD"
 printf '%s\n' "$*" >> "$MAKE_RECORD"
 `)
 
-	for _, dir := range []string{".githooks/lib", "scripts"} {
+	for _, dir := range []string{".githooks/lib", "scripts", "scripts/lib"} {
 		if err := os.MkdirAll(filepath.Join(repo, dir), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
 	}
-	for _, rel := range []string{".githooks/pre-push", ".githooks/lib/beads-chain.sh", ".githooks/lib/push-suite.sh"} {
+	// run_suite enforces the push-time bound through scripts/bounded-run,
+	// which supervises through scripts/lib/harness-reap.sh: both travel
+	// with the hook, or the fixture's suite invocation fails.
+	for _, rel := range []string{".githooks/pre-push", ".githooks/lib/beads-chain.sh", ".githooks/lib/push-suite.sh", "scripts/bounded-run", "scripts/lib/harness-reap.sh"} {
 		body, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
 			t.Fatalf("read %s: %v", rel, err)

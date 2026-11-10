@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# scripts/bounded-run — run a command under a hard wall-clock bound.
+#
+# usage: scripts/bounded-run <duration> <label> [--quit-grace <seconds>]
+#          [--rerun-hint <hint>] -- <cmd...>
+#
+# duration is a Go-style <n>[s|m|h] budget (a bare <n> is seconds). The
+# command runs in its own supervised process group (scripts/lib/harness-reap.sh,
+# portable to the bash 3.2 floor: no timeout(1), which macOS lacks); past the
+# deadline the watchdog SIGQUITs the group for a goroutine dump, then SIGKILLs
+# what remains, and the wrapper exits non-zero. The kill message names the
+# bound, the processes still running at kill time, and the rerun hint (the
+# command line when --rerun-hint is absent). When no bound fires the product's
+# exit status passes through unchanged, including death by signal.
+#
+# ci-gke0 fix 2: go's in-process -timeout cannot be relied on to end a run —
+# a wedged runtime defeats the timeout goroutine (kit-k72d) and the `go`
+# command's own waits sit outside it entirely — so every push-time `go test`
+# runs under this outer bound, set a little above its -timeout.
+
+set -euo pipefail
+
+usage() {
+  echo "usage: scripts/bounded-run <duration> <label> [--quit-grace <seconds>] [--rerun-hint <hint>] -- <cmd...>" >&2
+  exit 2
+}
+
+[[ $# -ge 3 ]] || usage
+duration="$1"
+label="$2"
+shift 2
+
+quit_grace=30
+rerun_hint=""
+while [[ $# -gt 0 && "${1:-}" != "--" ]]; do
+  case "${1:-}" in
+    --quit-grace)
+      [[ $# -ge 2 ]] || usage
+      quit_grace="$2"
+      shift 2
+      ;;
+    --rerun-hint)
+      [[ $# -ge 2 ]] || usage
+      rerun_hint="$2"
+      shift 2
+      ;;
+    *) usage ;;
+  esac
+done
+[[ $# -ge 1 && "${1:-}" == "--" ]] || usage
+shift
+[[ $# -ge 1 ]] || usage
+
+if ! [[ "$quit_grace" =~ ^[0-9]+$ ]]; then
+  echo "scripts/bounded-run: --quit-grace must be whole seconds: $quit_grace" >&2
+  exit 2
+fi
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/harness-reap.sh
+source "$repo_root/scripts/lib/harness-reap.sh"
+
+if ! deadline="$(gc_harness_duration_seconds "$duration")"; then
+  echo "scripts/bounded-run: duration must be <n>[s|m|h]: $duration" >&2
+  exit 2
+fi
+
+if [[ -z "$rerun_hint" ]]; then
+  rerun_hint="$*"
+fi
+export GC_HARNESS_RERUN_HINT="$rerun_hint"
+
+bounded_run_on_signal() {
+  local sig="$1"
+  gc_harness_terminate_supervised
+  trap - "$sig"
+  kill -"$sig" $$
+}
+trap 'gc_harness_terminate_supervised' EXIT
+trap 'bounded_run_on_signal INT' INT
+trap 'bounded_run_on_signal TERM' TERM
+trap 'bounded_run_on_signal HUP' HUP
+
+gc_harness_run_supervised "$label" "$deadline" "$quit_grace" -- "$@"

@@ -171,8 +171,9 @@ func waitWithin(t *testing.T, cmd *exec.Cmd, within time.Duration) error {
 
 // waitForPIDFile blocks until the scripted run body has recorded the PID of
 // the descendant it spawned, so the test signals only after the tree exists.
-func waitForPIDFile(t *testing.T, path string, within time.Duration) int {
+func waitForPIDFile(t *testing.T, path string) int {
 	t.Helper()
+	const within = 30 * time.Second
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(path)
@@ -226,7 +227,7 @@ exec sleep %d
 `, pidFile, fixtureLifetimeSeconds))
 
 	cmd := fixture.start(t)
-	descendant := waitForPIDFile(t, pidFile, 30*time.Second)
+	descendant := waitForPIDFile(t, pidFile)
 
 	// Kill only the runner, the way a dead driver, a closed session, or a
 	// killed parent chain does. Its descendants must not survive it.
@@ -264,7 +265,7 @@ func TestGoTestShardWatchdogKillsARunThatDefeatsGoTimeout(t *testing.T) {
 		"GO_TEST_TIMEOUT=2s",
 		"GO_TEST_WATCHDOG_GRACE=2s",
 	)
-	wedged := waitForPIDFile(t, pidFile, 30*time.Second)
+	wedged := waitForPIDFile(t, pidFile)
 
 	err := waitWithin(t, cmd, 90*time.Second)
 	elapsed := time.Since(start)
@@ -511,7 +512,7 @@ func TestGoTestShardTerminationLeavesNothingHoldingTheCallersPipe(t *testing.T) 
 	)
 	// From here on the runner's tree holds the only write ends.
 	_ = stdoutWriter.Close()
-	waitForPIDFile(t, pidFile, 30*time.Second)
+	waitForPIDFile(t, pidFile)
 
 	if err := syscall.Kill(cmd.Process.Pid, syscall.SIGTERM); err != nil {
 		t.Fatalf("signal runner: %v", err)

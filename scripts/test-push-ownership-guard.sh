@@ -1203,6 +1203,13 @@ install_guard_hook() {
     chmod +x "$repo/.githooks/lib/push-suite.sh"
     # push-suite.sh sources the shared runtime probe at startup.
     cp "$REPO_ROOT/.githooks/lib/local-runtime.sh" "$repo/.githooks/lib/local-runtime.sh"
+    # run_suite enforces the push-time bound through scripts/bounded-run,
+    # which supervises through scripts/lib/harness-reap.sh: both travel
+    # with the hook, or the suite invocation fails.
+    mkdir -p "$repo/scripts/lib"
+    cp "$REPO_ROOT/scripts/bounded-run" "$repo/scripts/bounded-run"
+    cp "$REPO_ROOT/scripts/lib/harness-reap.sh" "$repo/scripts/lib/harness-reap.sh"
+    chmod +x "$repo/scripts/bounded-run"
     printf 'test-fast-parallel:\n\t@true\n' > "$repo/Makefile"
     git -C "$repo" config core.hooksPath .githooks
 }

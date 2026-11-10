@@ -66,6 +66,15 @@ Both engines, including the go suite `auto` picks after that probe, run
 through `run_suite`, never `exec`: a 141 (SIGPIPE) fails the push with a
 named error, because it says a writer hit a closed pipe, not whether the
 tests passed (`TestPrePushSuiteFailsClosedOnSIGPIPE`).
+`run_suite` also enforces the push-time wall-clock bound
+(`GC_PREPUSH_SUITE_TIMEOUT`, default 90m): a pre-push run can never outlive
+it. Every push-time `go test` additionally runs under its own bound a little
+above its `-timeout` — the cmd/gc shards in `scripts/test-go-test-shard`,
+the unit-core sweep through `scripts/bounded-run` — because go's in-process
+timeout cannot be relied on to end a wedged run (ci-gke0).
+`scripts/bounded-run` is the one portable supervisor (process-group
+TERM→KILL, names the bound, the still-running processes, and the rerun);
+a new push-time `go test` path uses it rather than minting another timeout.
 
 ## The tmux test inventory is derived, never counted
 

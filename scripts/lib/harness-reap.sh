@@ -178,17 +178,59 @@ gc_harness_terminate_supervised() {
   gc_harness_terminate_group "${gc_harness_supervised_pgid:-}" "$drain_ticks"
 }
 
+# gc_harness_list_group prints one line per process still in process group
+# pgid, so a watchdog kill says what it killed rather than only that the
+# budget fired (ci-gke0 fix 2). Best-effort and capped: when ps cannot select
+# by process group it prints one unavailable line instead of failing the
+# watchdog, and past 20 members it prints a count, not the whole tree.
+gc_harness_list_group() {
+  local pgid="${1:-}"
+  [[ -n "$pgid" ]] || return 0
+  local group_key="pgid"
+  if ! ps -o "${group_key}=" -p $$ >/dev/null 2>&1; then
+    group_key="pgrp"
+  fi
+  local listing=""
+  if ! listing="$(ps -e -o "pid=,${group_key}=,etime=,args=" 2>/dev/null)"; then
+    printf 'harness watchdog: still running: (process listing unavailable here)\n' >&2
+    return 0
+  fi
+  local pid grp etime cmd count=0 shown=0 extra=0
+  while read -r pid grp etime cmd; do
+    [[ -n "${pid:-}" ]] || continue
+    [[ "$grp" == "$pgid" ]] || continue
+    count=$(( count + 1 ))
+    if (( shown < 20 )); then
+      printf 'harness watchdog: still running: pid %s elapsed %s %s\n' "$pid" "$etime" "$cmd" >&2
+      shown=$(( shown + 1 ))
+    else
+      extra=$(( extra + 1 ))
+    fi
+  done <<< "$listing"
+  if (( count == 0 )); then
+    printf 'harness watchdog: still running: (no member of process group %s visible to ps)\n' "$pgid" >&2
+  elif (( extra > 0 )); then
+    printf 'harness watchdog: still running: ... and %s more process(es) in group %s\n' "$extra" "$pgid" >&2
+  fi
+}
+
 # gc_harness_watchdog kills process group pgid once fire_after seconds have
 # passed. SIGQUIT goes first on purpose: the Go runtime answers it by dumping
 # every goroutine's stack, which names the wedged test in the shard log. That
 # is the only artifact that answers "which test wedges" for a hang that
 # defeats -test.timeout, and kit-k72d had to be diagnosed without it.
+# GC_HARNESS_RERUN_HINT, when set, is printed as the rerun line after the
+# still-running list (scripts/bounded-run sets it from --rerun-hint).
 gc_harness_watchdog() {
   local pgid="${1}" fire_after="${2}" quit_grace="${3}" label="${4}"
   sleep "$fire_after"
   gc_harness_group_alive "$pgid" || return 0
   printf 'harness watchdog: %s exceeded its %ss budget and defeated go'\''s own -timeout; dumping goroutine stacks (SIGQUIT) then killing the process group\n' \
     "$label" "$fire_after" >&2
+  gc_harness_list_group "$pgid"
+  if [[ -n "${GC_HARNESS_RERUN_HINT:-}" ]]; then
+    printf 'harness watchdog: rerun: %s\n' "$GC_HARNESS_RERUN_HINT" >&2
+  fi
   gc_harness_signal_group "$pgid" QUIT
   sleep "$quit_grace"
   gc_harness_signal_group "$pgid" KILL

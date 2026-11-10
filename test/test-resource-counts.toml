@@ -2923,6 +2923,11 @@ calls = 1
 medium = 1
 
 [[count]]
+path = "scripts/bounded_run_test.go"
+resource = "subprocess"
+calls = 2
+
+[[count]]
 path = "scripts/check_core_boundary_test.go"
 resource = "subprocess"
 calls = 1

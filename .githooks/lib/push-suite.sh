@@ -197,14 +197,22 @@ have_bazel() {
   command -v bazel >/dev/null 2>&1
 }
 
-# run_suite CMD...: runs the suite and exits with its status, except that 141
-# (SIGPIPE) fails the push with a named error. 141 says a writer hit a closed
-# pipe, not whether the tests passed: it follows a passing suite (a teardown
-# writer, a dropped stderr reader) as readily as a failing one. Exec'ing the
-# suite would hand that bare signal death to git as the hook's only verdict.
+# run_suite CMD...: runs the suite under a hard wall-clock bound and exits
+# with its status, except that 141 (SIGPIPE) fails the push with a named
+# error. 141 says a writer hit a closed pipe, not whether the tests passed:
+# it follows a passing suite (a teardown writer, a dropped stderr reader) as
+# readily as a failing one. Exec'ing the suite would hand that bare signal
+# death to git as the hook's only verdict.
+#
+# GC_PREPUSH_SUITE_TIMEOUT bounds the whole push-time suite (default 90m, the
+# same ceiling bazel.yml's lane gives `bazel test //...`; an explicit value
+# resizes the bound without removing it). Past it the wrapper kills the
+# suite's process group and names the bound, the still-running processes, and
+# the rerun (ci-gke0 fix 2: per-job bounds catch the wedged `go test`, this
+# catches everything else, so a pre-push run can never outlive the bound).
 run_suite() {
   local status=0
-  "$@" || status=$?
+  "$repo_root/scripts/bounded-run" "${GC_PREPUSH_SUITE_TIMEOUT:-90m}" "pre-push suite" --rerun-hint "git push" -- "$@" || status=$?
   if [ "$status" -eq 141 ]; then
     {
       echo "pre-push: $* exited 141 (SIGPIPE): it, or its teardown, wrote to a closed pipe."

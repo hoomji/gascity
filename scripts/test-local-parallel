@@ -117,6 +117,24 @@ if ! [[ "$go_test_timeout" =~ ^[0-9]+[smh]$ ]]; then
   exit 1
 fi
 
+# External watchdog budget for the unit-core `go test` (ci-gke0 fix 2): the
+# same supervision the cmd/gc shards get in scripts/test-go-test-shard — the
+# shared go timeout plus the same watchdog grace, a little above the go
+# timeout, enforced by scripts/bounded-run as a process-group kill. Without
+# it a unit-core run that defeats its own -timeout wedges the whole push, as
+# one did for 27+ minutes past -timeout 20m on 2026-11-06. An unparseable
+# budget disarms the bound rather than firing at a guessed one, exactly like
+# the shards.
+unit_core_deadline=""
+if [[ "${GO_TEST_WATCHDOG_GRACE:-10m}" != "off" ]]; then
+  if unit_core_timeout_seconds="$(gc_harness_duration_seconds "$go_test_timeout")" &&
+    unit_core_grace_seconds="$(gc_harness_duration_seconds "${GO_TEST_WATCHDOG_GRACE:-10m}")"; then
+    unit_core_deadline=$(( unit_core_timeout_seconds + unit_core_grace_seconds ))
+  else
+    echo "harness watchdog disarmed for unit-core: GO_TEST_TIMEOUT=${go_test_timeout} GO_TEST_WATCHDOG_GRACE=${GO_TEST_WATCHDOG_GRACE:-10m} is not a <n>[s|m|h] duration" >&2
+  fi
+fi
+
 gopath_val="$(go env GOPATH)"
 gocache_val="$(go env GOCACHE)"
 gomodcache_val="$(go env GOMODCACHE)"
@@ -141,8 +159,11 @@ add_fsys_compile_job() {
 # timeout budget. Package parallelism is bounded separately for every job by the
 # GOFLAGS -p export below (ga-04m84s), so it is not pinned on this command.
 add_unit_core_job() {
-  add_job "unit-core" \
-    "GC_FAST_UNIT=1 go test -count=1 -timeout ${go_test_timeout} \$(go list ./... | grep -v '^github.com/gastownhall/gascity/cmd/gc$')"
+  local core_test="GC_FAST_UNIT=1 go test -count=1 -timeout ${go_test_timeout} \$(go list ./... | grep -v '^github.com/gastownhall/gascity/cmd/gc$')"
+  if [[ -n "${unit_core_deadline:-}" ]]; then
+    core_test="./scripts/bounded-run ${unit_core_deadline}s unit-core --rerun-hint 'make test-fast-parallel' -- env ${core_test}"
+  fi
+  add_job "unit-core" "$core_test"
 }
 
 # Runs as a direct shell job rather than through a `go test` wrapper because a
