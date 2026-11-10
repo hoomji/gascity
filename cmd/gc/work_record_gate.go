@@ -7,8 +7,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
+	"github.com/gastownhall/gascity/internal/shellquote"
 	"github.com/gastownhall/gascity/internal/workrecord"
 )
 
@@ -249,7 +251,10 @@ func bdUpdateClosesStatus(bdArgs []string) bool {
 // them in instead of paying a second openStoreAtForCity + store.Get round
 // trip. Both are optional (nil is fine): preOpened falls back to opening its
 // own store, and any ID missing from preFetched falls back to store.Get.
-func runWorkRecordCloseGate(bdArgs []string, scopeRoot, cityPath string, cfg *config.City, preOpened beads.Store, preFetched map[string]beads.Bead, stderr io.Writer) bool {
+// rigScope is the explicit --rig the invocation pinned ("" when unscoped);
+// the outcome fix hint repeats it so the suggested update runs against the
+// same store the close did.
+func runWorkRecordCloseGate(bdArgs []string, scopeRoot, cityPath string, cfg *config.City, preOpened beads.Store, preFetched map[string]beads.Bead, rigScope string, stderr io.Writer) bool {
 	if _, ok := workRecordCloseTargets(bdArgs); !ok {
 		return false
 	}
@@ -272,7 +277,7 @@ func runWorkRecordCloseGate(bdArgs []string, scopeRoot, cityPath string, cfg *co
 			return cfg.Rigs
 		},
 	}
-	return evaluateWorkRecordCloseGate(bdArgs, store, preFetched, dirs, workRecordEnforceEnabled(), stderr)
+	return evaluateWorkRecordCloseGate(bdArgs, store, preFetched, dirs, workRecordEnforceEnabled(), rigScope, stderr)
 }
 
 // evaluateWorkRecordCloseGate is the store-driven core of the close gate, split
@@ -286,8 +291,10 @@ func runWorkRecordCloseGate(bdArgs []string, scopeRoot, cityPath string, cfg *co
 // clause degrades to a warning rather than failing closed: the door cannot pose
 // the question, and refusing a close it could not judge on that basis would
 // block work on a config gap. The sibling clauses do not degrade — an outcome-
-// less bead is refused whether or not a repository was found.
-func evaluateWorkRecordCloseGate(bdArgs []string, store beads.Store, preFetched map[string]beads.Bead, dirs workRecordRepoDirs, enforce bool, stderr io.Writer) (block bool) {
+// less bead is refused whether or not a repository was found. rigScope is the
+// explicit --rig the invocation pinned ("" when unscoped); the outcome fix
+// hint repeats it so the suggested update runs against the same store.
+func evaluateWorkRecordCloseGate(bdArgs []string, store beads.Store, preFetched map[string]beads.Bead, dirs workRecordRepoDirs, enforce bool, rigScope string, stderr io.Writer) (block bool) {
 	ids, ok := workRecordCloseTargets(bdArgs)
 	if !ok {
 		return false
@@ -333,11 +340,32 @@ func evaluateWorkRecordCloseGate(bdArgs []string, store beads.Store, preFetched 
 		for _, v := range violations {
 			fmt.Fprintf(stderr, "gc bd: work-record gate (%s): close of %s: %s\n", mode, id, v) //nolint:errcheck // best-effort stderr
 		}
+		// `gc bd close` has no flag that sets the outcome, so a
+		// missing-or-invalid-outcome warning names the exact update that
+		// satisfies it, on the next line (gs-hekl). Evidence violations get
+		// no hint: stamping an outcome alone would not satisfy them.
+		if projectionErr == nil && !validWorkOutcome(strings.TrimSpace(bead.Metadata[beadmeta.WorkOutcomeMetadataKey])) {
+			fmt.Fprintf(stderr, "fix: %s\n", workRecordOutcomeFixCommand(id, rigScope)) //nolint:errcheck // best-effort stderr
+		}
 		if enforce && len(violations) > 0 {
 			block = true
 		}
 	}
 	return block
+}
+
+// workRecordOutcomeFixCommand renders the exact `gc bd update` invocation that
+// satisfies a missing-or-invalid-outcome violation. The outcome vocabulary is
+// a placeholder the operator fills in; rigScope (the explicit --rig the close
+// pinned, "" when unscoped) is repeated so the fix runs against the same store
+// the close did. The line carries no `gc bd:` prefix so it stays
+// copy-pasteable.
+func workRecordOutcomeFixCommand(id, rigScope string) string {
+	cmd := fmt.Sprintf("gc bd update %s --set-metadata %s=<shipped|no-op|blocked|abandoned>", id, beadmeta.WorkOutcomeMetadataKey)
+	if rig := strings.TrimSpace(rigScope); rig != "" {
+		cmd += " --rig " + shellquote.Join([]string{rig})
+	}
+	return cmd
 }
 
 // workRecordMetadataEdits is the parsed metadata mutation of a `bd update` arg

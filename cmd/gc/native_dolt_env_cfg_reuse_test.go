@@ -245,8 +245,8 @@ func TestBdCloseGateReusesTheWriteGuardsStoreRead(t *testing.T) {
 			return true
 		}
 		calls++
-		if len(call.Args) != 7 {
-			t.Fatalf("%s: got %d args, want 7", callee, len(call.Args))
+		if len(call.Args) != 8 {
+			t.Fatalf("%s: got %d args, want 8 (arg 6 is the explicit --rig scope for the outcome fix hint)", callee, len(call.Args))
 		}
 		for _, want := range []struct {
 			index int

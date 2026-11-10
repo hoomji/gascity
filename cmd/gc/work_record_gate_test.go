@@ -337,7 +337,7 @@ func TestEvaluateWorkRecordCloseGate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var stderr strings.Builder
-			block := evaluateWorkRecordCloseGate(tc.args, newStore(), nil, workRecordRepoDirs{legacy: t.TempDir()}, tc.enforce, &stderr)
+			block := evaluateWorkRecordCloseGate(tc.args, newStore(), nil, workRecordRepoDirs{legacy: t.TempDir()}, tc.enforce, "", &stderr)
 			if block != tc.wantBlock {
 				t.Fatalf("block = %v, want %v; stderr=%s", block, tc.wantBlock, stderr.String())
 			}
@@ -352,6 +352,95 @@ func TestEvaluateWorkRecordCloseGate(t *testing.T) {
 				t.Fatalf("gate output %q does not contain %q", out, tc.wantWarn)
 			}
 		})
+	}
+}
+
+// TestEvaluateWorkRecordCloseGateOutcomeFixHint proves the gate prints the exact
+// update command that satisfies a missing-or-invalid-outcome violation on the
+// line after the warning (gs-hekl): `gc bd close` has no flag that sets the
+// outcome, so the warning alone left the operator guessing. An explicit --rig
+// scope is repeated in the hint so the fix runs against the same store.
+// Evidence violations (shipped without a commit) get no hint: stamping an
+// outcome alone would not satisfy them.
+func TestEvaluateWorkRecordCloseGateOutcomeFixHint(t *testing.T) {
+	beadsList := []beads.Bead{
+		{ID: "wr-missing", Type: "task", Status: "in_progress", Metadata: map[string]string{}},
+		{ID: "wr-bad-outcome", Type: "task", Status: "in_progress", Metadata: map[string]string{beadmeta.WorkOutcomeMetadataKey: "sometimes"}},
+		{ID: "wr-shipped-nocommit", Type: "task", Status: "in_progress", Metadata: map[string]string{beadmeta.WorkOutcomeMetadataKey: beadmeta.WorkOutcomeShipped}},
+	}
+	newStore := func() beads.Store { return beads.NewMemStoreFrom(1, beadsList, nil) }
+	fixLine := func(id, rig string) string {
+		line := "fix: gc bd update " + id + " --set-metadata " + beadmeta.WorkOutcomeMetadataKey + "=<shipped|no-op|blocked|abandoned>"
+		if rig != "" {
+			line += " --rig " + rig
+		}
+		return line + "\n"
+	}
+
+	tests := []struct {
+		name      string
+		args      []string
+		enforce   bool
+		rigScope  string
+		wantBlock bool
+		want      string // exact stderr: warning line, then the fix line
+	}{
+		{
+			"missing outcome prints fix on next line",
+			[]string{"close", "wr-missing"},
+			false,
+			"",
+			false,
+			"gc bd: work-record gate (warn-only): close of wr-missing: missing " + beadmeta.WorkOutcomeMetadataKey + " (want one of shipped|no-op|blocked|abandoned)\n" +
+				fixLine("wr-missing", ""),
+		},
+		{
+			"missing outcome repeats explicit rig scope when enforced",
+			[]string{"close", "wr-missing"},
+			true,
+			"myrig",
+			true,
+			"gc bd: work-record gate (enforced): close of wr-missing: missing " + beadmeta.WorkOutcomeMetadataKey + " (want one of shipped|no-op|blocked|abandoned)\n" +
+				fixLine("wr-missing", "myrig"),
+		},
+		{
+			"invalid outcome prints fix on next line",
+			[]string{"close", "wr-bad-outcome"},
+			false,
+			"",
+			false,
+			`gc bd: work-record gate (warn-only): close of wr-bad-outcome: invalid gc.work_outcome="sometimes" (want one of shipped|no-op|blocked|abandoned)` + "\n" +
+				fixLine("wr-bad-outcome", ""),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stderr strings.Builder
+			block := evaluateWorkRecordCloseGate(tc.args, newStore(), nil, workRecordRepoDirs{legacy: t.TempDir()}, tc.enforce, tc.rigScope, &stderr)
+			if block != tc.wantBlock {
+				t.Fatalf("block = %v, want %v; stderr=%s", block, tc.wantBlock, stderr.String())
+			}
+			if got := stderr.String(); got != tc.want {
+				t.Fatalf("gate output:\n%s\nwant:\n%s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEvaluateWorkRecordCloseGateNoFixHintForEvidenceViolations(t *testing.T) {
+	store := beads.NewMemStoreFrom(1, []beads.Bead{
+		{ID: "wr-shipped-nocommit", Type: "task", Status: "in_progress", Metadata: map[string]string{beadmeta.WorkOutcomeMetadataKey: beadmeta.WorkOutcomeShipped}},
+	}, nil)
+	var stderr strings.Builder
+	if block := evaluateWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, store, nil, workRecordRepoDirs{legacy: t.TempDir()}, false, "", &stderr); block {
+		t.Fatalf("warn-only gate blocked; stderr=%s", stderr.String())
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "work-record gate (warn-only)") {
+		t.Fatalf("expected warn-only gate output, got %q", out)
+	}
+	if strings.Contains(out, "fix: gc bd update") {
+		t.Fatalf("evidence violation must not print an outcome fix hint, got %q", out)
 	}
 }
 
@@ -384,7 +473,7 @@ func TestEvaluateWorkRecordCloseGateAtomicShippedUpdate(t *testing.T) {
 		"--status=closed",
 	}
 	var stderr strings.Builder
-	if block := evaluateWorkRecordCloseGate(args, store, nil, workRecordRepoDirs{legacy: repoDir}, true, &stderr); block {
+	if block := evaluateWorkRecordCloseGate(args, store, nil, workRecordRepoDirs{legacy: repoDir}, true, "", &stderr); block {
 		t.Fatalf("valid atomic shipped close blocked; stderr=%s", stderr.String())
 	}
 	if got := stderr.String(); got != "" {
@@ -408,7 +497,7 @@ func TestEvaluateWorkRecordCloseGateUsesPreFetchedBead(t *testing.T) {
 		"wr-shipped-nocommit": {ID: "wr-shipped-nocommit", Type: "task", Status: "in_progress", Metadata: map[string]string{beadmeta.WorkOutcomeMetadataKey: beadmeta.WorkOutcomeShipped}},
 	}
 	var stderr strings.Builder
-	block := evaluateWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, panicOnGetStore{}, preFetched, workRecordRepoDirs{legacy: t.TempDir()}, true, &stderr)
+	block := evaluateWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, panicOnGetStore{}, preFetched, workRecordRepoDirs{legacy: t.TempDir()}, true, "", &stderr)
 	if !block {
 		t.Fatalf("expected block=true for shipped-without-commit, got false; stderr=%s", stderr.String())
 	}
@@ -432,7 +521,7 @@ func TestRunWorkRecordCloseGateReusesPreOpenedStore(t *testing.T) {
 	var stderr strings.Builder
 	const bogusCityPath = "/nonexistent/does-not-exist"
 	t.Setenv(workRecordEnforceEnvVar, "1")
-	block := runWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, t.TempDir(), bogusCityPath, nil, panicOnGetStore{}, preFetched, &stderr)
+	block := runWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, t.TempDir(), bogusCityPath, nil, panicOnGetStore{}, preFetched, "", &stderr)
 	if !block {
 		t.Fatalf("expected block=true for shipped-without-commit, got false (fallback store open may have silently swallowed the preOpened store); stderr=%s", stderr.String())
 	}
