@@ -23,6 +23,7 @@ import (
 	"github.com/gastownhall/gascity/internal/events"
 	"github.com/gastownhall/gascity/internal/executionevent"
 	"github.com/gastownhall/gascity/internal/git"
+	"github.com/gastownhall/gascity/internal/graphv2"
 	"github.com/gastownhall/gascity/internal/molecule"
 	"github.com/gastownhall/gascity/internal/opjournal"
 	"github.com/gastownhall/gascity/internal/pathutil"
@@ -2352,6 +2353,25 @@ func workflowRootIDForInputCheck(candidate beads.Bead) string {
 	return ""
 }
 
+// workflowLaunchConvoyID is the convoy whose tracked work the input verdict
+// judges: the LAUNCH convoy, not whatever gc.input_convoy_id currently names.
+// At launch both keys hold the same id — stampGraphV2RootMetadata stamps
+// gc.input_convoy_id from vars["convoy_id"] while stampFormulaVars stamps
+// gc.var.convoy_id from the same vars (ordinary roots), and drain-item roots
+// stamp the drain unit id on both — but a step may later re-point
+// gc.input_convoy_id at a downstream convoy (build-basic decompose re-points
+// it at the implementation convoy). Judging the re-pointed convoy retires the
+// workflow's review and publish tail as soon as implementation drains, while
+// the launch convoy's source bead is still open. Roots launched before the
+// gc.var.convoy_id stamp existed carry no launch key and fall back to
+// gc.input_convoy_id, which still names the launch convoy for them.
+func workflowLaunchConvoyID(root beads.Bead) string {
+	if id := strings.TrimSpace(root.Metadata[beadmeta.FormulaVarPrefix+graphv2.ConvoyIDVar]); id != "" {
+		return id
+	}
+	return strings.TrimSpace(root.Metadata[beadmeta.InputConvoyIDMetadataKey])
+}
+
 // workflowInputDoneAcross is workflowInputDone with the workflow's two halves
 // read from their own stores: the root and its steps from graph, the input
 // convoy and its members from work. On a single-store city both are the same
@@ -2370,7 +2390,7 @@ func workflowInputDoneAcross(ctx context.Context, graph beads.Store, work beads.
 		}
 	}
 	pending := workflowInputVerdict{RootID: rootID, State: workflowInputPending}
-	convoyID := strings.TrimSpace(root.Metadata[beadmeta.InputConvoyIDMetadataKey])
+	convoyID := workflowLaunchConvoyID(root)
 	if convoyID == "" {
 		return pending, nil
 	}
