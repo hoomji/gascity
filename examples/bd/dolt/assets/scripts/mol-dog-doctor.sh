@@ -188,6 +188,14 @@ if ! dolt_sql -q "SELECT active_branch()" >/dev/null 2>&1; then
 fi
 PROBE_END_MS=$(now_ms)
 LATENCY_MS=$((PROBE_END_MS - PROBE_START_MS))
+# Elapsed time cannot be negative, but the wall clock can step backward
+# between the two readings (NTP/VM sync, skewed TSCs across cores), which
+# used to report "latency: -Nms" and silently skip the warn — at a 0
+# threshold flipping a warn tick into a healthy tick that sweeps the
+# standing advisory (gs-yfmi). Clamp, mirroring health/run.sh.
+if [ "$LATENCY_MS" -lt 0 ]; then
+    LATENCY_MS=0
+fi
 LATENCY_WARN=""
 if latency_should_warn "$LATENCY_MS" "$LATENCY_WARN_MS"; then
     LATENCY_WARN=" [WARN: latency ${LATENCY_MS}ms >= threshold ${LATENCY_WARN_MS}ms]"

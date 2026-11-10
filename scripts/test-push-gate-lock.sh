@@ -230,7 +230,15 @@ if command -v setsid >/dev/null 2>&1 && { command -v lsof >/dev/null 2>&1 || com
             # Detach a sleeper that inherits the slot FD, then vanish so the
             # stamp PID is dead while the sleeper keeps the flock.
             setsid bash -c "echo \$\$ > \"\$PIDFILE\"; exec sleep 60" &
-            sleep 0.3
+            # Wait on the condition, not a wall-clock budget: the sleeper
+            # must exist (pidfile written) before the leaker vanishes, and
+            # a fixed 0.3s of spawn latency is not guaranteed on a loaded
+            # host. If the pidfile never lands, the flock probe below fails
+            # the fixture loudly.
+            for ((_leak_wait = 0; _leak_wait < 100; _leak_wait++)); do
+                [[ -s "$PIDFILE" ]] && break
+                sleep 0.1
+            done
             exit 0
         '
     SLEEPER_PID="$(cat "$REAP_PIDFILE" 2>/dev/null || true)"
@@ -245,15 +253,24 @@ if command -v setsid >/dev/null 2>&1 && { command -v lsof >/dev/null 2>&1 || com
         # reaper must kill only what still holds the file after it settles.
         bash -c 'exec 7<"$1"; sleep 0.5; exec 7<&-; exec sleep 30' _ "$REAP_SLOTS/slot-0.lock" &
         PROBER_PID=$!
-        START="$(date +%s)"
         REAP_OUT="$(LIB="$LIB" DIR="$REAP_SLOTS" PUSH_GATE_MAX_CONCURRENT=1 \
             PUSH_GATE_MAX_WAIT_SECONDS=6 PUSH_GATE_POLL_SECONDS=1 \
             bash -c '. "$LIB"; if push_gate_acquire_slot "$DIR" z reaper; then echo ACQUIRED; else echo DENIED; fi' 2>&1)"
-        ELAPSED=$(( $(date +%s) - START ))
         REAP_TAIL="$(printf '%s\n' "$REAP_OUT" | tail -1)"
         assert_eq "reap.acquire_succeeds_after_reaping_leak" "$REAP_TAIL" "ACQUIRED"
         assert_contains "reap.diagnostic_names_leaked_descendant" "$REAP_OUT" "reaping leaked descendant"
-        assert_true "reap.did_not_burn_full_wait_bound" test "$ELAPSED" -le 4
+        # No stopwatch: on a loaded host the reaper's lsof/fuser scans and
+        # process spawns stretch wall-clock seconds without burning any wait
+        # rounds, so ELAPSED <= 4 flaked at load 70-100 (gs-yfmi). "Did not
+        # burn the full wait bound" is observable directly — the lib reports
+        # "timed out after Ns" when it burns the bound — and ACQUIRED against
+        # a 60s sleeper already proves the wait short-circuited.
+        case "$REAP_OUT" in
+            *"timed out"*)
+                record_fail "reap.did_not_burn_full_wait_bound" "acquire burned the full wait bound: $REAP_OUT" ;;
+            *)
+                record_pass "reap.did_not_burn_full_wait_bound" ;;
+        esac
         if [[ -n "$SLEEPER_PID" ]] && kill -0 "$SLEEPER_PID" 2>/dev/null; then
             record_fail "reap.leaked_descendant_killed" "sleeper pid $SLEEPER_PID still alive"
             kill "$SLEEPER_PID" 2>/dev/null || true

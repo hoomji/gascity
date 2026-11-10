@@ -6660,6 +6660,88 @@ func TestDoctorScriptSuppressedTickSkipsSweepAndSend(t *testing.T) {
 	}
 }
 
+// writeDogBackwardFakeDate writes a fake date(1) whose first %s%3N reading
+// is 500ms ahead of every later one: a backward wall-clock step between the
+// doctor's PROBE_START_MS and PROBE_END_MS. All other formats delegate to
+// the real date. It returns the path of the call-count file so the test can
+// assert the script made exactly the two probe readings — a drifted fixture
+// that consumed the HIGH reading elsewhere would pass vacuously.
+func writeDogBackwardFakeDate(t *testing.T, binDir string) string {
+	t.Helper()
+	realDate, err := exec.LookPath("date")
+	if err != nil {
+		t.Fatalf("look up real date: %v", err)
+	}
+	callsPath := filepath.Join(binDir, "date.calls")
+	writeExecutable(t, filepath.Join(binDir, "date"), fmt.Sprintf(`#!/usr/bin/env bash
+case "$*" in
+  *"%%s%%3N"*)
+    n=0
+    if [ -f %s ]; then
+      n=$(cat %s)
+    fi
+    n=$((n + 1))
+    printf '%%s\n' "$n" > %s
+    if [ "$n" -eq 1 ]; then
+      printf '1794350158500\n'
+    else
+      printf '1794350158000\n'
+    fi
+    exit 0
+    ;;
+esac
+exec %s "$@"
+`, shellQuote(callsPath), shellQuote(callsPath), shellQuote(callsPath), shellQuote(realDate)))
+	return callsPath
+}
+
+// TestDoctorScriptBackwardClockStepStillWarns pins the negative-latency
+// clamp: a backward wall-clock step between the probe's start and end
+// readings (NTP/VM sync, or unsynchronized TSCs across cores — consecutive
+// date(1) pairs stepped backward ~2% of the time on a loaded 32-core host)
+// must not flip a warn tick into a healthy tick. Before the clamp,
+// LATENCY_MS went negative, latency_should_warn(-N, 0) was false, and the
+// seeded "latency " tick took the healthy branch and swept the standing
+// advisory — the gs-yfmi pre-push flake.
+func TestDoctorScriptBackwardClockStepStillWarns(t *testing.T) {
+	cityPath := t.TempDir()
+	dataDir := filepath.Join(cityPath, "dolt-data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("mkdir data dir: %v", err)
+	}
+
+	binDir := t.TempDir()
+	gcLogPath := writeDogFakeGC(t, binDir)
+	writeDogHealthyFakeDolt(t, binDir)
+	dateCallsPath := writeDogBackwardFakeDate(t, binDir)
+
+	statePath := filepath.Join(t.TempDir(), "doctor-advisory-state")
+	if err := os.WriteFile(statePath, []byte("latency \n"), 0o600); err != nil {
+		t.Fatalf("seed advisory state: %v", err)
+	}
+
+	out := runDogScript(t, "mol-dog-doctor.sh", binDir, cityPath, dataDir,
+		"GC_DOCTOR_LATENCY_WARN_S=0",
+		"GC_DOCTOR_ADVISORY_STATE_FILE="+statePath)
+	if !strings.Contains(out, "server: ok") {
+		t.Fatalf("doctor should report server ok when probe succeeds, output:\n%s", out)
+	}
+	gcLog := readDogGCLog(t, gcLogPath)
+	if strings.Contains(gcLog, "mail archive") || strings.Contains(gcLog, "mail send") {
+		t.Fatalf("backward-step tick must still suppress like the seeded signature, log:\n%s", gcLog)
+	}
+	if !strings.Contains(out, "latency: 0ms") {
+		t.Fatalf("negative latency must clamp to 0ms, output:\n%s", out)
+	}
+	calls, err := os.ReadFile(dateCallsPath)
+	if err != nil {
+		t.Fatalf("read date call count: %v", err)
+	}
+	if strings.TrimSpace(string(calls)) != "2" {
+		t.Fatalf("doctor must take exactly two %%s%%3N readings, got %q", strings.TrimSpace(string(calls)))
+	}
+}
+
 // TestDoctorScriptUnreachableEscalationUsesGenericEscalation asserts the
 // server-unreachable path goes through the generic escalation recipient.
 func TestDoctorScriptUnreachableEscalationUsesGenericEscalation(t *testing.T) {
