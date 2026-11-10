@@ -1375,3 +1375,27 @@ func TestAdoptionBarrier_StampsCanonicalIdentity(t *testing.T) {
 		t.Errorf("orphan canonical_pool_slot = %q, want empty", got)
 	}
 }
+
+// TestAdoptionBarrierStampsHost pins the record half of the session host field
+// on the adoption path: adopted rows name the adopting host.
+func TestAdoptionBarrierStampsHost(t *testing.T) {
+	want := session.LocalSessionHost()
+	if want == "" {
+		t.Skip("no hostname in this environment; nothing to stamp")
+	}
+	store := beads.NewMemStore()
+	sp := &fakeAdoptionProvider{running: []string{"test-city-worker"}}
+	cfg := &config.City{Agents: []config.Agent{{Name: "worker"}}}
+	var stderr bytes.Buffer
+	clk := &clock.Fake{Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)}
+	if _, passed := runAdoptionBarrier("", sessionFrontDoor(store), sp, cfg, "test-city", clk, &stderr, false); !passed {
+		t.Fatalf("barrier should pass, stderr: %s", stderr.String())
+	}
+	beadList, _ := store.ListByLabel(sessionBeadLabel, 0)
+	if len(beadList) != 1 {
+		t.Fatalf("beads count = %d, want 1", len(beadList))
+	}
+	if got := beadList[0].Metadata[session.HostMetadataKey]; got != want {
+		t.Errorf("adopted host = %q, want %q", got, want)
+	}
+}

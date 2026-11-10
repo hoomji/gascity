@@ -9832,6 +9832,10 @@
           "display_name": {
             "type": "string"
           },
+          "host": {
+            "description": "The machine the session's agent process runs on, as a hostname. Empty for rows created before servers stamped it; v1 cities are single-host, so absent reads as local.",
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },

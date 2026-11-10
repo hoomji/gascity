@@ -47,6 +47,7 @@ func infoFromPersistedBeadFrozen(b beads.Bead) Info {
 		Transport:     transportFromMetadata(b),
 		Command:       b.Metadata["command"],
 		WorkDir:       b.Metadata["work_dir"],
+		Host:          b.Metadata[HostMetadataKey],
 		SessionName:   sessName,
 		SessionKey:    b.Metadata["session_key"],
 		ResumeFlag:    b.Metadata["resume_flag"],

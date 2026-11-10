@@ -2778,6 +2778,7 @@ func syncCreateMetadata(tp TemplateParams, sn, agentName, liveHash, createState,
 			meta["session_id_flag"] = tp.ResolvedProvider.SessionIDFlag
 		}
 	}
+	session.StampHost(meta)
 	return meta
 }
 

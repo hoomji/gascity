@@ -4342,6 +4342,10 @@ export type SessionResponse = {
     context_window?: number;
     created_at: string;
     display_name?: string;
+    /**
+     * The machine the session's agent process runs on, as a hostname. Empty for rows created before servers stamped it; v1 cities are single-host, so absent reads as local.
+     */
+    host?: string;
     id: string;
     kind?: string;
     last_active?: string;

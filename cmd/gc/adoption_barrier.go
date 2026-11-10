@@ -264,6 +264,7 @@ func runAdoptionBarrier(
 		rowID := ""
 		createSessionBead := func() error {
 			meta["synced_at"] = clk.Now().UTC().Format("2006-01-02T15:04:05Z07:00")
+			sessionpkg.StampHost(meta)
 			var err error
 			rowID, err = sessFront.CreateSession(sessionpkg.CreateSpec{
 				Title:     detail.AgentName,

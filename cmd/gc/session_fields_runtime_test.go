@@ -148,7 +148,7 @@ func TestSessionFieldsFlowsWriteTheirKeys(t *testing.T) {
 			finalizeDrainAckStoppedSession(env.cfg, rec, testSeatWork(env.city, env.cfg, rec, nil), env.sessionInfo(b.ID), "worker", false,
 				newFakeDrainOps(), env.dt, env.clk, env.rec, io.Discard)
 		}},
-		{"v2 named create", "agent_name alias canonical_instance_name command configured_named_identity configured_named_mode configured_named_session continuation_epoch generation instance_token live_hash pending_create_claim pending_create_started_at session_name session_origin state synced_at template work_dir", []string{"cmd/gc/allocator_create_named.go:createEffects.writeNamed"}, func(t *testing.T, rec *sessionKeyRecorder) {
+		{"v2 named create", "agent_name alias canonical_instance_name command configured_named_identity configured_named_mode configured_named_session continuation_epoch generation host instance_token live_hash pending_create_claim pending_create_started_at session_name session_origin state synced_at template work_dir", []string{"cmd/gc/allocator_create_named.go:createEffects.writeNamed"}, func(t *testing.T, rec *sessionKeyRecorder) {
 			cfg := mayorCity()
 			h := newNamedHarness(t, t.TempDir(), nil)
 			h.reserve(t, "c1")
@@ -303,7 +303,7 @@ func TestSessionFieldsFlowsWriteTheirKeys(t *testing.T) {
 	var id string
 	opCity := t.TempDir()
 	steps = append(steps, []step{
-		{"operator create (bead only)", "command continuation_epoch generation instance_token pending_create_claim pending_create_started_at provider resume_command resume_flag resume_style session_id_flag session_name session_origin state template work_dir", []string{"internal/session/manager.go:Manager.createBeadOnly"}, func(t *testing.T, rec *sessionKeyRecorder) {
+		{"operator create (bead only)", "command continuation_epoch generation host instance_token pending_create_claim pending_create_started_at provider resume_command resume_flag resume_style session_id_flag session_name session_origin state template work_dir", []string{"internal/session/manager.go:Manager.createBeadOnly"}, func(t *testing.T, rec *sessionKeyRecorder) {
 			m = session.NewManagerWithOptions(beadstest.Sessions(rec), runtime.NewFake(), session.WithCityPath(opCity))
 			_, err := m.CreateSession(context.Background(), session.CreateOptions{Template: "worker", Title: "Worker", Command: "test-cmd", WorkDir: t.TempDir(), Provider: "fake", BeadOnly: true})
 			must(t, err)

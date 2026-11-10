@@ -449,6 +449,7 @@ func createPoolSessionBeadWithIdentifiers(
 	if identity.Slot > 0 {
 		meta[sessionpkg.CanonicalPoolSlotMetadata] = strconv.Itoa(identity.Slot)
 	}
+	sessionpkg.StampHost(meta)
 	if identity.BeforeWrite != nil {
 		if err := identity.BeforeWrite(explicitID); err != nil {
 			return sessionpkg.Info{}, err
