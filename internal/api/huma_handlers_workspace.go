@@ -163,3 +163,71 @@ func workspaceWireBlob(b *git.HardenedBlob) *gitDiffBlob {
 	}
 	return &gitDiffBlob{Content: b.Content, Encoding: b.Encoding, Truncated: b.Truncated}
 }
+
+// humaHandleWorkspaceFilesRead is the Huma-typed handler for GET
+// /v0/city/{cityName}/session/{id}/workspace/files/read: one contained file's
+// bounded content. Inside symlinks are followed (and reported); escapes,
+// loops, directories, and non-regular files refuse.
+func (s *Server) humaHandleWorkspaceFilesRead(_ context.Context, input *WorkspaceFilesReadInput) (*IndexOutput[filesReadResponse], error) {
+	index := s.latestIndex()
+	store := s.state.Stores().Sessions()
+	if store == (beads.SessionStore{}) {
+		return nil, apierr.ServiceUnavailable.Msg("no bead store configured")
+	}
+	maxBytes := input.MaxBytes
+	if maxBytes <= 0 {
+		maxBytes = defaultWorkspaceMaxBytes
+	}
+	folder, err := s.resolveWorkspaceFolder(store, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	got, err := readWorkspaceFile(folder, input.Path, int64(maxBytes))
+	if err != nil {
+		return nil, err
+	}
+	freshness := cacheAgeSeconds(store)
+	return &IndexOutput[filesReadResponse]{
+		Index:        index,
+		CacheAgeS:    freshness.ageS,
+		CacheRefresh: freshness.refresh,
+		Body: filesReadResponse{
+			Path: got.Path, Size: got.Size, Content: got.Content,
+			Encoding: got.Encoding, Truncated: got.Truncated, LinkTarget: got.LinkTarget,
+		},
+	}, nil
+}
+
+// humaHandleWorkspaceFilesList is the Huma-typed handler for GET
+// /v0/city/{cityName}/session/{id}/workspace/files/list: one contained
+// directory's entries, sorted by name and cut at the entry cap.
+func (s *Server) humaHandleWorkspaceFilesList(_ context.Context, input *WorkspaceFilesListInput) (*IndexOutput[filesListResponse], error) {
+	index := s.latestIndex()
+	store := s.state.Stores().Sessions()
+	if store == (beads.SessionStore{}) {
+		return nil, apierr.ServiceUnavailable.Msg("no bead store configured")
+	}
+	rel := input.Path
+	if rel == "" {
+		rel = "."
+	}
+	folder, err := s.resolveWorkspaceFolder(store, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	got, err := listWorkspaceDir(folder, rel)
+	if err != nil {
+		return nil, err
+	}
+	body := filesListResponse{Path: got.Path, Entries: []filesListEntry{}, Truncated: got.Truncated}
+	for _, e := range got.Entries {
+		body.Entries = append(body.Entries, filesListEntry(e))
+	}
+	freshness := cacheAgeSeconds(store)
+	return &IndexOutput[filesListResponse]{
+		Index:        index,
+		CacheAgeS:    freshness.ageS,
+		CacheRefresh: freshness.refresh,
+		Body:         body,
+	}, nil
+}

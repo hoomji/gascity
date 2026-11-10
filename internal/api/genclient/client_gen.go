@@ -3640,6 +3640,54 @@ type FanoutPolicy struct {
 	MaxTotalPeerDeliveries     int64 `json:"MaxTotalPeerDeliveries"`
 }
 
+// FilesListEntry defines model for FilesListEntry.
+type FilesListEntry struct {
+	// LinkTarget Symlink target for symlink entries.
+	LinkTarget *string `json:"link_target,omitempty"`
+
+	// Name Entry name (not a path).
+	Name string `json:"name"`
+
+	// Size Stat size in bytes; meaningful for files, 0 for directories.
+	Size int64 `json:"size"`
+
+	// Type Entry type: file, dir, symlink, or other.
+	Type string `json:"type"`
+}
+
+// FilesListResponse defines model for FilesListResponse.
+type FilesListResponse struct {
+	// Entries Entries sorted by name.
+	Entries *[]FilesListEntry `json:"entries"`
+
+	// Path Cleaned folder-relative directory listed.
+	Path string `json:"path"`
+
+	// Truncated True when the listing hit the entry cap or skipped an unreadable entry, and is partial.
+	Truncated *bool `json:"truncated,omitempty"`
+}
+
+// FilesReadResponse defines model for FilesReadResponse.
+type FilesReadResponse struct {
+	// Content File content: raw text when encoding is utf8, base64 when binary.
+	Content string `json:"content"`
+
+	// Encoding Content encoding: utf8 or base64.
+	Encoding string `json:"encoding"`
+
+	// LinkTarget Symlink target when the path read through a final-component symlink.
+	LinkTarget *string `json:"link_target,omitempty"`
+
+	// Path Cleaned folder-relative path read.
+	Path string `json:"path"`
+
+	// Size Full file size in bytes (past any truncation).
+	Size int64 `json:"size"`
+
+	// Truncated True when the content hit max_bytes and was cut.
+	Truncated *bool `json:"truncated,omitempty"`
+}
+
 // FormulaDetailResponse defines model for FormulaDetailResponse.
 type FormulaDetailResponse struct {
 	Deps        *[]FormulaPreviewEdgeResponse `json:"deps"`
@@ -13545,6 +13593,21 @@ type PostV0CityByCityNameSessionByIdWakeParams struct {
 
 	// IdempotencyKey Idempotency key for safe retries.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceFilesListParams defines parameters for GetV0CityByCityNameSessionByIdWorkspaceFilesList.
+type GetV0CityByCityNameSessionByIdWorkspaceFilesListParams struct {
+	// Path Folder-relative directory to list. Omitted or empty lists the folder root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceFilesReadParams defines parameters for GetV0CityByCityNameSessionByIdWorkspaceFilesRead.
+type GetV0CityByCityNameSessionByIdWorkspaceFilesReadParams struct {
+	// Path Folder-relative file path to read.
+	Path string `form:"path" json:"path"`
+
+	// MaxBytes Byte cap for the content; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).
+	MaxBytes *int64 `form:"max_bytes,omitempty" json:"max_bytes,omitempty"`
 }
 
 // GetV0CityByCityNameSessionByIdWorkspaceGitDiffParams defines parameters for GetV0CityByCityNameSessionByIdWorkspaceGitDiff.
@@ -26072,6 +26135,12 @@ type ClientInterface interface {
 	// PostV0CityByCityNameSessionByIdWake request
 	PostV0CityByCityNameSessionByIdWake(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdWakeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetV0CityByCityNameSessionByIdWorkspaceFilesList request
+	GetV0CityByCityNameSessionByIdWorkspaceFilesList(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesListParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceFilesRead request
+	GetV0CityByCityNameSessionByIdWorkspaceFilesRead(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesReadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetV0CityByCityNameSessionByIdWorkspaceGitBranch request
 	GetV0CityByCityNameSessionByIdWorkspaceGitBranch(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -28572,6 +28641,30 @@ func (c *Client) PostV0CityByCityNameSessionByIdUnpin(ctx context.Context, cityN
 
 func (c *Client) PostV0CityByCityNameSessionByIdWake(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdWakeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostV0CityByCityNameSessionByIdWakeRequest(c.Server, cityName, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetV0CityByCityNameSessionByIdWorkspaceFilesList(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesListParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdWorkspaceFilesListRequest(c.Server, cityName, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetV0CityByCityNameSessionByIdWorkspaceFilesRead(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesReadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetV0CityByCityNameSessionByIdWorkspaceFilesReadRequest(c.Server, cityName, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -38922,6 +39015,144 @@ func NewPostV0CityByCityNameSessionByIdWakeRequest(server string, cityName strin
 	return req, nil
 }
 
+// NewGetV0CityByCityNameSessionByIdWorkspaceFilesListRequest generates requests for GetV0CityByCityNameSessionByIdWorkspaceFilesList
+func NewGetV0CityByCityNameSessionByIdWorkspaceFilesListRequest(server string, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesListParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "cityName", cityName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v0/city/%s/session/%s/workspace/files/list", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetV0CityByCityNameSessionByIdWorkspaceFilesReadRequest generates requests for GetV0CityByCityNameSessionByIdWorkspaceFilesRead
+func NewGetV0CityByCityNameSessionByIdWorkspaceFilesReadRequest(server string, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesReadParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "cityName", cityName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v0/city/%s/session/%s/workspace/files/read", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.MaxBytes != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "max_bytes", *params.MaxBytes, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetV0CityByCityNameSessionByIdWorkspaceGitBranchRequest generates requests for GetV0CityByCityNameSessionByIdWorkspaceGitBranch
 func NewGetV0CityByCityNameSessionByIdWorkspaceGitBranchRequest(server string, cityName string, id string) (*http.Request, error) {
 	var err error
@@ -41045,6 +41276,12 @@ type ClientWithResponsesInterface interface {
 
 	// PostV0CityByCityNameSessionByIdWakeWithResponse request
 	PostV0CityByCityNameSessionByIdWakeWithResponse(ctx context.Context, cityName string, id string, params *PostV0CityByCityNameSessionByIdWakeParams, reqEditors ...RequestEditorFn) (*PostV0CityByCityNameSessionByIdWakeResponse, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceFilesListWithResponse request
+	GetV0CityByCityNameSessionByIdWorkspaceFilesListWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesListParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse, error)
+
+	// GetV0CityByCityNameSessionByIdWorkspaceFilesReadWithResponse request
+	GetV0CityByCityNameSessionByIdWorkspaceFilesReadWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesReadParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse, error)
 
 	// GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse request
 	GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse(ctx context.Context, cityName string, id string, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse, error)
@@ -45449,6 +45686,62 @@ func (r PostV0CityByCityNameSessionByIdWakeResponse) StatusCode() int {
 	return 0
 }
 
+type GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *FilesListResponse
+	ApplicationproblemJSON400 *ErrorModel
+	ApplicationproblemJSON403 *ErrorModel
+	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON422 *ErrorModel
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *FilesReadResponse
+	ApplicationproblemJSON400 *ErrorModel
+	ApplicationproblemJSON403 *ErrorModel
+	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON409 *ErrorModel
+	ApplicationproblemJSON422 *ErrorModel
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -47732,6 +48025,24 @@ func (c *ClientWithResponses) PostV0CityByCityNameSessionByIdWakeWithResponse(ct
 		return nil, err
 	}
 	return ParsePostV0CityByCityNameSessionByIdWakeResponse(rsp)
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceFilesListWithResponse request returning *GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdWorkspaceFilesListWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesListParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdWorkspaceFilesList(ctx, cityName, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetV0CityByCityNameSessionByIdWorkspaceFilesListResponse(rsp)
+}
+
+// GetV0CityByCityNameSessionByIdWorkspaceFilesReadWithResponse request returning *GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse
+func (c *ClientWithResponses) GetV0CityByCityNameSessionByIdWorkspaceFilesReadWithResponse(ctx context.Context, cityName string, id string, params *GetV0CityByCityNameSessionByIdWorkspaceFilesReadParams, reqEditors ...RequestEditorFn) (*GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse, error) {
+	rsp, err := c.GetV0CityByCityNameSessionByIdWorkspaceFilesRead(ctx, cityName, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse(rsp)
 }
 
 // GetV0CityByCityNameSessionByIdWorkspaceGitBranchWithResponse request returning *GetV0CityByCityNameSessionByIdWorkspaceGitBranchResponse
@@ -57950,6 +58261,142 @@ func ParsePostV0CityByCityNameSessionByIdWakeResponse(rsp *http.Response) (*Post
 			return nil, err
 		}
 		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetV0CityByCityNameSessionByIdWorkspaceFilesListResponse parses an HTTP response from a GetV0CityByCityNameSessionByIdWorkspaceFilesListWithResponse call
+func ParseGetV0CityByCityNameSessionByIdWorkspaceFilesListResponse(rsp *http.Response) (*GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FilesListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse parses an HTTP response from a GetV0CityByCityNameSessionByIdWorkspaceFilesReadWithResponse call
+func ParseGetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse(rsp *http.Response) (*GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FilesReadResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

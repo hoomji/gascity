@@ -1755,6 +1755,67 @@ export type FanoutPolicy = {
     MaxTotalPeerDeliveries: number;
 };
 
+export type FilesListEntry = {
+    /**
+     * Symlink target for symlink entries.
+     */
+    link_target?: string;
+    /**
+     * Entry name (not a path).
+     */
+    name: string;
+    /**
+     * Stat size in bytes; meaningful for files, 0 for directories.
+     */
+    size: number;
+    /**
+     * Entry type: file, dir, symlink, or other.
+     */
+    type: string;
+};
+
+export type FilesListResponse = {
+    /**
+     * Entries sorted by name.
+     */
+    entries: Array<FilesListEntry> | null;
+    /**
+     * Cleaned folder-relative directory listed.
+     */
+    path: string;
+    /**
+     * True when the listing hit the entry cap or skipped an unreadable entry, and is partial.
+     */
+    truncated?: boolean;
+};
+
+export type FilesReadResponse = {
+    /**
+     * File content: raw text when encoding is utf8, base64 when binary.
+     */
+    content: string;
+    /**
+     * Content encoding: utf8 or base64.
+     */
+    encoding: string;
+    /**
+     * Symlink target when the path read through a final-component symlink.
+     */
+    link_target?: string;
+    /**
+     * Cleaned folder-relative path read.
+     */
+    path: string;
+    /**
+     * Full file size in bytes (past any truncation).
+     */
+    size: number;
+    /**
+     * True when the content hit max_bytes and was cut.
+     */
+    truncated?: boolean;
+};
+
 export type FormulaDetailResponse = {
     deps: Array<FormulaPreviewEdgeResponse> | null;
     description: string;
@@ -21800,6 +21861,128 @@ export type PostV0CityByCityNameSessionByIdWakeResponses = {
 };
 
 export type PostV0CityByCityNameSessionByIdWakeResponse = PostV0CityByCityNameSessionByIdWakeResponses[keyof PostV0CityByCityNameSessionByIdWakeResponses];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListData = {
+    body?: never;
+    path: {
+        /**
+         * City name.
+         */
+        cityName: string;
+        /**
+         * Session ID, alias, or runtime session_name.
+         */
+        id: string;
+    };
+    query?: {
+        /**
+         * Folder-relative directory to list. Omitted or empty lists the folder root.
+         */
+        path?: string;
+    };
+    url: '/v0/city/{cityName}/session/{id}/workspace/files/list';
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorModel;
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
+     * Not Found
+     */
+    404: ErrorModel;
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListError = GetV0CityByCityNameSessionByIdWorkspaceFilesListErrors[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesListErrors];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListResponses = {
+    /**
+     * OK
+     */
+    200: FilesListResponse;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesListResponse = GetV0CityByCityNameSessionByIdWorkspaceFilesListResponses[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesListResponses];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadData = {
+    body?: never;
+    path: {
+        /**
+         * City name.
+         */
+        cityName: string;
+        /**
+         * Session ID, alias, or runtime session_name.
+         */
+        id: string;
+    };
+    query: {
+        /**
+         * Folder-relative file path to read.
+         */
+        path: string;
+        /**
+         * Byte cap for the content; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288).
+         */
+        max_bytes?: number;
+    };
+    url: '/v0/city/{cityName}/session/{id}/workspace/files/read';
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorModel;
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
+     * Not Found
+     */
+    404: ErrorModel;
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadError = GetV0CityByCityNameSessionByIdWorkspaceFilesReadErrors[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesReadErrors];
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponses = {
+    /**
+     * OK
+     */
+    200: FilesReadResponse;
+};
+
+export type GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse = GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponses[keyof GetV0CityByCityNameSessionByIdWorkspaceFilesReadResponses];
 
 export type GetV0CityByCityNameSessionByIdWorkspaceGitBranchData = {
     body?: never;

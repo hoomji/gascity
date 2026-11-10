@@ -87,3 +87,46 @@ type gitDiffResponse struct {
 // defaultWorkspaceMaxBytes is the per-file byte cap when the client omits
 // max_bytes or sends 0.
 const defaultWorkspaceMaxBytes = 524288
+
+// WorkspaceFilesReadInput is the Huma input for GET
+// /v0/city/{cityName}/session/{id}/workspace/files/read.
+type WorkspaceFilesReadInput struct {
+	CityScope
+	ID       string `path:"id" doc:"Session ID, alias, or runtime session_name."`
+	Path     string `query:"path" required:"true" doc:"Folder-relative file path to read."`
+	MaxBytes int    `query:"max_bytes" required:"false" minimum:"0" maximum:"16777216" default:"524288" doc:"Byte cap for the content; content past the cap is cut and flagged truncated. Omitted or 0 = server default (524288)."`
+}
+
+// filesReadResponse is the body for GET .../workspace/files/read.
+type filesReadResponse struct {
+	Path       string `json:"path" doc:"Cleaned folder-relative path read."`
+	Size       int64  `json:"size" doc:"Full file size in bytes (past any truncation)."`
+	Content    string `json:"content" doc:"File content: raw text when encoding is utf8, base64 when binary."`
+	Encoding   string `json:"encoding" doc:"Content encoding: utf8 or base64."`
+	Truncated  bool   `json:"truncated,omitempty" doc:"True when the content hit max_bytes and was cut."`
+	LinkTarget string `json:"link_target,omitempty" doc:"Symlink target when the path read through a final-component symlink."`
+}
+
+// WorkspaceFilesListInput is the Huma input for GET
+// /v0/city/{cityName}/session/{id}/workspace/files/list.
+type WorkspaceFilesListInput struct {
+	CityScope
+	ID   string `path:"id" doc:"Session ID, alias, or runtime session_name."`
+	Path string `query:"path" required:"false" doc:"Folder-relative directory to list. Omitted or empty lists the folder root."`
+}
+
+// filesListEntry is one directory entry. Types come from lstat (links are
+// never followed here): file, dir, symlink, or other (fifo, socket, device).
+type filesListEntry struct {
+	Name       string `json:"name" doc:"Entry name (not a path)."`
+	Type       string `json:"type" doc:"Entry type: file, dir, symlink, or other."`
+	Size       int64  `json:"size" doc:"Stat size in bytes; meaningful for files, 0 for directories."`
+	LinkTarget string `json:"link_target,omitempty" doc:"Symlink target for symlink entries."`
+}
+
+// filesListResponse is the body for GET .../workspace/files/list.
+type filesListResponse struct {
+	Path      string           `json:"path" doc:"Cleaned folder-relative directory listed."`
+	Entries   []filesListEntry `json:"entries" doc:"Entries sorted by name."`
+	Truncated bool             `json:"truncated,omitempty" doc:"True when the listing hit the entry cap or skipped an unreadable entry, and is partial."`
+}

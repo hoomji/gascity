@@ -875,6 +875,28 @@ export const zConversationGroupRecord = z.object({
     SchemaVersion: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
 });
 
+export const zFilesListEntry = z.object({
+    link_target: z.string().optional(),
+    name: z.string(),
+    size: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    type: z.string()
+});
+
+export const zFilesListResponse = z.object({
+    entries: z.array(zFilesListEntry).nullable(),
+    path: z.string(),
+    truncated: z.boolean().optional()
+});
+
+export const zFilesReadResponse = z.object({
+    content: z.string(),
+    encoding: z.string(),
+    link_target: z.string().optional(),
+    path: z.string(),
+    size: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    truncated: z.boolean().optional()
+});
+
 export const zFormulaPreviewBody = z.object({
     scope_kind: z.string().optional(),
     scope_ref: z.string().optional(),
@@ -11734,6 +11756,35 @@ export const zPostV0CityByCityNameSessionByIdWakePath = z.object({
  * OK
  */
 export const zPostV0CityByCityNameSessionByIdWakeResponse = zOkWithIdResponseBody;
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceFilesListPath = z.object({
+    cityName: z.string().min(1).regex(/\S/),
+    id: z.string()
+});
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceFilesListQuery = z.object({
+    path: z.string().optional()
+});
+
+/**
+ * OK
+ */
+export const zGetV0CityByCityNameSessionByIdWorkspaceFilesListResponse = zFilesListResponse;
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceFilesReadPath = z.object({
+    cityName: z.string().min(1).regex(/\S/),
+    id: z.string()
+});
+
+export const zGetV0CityByCityNameSessionByIdWorkspaceFilesReadQuery = z.object({
+    path: z.string(),
+    max_bytes: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(16777216)).optional().default(BigInt(524288))
+});
+
+/**
+ * OK
+ */
+export const zGetV0CityByCityNameSessionByIdWorkspaceFilesReadResponse = zFilesReadResponse;
 
 export const zGetV0CityByCityNameSessionByIdWorkspaceGitBranchPath = z.object({
     cityName: z.string().min(1).regex(/\S/),

@@ -407,6 +407,13 @@ func (sm *SupervisorMux) registerCityRoutes() {
 	cityGet(sm, "/session/{id}/workspace/git/branch", (*Server).humaHandleWorkspaceGitBranch, errorStatuses(http.StatusForbidden, http.StatusNotFound, http.StatusConflict))
 	cityGet(sm, "/session/{id}/workspace/git/diff", (*Server).humaHandleWorkspaceGitDiff, errorStatuses(http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict),
 		func(o *huma.Operation) { o.RejectUnknownQueryParameters = true })
+	// Supervisor workspace file reads: 400 is a directory read as a file, a
+	// non-regular file, or a symlink loop; 403 is an escape; 404 is a missing
+	// path; 409 shares the git routes' folder gate.
+	cityGet(sm, "/session/{id}/workspace/files/read", (*Server).humaHandleWorkspaceFilesRead, errorStatuses(http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict),
+		func(o *huma.Operation) { o.RejectUnknownQueryParameters = true })
+	cityGet(sm, "/session/{id}/workspace/files/list", (*Server).humaHandleWorkspaceFilesList, errorStatuses(http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict),
+		func(o *huma.Operation) { o.RejectUnknownQueryParameters = true })
 	cityGet(sm, "/pending", (*Server).humaHandleCityPending, errorStatuses(http.StatusNotFound, http.StatusServiceUnavailable))
 	cityPatch(sm, "/session/{id}", (*Server).humaHandleSessionPatch, errorStatuses(http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable))
 	cityPost(sm, "/session/{id}/permission-mode", (*Server).humaHandleSessionPermissionMode, errorStatuses(http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusNotImplemented, http.StatusServiceUnavailable))
