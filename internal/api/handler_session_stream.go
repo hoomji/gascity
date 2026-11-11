@@ -57,8 +57,9 @@ var sessionStreamPendingStallTimeout = 5 * time.Second
 
 // runtimePendingInteraction converts a worker pending interaction to the
 // wire shape, stamped with the session's bead linkage. The stream resolves
-// the lineage once per request and passes it down, so every pending event
-// on the stream carries the same read-time linkage.
+// the lineage at start and re-resolves it whenever a new pending request ID
+// appears, so a pending event carries linkage no older than the latest new
+// request the stream has seen.
 func runtimePendingInteraction(pending *worker.PendingInteraction, lin interactionLineage) runtime.PendingInteraction {
 	wire := runtime.PendingInteraction{
 		RequestID: pending.RequestID,
@@ -317,9 +318,11 @@ func (s *Server) streamSessionTranscriptHistoryRaw(ctx context.Context, w http.R
 	worker.InteractionHandle
 }, initial *worker.HistorySnapshot, req worker.HistoryRequest,
 ) {
-	// lin is the session's bead linkage, resolved once: pending events on
-	// this stream carry the same read-time lineage as every other stream
-	// variant, so transports of one stream never disagree on the shape.
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears, so pending
+	// events on this stream carry the same fresh lineage as every other
+	// stream variant, and transports of one stream never disagree on the
+	// shape.
 	lin := s.activeBeadLineage(info)
 	logPath := sessionStreamTranscriptPath(ctx, handle)
 	poll := time.NewTicker(outputStreamPollInterval)
@@ -423,7 +426,12 @@ func (s *Server) streamSessionTranscriptHistoryRaw(ctx context.Context, w http.R
 		}
 		// The pending event carries the stream's read-time lineage through
 		// the same wire shape as every other stream variant; without an
-		// active bead the lineage fields stay empty.
+		// active bead the lineage fields stay empty. A new request ID
+		// re-resolves the lineage first, so a session whose bead changed
+		// mid-stream reports fresh linkage instead of a stale lead.
+		if pending.RequestID != lastPendingID {
+			lin = s.activeBeadLineage(info)
+		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
 			return false
@@ -612,9 +620,10 @@ func (s *Server) streamSessionTranscriptHistoryStructured(ctx context.Context, w
 	worker.PeekHandle
 }, initial *worker.HistorySnapshot, includeThinking bool, resumeToken, pendingRequestID, pendingKey string,
 ) {
-	// lin is the session's bead linkage, resolved once: still-pending
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears: still-pending
 	// interaction blocks and pending events on this stream carry the same
-	// read-time lineage, while settled history stays unattributed.
+	// fresh lineage, while settled history stays unattributed.
 	lin := s.activeBeadLineage(info)
 	logPath := sessionStreamTranscriptPath(ctx, handle)
 	poll := time.NewTicker(outputStreamPollInterval)
@@ -720,6 +729,12 @@ func (s *Server) streamSessionTranscriptHistoryStructured(ctx context.Context, w
 			writeSSEWithoutID(w, "activity", actData)
 			return true
 		}
+		// A new request ID re-resolves the stream's lineage first, so a
+		// session whose bead changed mid-stream reports fresh linkage
+		// instead of a stale lead.
+		if pending.RequestID != lastPendingID {
+			lin = s.activeBeadLineage(info)
+		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
 			return false
@@ -794,9 +809,11 @@ func (s *Server) streamSessionPeekRaw(ctx context.Context, w http.ResponseWriter
 	worker.InteractionHandle
 },
 ) {
-	// lin is the session's bead linkage, resolved once: pending events on
-	// this stream carry the same read-time lineage as every other stream
-	// variant, so transports of one stream never disagree on the shape.
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears, so pending
+	// events on this stream carry the same fresh lineage as every other
+	// stream variant, and transports of one stream never disagree on the
+	// shape.
 	lin := s.activeBeadLineage(info)
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
@@ -813,7 +830,12 @@ func (s *Server) streamSessionPeekRaw(ctx context.Context, w http.ResponseWriter
 		pending, pErr := handle.Pending(ctx)
 		// The pending event carries the stream's read-time lineage through
 		// the same wire shape as every other stream variant; without an
-		// active bead the lineage fields stay empty.
+		// active bead the lineage fields stay empty. A new request ID
+		// re-resolves the lineage first, so a session whose bead changed
+		// mid-stream reports fresh linkage instead of a stale lead.
+		if pending != nil && pending.RequestID != lastPeekPendingID {
+			lin = s.activeBeadLineage(info)
+		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if pErr == nil && pending != nil && pendingKey != lastPeekPendingKey {
 			lastPeekPendingID = pending.RequestID
@@ -879,8 +901,9 @@ func (s *Server) streamSessionPeekRaw(ctx context.Context, w http.ResponseWriter
 
 func (s *Server) streamSessionPeekStructured(ctx context.Context, w http.ResponseWriter, info session.Info, handle worker.Handle, includeThinking bool, resumeToken string,
 ) {
-	// lin is the session's bead linkage, resolved once: every pending
-	// event on this stream carries the same read-time lineage.
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears: every pending
+	// event on this stream carries fresh read-time lineage.
 	lin := s.activeBeadLineage(info)
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
@@ -903,6 +926,12 @@ func (s *Server) streamSessionPeekStructured(ctx context.Context, w http.Respons
 		if err != nil {
 			log.Printf("session stream structured: pending read failed for %s: %v", info.ID, err)
 			return
+		}
+		// A new request ID re-resolves the stream's lineage first, so a
+		// session whose bead changed mid-stream reports fresh linkage
+		// instead of a stale lead.
+		if pending != nil && pending.RequestID != lastPendingID {
+			lin = s.activeBeadLineage(info)
 		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if pending != nil && pendingKey != lastPendingKey {
@@ -1050,8 +1079,9 @@ func (s *Server) streamSessionTranscriptLogRawHuma(ctx context.Context, send sse
 	worker.InteractionHandle
 }, initial *worker.HistorySnapshot, req worker.HistoryRequest,
 ) {
-	// lin is the session's bead linkage, resolved once: every pending
-	// event on this stream carries the same read-time lineage.
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears: every pending
+	// event on this stream carries fresh read-time lineage.
 	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1159,6 +1189,12 @@ func (s *Server) streamSessionTranscriptLogRawHuma(ctx context.Context, send sse
 				return true
 			}
 			return false
+		}
+		// A new request ID re-resolves the stream's lineage first, so a
+		// session whose bead changed mid-stream reports fresh linkage
+		// instead of a stale lead.
+		if pending.RequestID != lastPendingID {
+			lin = s.activeBeadLineage(info)
 		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
@@ -1365,9 +1401,10 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 	worker.PeekHandle
 }, initial *worker.HistorySnapshot, includeThinking bool, resumeToken, pendingRequestID, pendingKey string,
 ) {
-	// lin is the session's bead linkage, resolved once: still-pending
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears: still-pending
 	// interaction blocks and pending events on this stream carry the same
-	// read-time lineage, while settled history stays unattributed.
+	// fresh lineage, while settled history stays unattributed.
 	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1482,6 +1519,12 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 			_ = send(StringIDMessage{Data: SessionActivityEvent{Activity: activity}})
 			return true
 		}
+		// A new request ID re-resolves the stream's lineage first, so a
+		// session whose bead changed mid-stream reports fresh linkage
+		// instead of a stale lead.
+		if pending.RequestID != lastPendingID {
+			lin = s.activeBeadLineage(info)
+		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
 			return false
@@ -1552,8 +1595,9 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 }
 
 func (s *Server) streamSessionPeekRawHuma(ctx context.Context, send sse.Sender, info session.Info) {
-	// lin is the session's bead linkage, resolved once: every pending
-	// event on this stream carries the same read-time lineage.
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears: every pending
+	// event on this stream carries fresh read-time lineage.
 	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1584,6 +1628,12 @@ func (s *Server) streamSessionPeekRawHuma(ctx context.Context, send sse.Sender, 
 
 	emitPending := func() {
 		pending, err := handle.Pending(ctx)
+		// A new request ID re-resolves the stream's lineage first, so a
+		// session whose bead changed mid-stream reports fresh linkage
+		// instead of a stale lead.
+		if pending != nil && pending.RequestID != lastPendingID {
+			lin = s.activeBeadLineage(info)
+		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if err == nil && pending != nil && pendingKey != lastPendingKey {
 			lastPendingID = pending.RequestID
@@ -1651,8 +1701,9 @@ func (s *Server) streamSessionPeekRawHuma(ctx context.Context, send sse.Sender, 
 }
 
 func (s *Server) streamSessionPeekStructuredHuma(ctx context.Context, send StringIDSender, info session.Info, handle worker.Handle, includeThinking bool, resumeToken string) {
-	// lin is the session's bead linkage, resolved once: every pending
-	// event on this stream carries the same read-time lineage.
+	// lin is the session's bead linkage, resolved at stream start and
+	// re-resolved whenever a new pending request ID appears: every pending
+	// event on this stream carries fresh read-time lineage.
 	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1685,6 +1736,12 @@ func (s *Server) streamSessionPeekStructuredHuma(ctx context.Context, send Strin
 		if err != nil {
 			log.Printf("session stream structured: pending read failed for %s: %v", info.ID, err)
 			return
+		}
+		// A new request ID re-resolves the stream's lineage first, so a
+		// session whose bead changed mid-stream reports fresh linkage
+		// instead of a stale lead.
+		if pending != nil && pending.RequestID != lastPendingID {
+			lin = s.activeBeadLineage(info)
 		}
 		pendingKey := pendingInteractionKey(pending, lin)
 		if pending != nil && pendingKey != lastPendingKey {
