@@ -68,6 +68,17 @@ const (
 	// ReasonRefusedAction closes a respond whose action the pending prompt
 	// does not offer, or whose answer the runtime refused as invalid.
 	ReasonRefusedAction = RefusedReasonPrefix + "action"
+	// ReasonRefusedTextUnsupported closes a respond whose typed reply text
+	// the session's provider cannot deliver beside an answer. Nothing was
+	// sent and the interaction stays pending; answering again without text
+	// works.
+	ReasonRefusedTextUnsupported = RefusedReasonPrefix + "text_unsupported"
+	// ReasonReplyUndelivered closes a respond whose answer reached its
+	// prompt but whose typed reply never landed as a follow-up. The
+	// answer must never be sent again; the client sends the text as a
+	// plain message instead. It carries no refused: prefix: the answer
+	// was accepted, not refused.
+	ReasonReplyUndelivered = "reply_undelivered"
 )
 
 // MaxRefusedWhyLen is the longest <why> a refused:<why> reason can carry and
@@ -89,7 +100,7 @@ var knownFailedReasons = []string{
 	ReasonExpiredBeforeStart, ReasonDeadlineInFlight, ReasonNoBoundary, ReasonProviderUnavailable,
 	ReasonAmbiguousDelivery, ReasonPoison, ReasonUnsupported, ReasonUnauthorized, ReasonCreateFailed,
 	ReasonHeld, ReasonSessionGone, ReasonClosedExternally, ReasonOther, ReasonReplacementNotPrepared,
-	ReasonRestartNotStarted,
+	ReasonRestartNotStarted, ReasonReplyUndelivered,
 }
 
 var knownSkippedReasons = []string{

@@ -15,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/citylayout"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/runtime"
+	"github.com/gastownhall/gascity/internal/session"
 	"github.com/gastownhall/gascity/internal/sessionlog"
 	"github.com/gastownhall/gascity/internal/suspensionstate"
 )
@@ -1915,6 +1917,66 @@ func TestLiveActiveBeadIgnoresBlankIdentities(t *testing.T) {
 
 	if got := New(state).findLiveActiveBeadForAssignees("", "", "  "); got != "" {
 		t.Fatalf("blank identities matched unassigned work %q", got)
+	}
+}
+
+// TestActiveBeadLineageCarriesLeadParentOrigin proves the helper-lineage
+// contract at the resolver: the session's active bead leads the lineage,
+// its parent bead is the parent, and its workflow root the origin — the
+// linkage a helper's request shows under its lead by.
+func TestActiveBeadLineageCarriesLeadParentOrigin(t *testing.T) {
+	state := newFakeState(t)
+	store := beads.NewMemStore()
+	state.stores = map[string]beads.Store{"a": store}
+
+	epic, err := store.Create(beads.Bead{Title: "epic"})
+	if err != nil {
+		t.Fatalf("Create epic: %v", err)
+	}
+	root, err := store.Create(beads.Bead{Title: "workflow root"})
+	if err != nil {
+		t.Fatalf("Create root: %v", err)
+	}
+	work, err := store.Create(beads.Bead{
+		Title:    "helper work",
+		ParentID: epic.ID,
+		Metadata: beads.StringMap{beadmeta.RootBeadIDMetadataKey: root.ID},
+	})
+	if err != nil {
+		t.Fatalf("Create work: %v", err)
+	}
+	inProgress := "in_progress"
+	workerAssignee := "worker-session"
+	if err := store.Update(work.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &workerAssignee}); err != nil {
+		t.Fatalf("Update work: %v", err)
+	}
+
+	lin := New(state).activeBeadLineage(session.Info{ID: "worker-session", SessionName: "gc-helper", Alias: "helper", Template: "worker"})
+	if lin.Lead != work.ID || lin.Parent != epic.ID || lin.Origin != root.ID {
+		t.Fatalf("lineage = %+v, want lead %q parent %q origin %q", lin, work.ID, epic.ID, root.ID)
+	}
+
+	// A session with no active bead, and a bead without linkage, degrade to
+	// empty fields rather than failing the read.
+	if got := New(state).activeBeadLineage(session.Info{ID: "idle-session"}); got != (interactionLineage{}) {
+		t.Fatalf("idle lineage = %+v, want zero", got)
+	}
+	plain, err := store.Create(beads.Bead{Title: "plain"})
+	if err != nil {
+		t.Fatalf("Create plain: %v", err)
+	}
+	plainAssignee := "plain-session"
+	if err := store.Update(plain.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &plainAssignee}); err != nil {
+		t.Fatalf("Update plain: %v", err)
+	}
+	if got := New(state).activeBeadLineage(session.Info{ID: "plain-session"}); got != (interactionLineage{Lead: plain.ID}) {
+		t.Fatalf("plain lineage = %+v, want lead %q only", got, plain.ID)
+	}
+
+	// A server without state (direct stream tests) degrades to zero
+	// instead of panicking: the annotation never fails the read.
+	if got := (&Server{}).activeBeadLineage(session.Info{ID: "worker-session"}); got != (interactionLineage{}) {
+		t.Fatalf("stateless lineage = %+v, want zero", got)
 	}
 }
 

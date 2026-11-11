@@ -1398,8 +1398,11 @@ export const zPatchOkResponseBody = z.object({
 
 export const zPendingInteraction = z.object({
     kind: z.string(),
+    lead: z.string().optional(),
     metadata: z.record(z.string(), z.string()).optional(),
     options: z.array(z.string()).nullish(),
+    origin: z.string().optional(),
+    parent: z.string().optional(),
     prompt: z.string().optional(),
     request_id: z.string()
 });
@@ -2423,7 +2426,10 @@ export const zSessionStructuredIdeSelection = z.object({
 export const zSessionStructuredInteraction = z.object({
     action: z.string().optional(),
     kind: z.string().optional(),
+    lead: z.string().optional(),
     options: z.array(z.string()).nullish(),
+    origin: z.string().optional(),
+    parent: z.string().optional(),
     prompt: z.string().optional(),
     request_id: z.string().optional(),
     state: z.string()

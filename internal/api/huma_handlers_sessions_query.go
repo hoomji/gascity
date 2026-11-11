@@ -299,7 +299,7 @@ func (s *Server) humaHandleSessionTranscript(ctx context.Context, input *Session
 				}
 				return nil, apierr.Internal.Msg("reading session history: " + historyErr.Error())
 			}
-			messages, _ := historySnapshotStructuredMessages(history, input.IncludeThinking)
+			messages, _ := historySnapshotStructuredMessages(history, input.IncludeThinking, s.activeBeadLineage(info))
 			projection := structuredSnapshotProjection(SessionStreamStructuredMessageEvent{
 				ID:                 info.ID,
 				Template:           info.Template,
@@ -484,6 +484,9 @@ func (s *Server) humaHandleSessionPending(_ context.Context, input *SessionIDInp
 	pending, supported, err := mgr.Pending(id)
 	if err != nil {
 		return nil, humaSessionManagerError(err)
+	}
+	if pending != nil {
+		s.pendingLineageForSession(store, id).stamp(pending)
 	}
 	return &IndexOutput[sessionPendingResponse]{
 		Index: index,

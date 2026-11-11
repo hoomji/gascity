@@ -326,6 +326,13 @@ type SessionStructuredInteraction struct {
 	Prompt    string   `json:"prompt,omitempty"`
 	Options   []string `json:"options,omitempty"`
 	Action    string   `json:"action,omitempty"`
+	// Lead, Parent and Origin carry the bead linkage of the work the
+	// session is doing, stamped at read time: Lead is the session's
+	// active bead, Parent its parent bead, Origin its workflow root
+	// bead, so a helper's request shows under its lead.
+	Lead   string `json:"lead,omitempty"`
+	Parent string `json:"parent,omitempty"`
+	Origin string `json:"origin,omitempty"`
 }
 
 func structuredHistoryFromSnapshot(snapshot *worker.HistorySnapshot) *SessionStructuredHistory {
@@ -460,14 +467,19 @@ func structuredFallbackMessages(sessionID, provider, text string) []SessionStruc
 	}}
 }
 
-func historySnapshotStructuredMessages(snapshot *worker.HistorySnapshot, includeThinking bool) ([]SessionStructuredMessage, []string) {
+// historySnapshotStructuredMessages projects a normalized history snapshot
+// to the wire shape. lin is the session's bead linkage, resolved once per
+// read by the caller; only still-pending interaction blocks in the
+// projection carry it, so a helper's request shows under its lead while
+// settled history stays unattributed to the current bead.
+func historySnapshotStructuredMessages(snapshot *worker.HistorySnapshot, includeThinking bool, lin interactionLineage) ([]SessionStructuredMessage, []string) {
 	if snapshot == nil {
 		return []SessionStructuredMessage{}, []string{}
 	}
 	messages := make([]SessionStructuredMessage, 0, len(snapshot.Entries))
 	ids := make([]string, 0, len(snapshot.Entries))
 	for _, entry := range snapshot.Entries {
-		msg := historyEntryToStructuredMessage(entry, includeThinking)
+		msg := historyEntryToStructuredMessage(entry, includeThinking, lin)
 		if len(msg.Blocks) == 0 && msg.Role == "" {
 			continue
 		}
@@ -477,7 +489,7 @@ func historySnapshotStructuredMessages(snapshot *worker.HistorySnapshot, include
 	return messages, ids
 }
 
-func historyEntryToStructuredMessage(entry worker.HistoryEntry, includeThinking bool) SessionStructuredMessage {
+func historyEntryToStructuredMessage(entry worker.HistoryEntry, includeThinking bool, lin interactionLineage) SessionStructuredMessage {
 	role := sessionStructuredMessageRole(entry.Actor)
 	msg := SessionStructuredMessage{
 		ID:       entry.ID,
@@ -506,7 +518,7 @@ func historyEntryToStructuredMessage(entry worker.HistoryEntry, includeThinking 
 		msg.Timestamp = entry.Timestamp.Format(time.RFC3339Nano)
 	}
 	for _, block := range entry.Blocks {
-		if structured := historyBlockToStructuredBlock(block, includeThinking); structured != nil {
+		if structured := historyBlockToStructuredBlock(block, includeThinking, lin); structured != nil {
 			msg.Blocks = append(msg.Blocks, *structured)
 		}
 	}
@@ -581,7 +593,7 @@ func sessionStructuredUsageFromWorker(usage *worker.HistoryUsage) *SessionStruct
 	}
 }
 
-func historyBlockToStructuredBlock(block worker.HistoryBlock, includeThinking bool) *SessionStructuredBlock {
+func historyBlockToStructuredBlock(block worker.HistoryBlock, includeThinking bool, lin interactionLineage) *SessionStructuredBlock {
 	out := &SessionStructuredBlock{Type: sessionStructuredBlockType(block.Kind)}
 	switch block.Kind {
 	case worker.BlockKindText:
@@ -607,7 +619,7 @@ func historyBlockToStructuredBlock(block worker.HistoryBlock, includeThinking bo
 		out.IsError = block.IsError
 		out.Structured = sessionStructuredToolResultFromWorker(block.StructuredResult)
 	case worker.BlockKindInteraction:
-		out.Interaction = structuredInteraction(block.Interaction)
+		out.Interaction = structuredInteraction(block.Interaction, lin)
 	case worker.BlockKindImage:
 		out.Text = block.Text
 		out.FilePath = block.FilePath
@@ -626,7 +638,7 @@ func historyBlockToStructuredBlock(block worker.HistoryBlock, includeThinking bo
 		out.Input = sessionStructuredToolInputFromWorker(block.StructuredInput)
 		out.Content = block.ContentText
 		out.IsError = block.IsError
-		out.Interaction = structuredInteraction(block.Interaction)
+		out.Interaction = structuredInteraction(block.Interaction, lin)
 	}
 	return out
 }
@@ -962,9 +974,15 @@ func sessionStructuredTodosFromWorker(todos []worker.StructuredTodoItem) []Sessi
 	return out
 }
 
-func structuredInteraction(in *worker.HistoryInteraction) *SessionStructuredInteraction {
+func structuredInteraction(in *worker.HistoryInteraction, lin interactionLineage) *SessionStructuredInteraction {
 	if in == nil {
 		return nil
+	}
+	if !in.State.StillPending() {
+		// Settled history keeps no read-time attribution: stamping the
+		// session's current bead onto a past approval would blame it on
+		// whatever bead the session holds now.
+		lin = interactionLineage{}
 	}
 	return &SessionStructuredInteraction{
 		RequestID: in.RequestID,
@@ -973,5 +991,8 @@ func structuredInteraction(in *worker.HistoryInteraction) *SessionStructuredInte
 		Prompt:    in.Prompt,
 		Options:   append([]string(nil), in.Options...),
 		Action:    in.Action,
+		Lead:      lin.Lead,
+		Parent:    lin.Parent,
+		Origin:    lin.Origin,
 	}
 }

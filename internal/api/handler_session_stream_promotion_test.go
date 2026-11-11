@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/events"
 	"github.com/gastownhall/gascity/internal/session"
 	"github.com/gastownhall/gascity/internal/worker"
@@ -98,6 +99,52 @@ func TestStructuredPeekPromotionClearsResolvedPendingInteraction(t *testing.T) {
 				t.Fatal("structured stream did not stop after cancellation")
 			}
 		})
+	}
+}
+
+// TestSessionPeekRawPendingCarriesReadTimeLineage proves the raw stream's
+// pending event carries the same read-time bead lineage as every other
+// stream variant: when the session has an active bead, the event's lead is
+// that bead. Transports of one stream must not disagree on the shape.
+func TestSessionPeekRawPendingCarriesReadTimeLineage(t *testing.T) {
+	state := newFakeState(t)
+	store := beads.NewMemStore()
+	state.stores = map[string]beads.Store{"a": store}
+	work, err := store.Create(beads.Bead{Title: "helper work"})
+	if err != nil {
+		t.Fatalf("Create work: %v", err)
+	}
+	inProgress := "in_progress"
+	assignee := "worker-session"
+	if err := store.Update(work.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &assignee}); err != nil {
+		t.Fatalf("Update work: %v", err)
+	}
+
+	srv := New(state)
+	info := session.Info{ID: "worker-session", SessionName: "worker-1", Template: "worker", Provider: "test"}
+	handle := &mutableStructuredPendingHandle{output: "peek output"}
+	handle.SetPending(&worker.PendingInteraction{RequestID: "request-1", Kind: "approval", Prompt: "Proceed?"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rec := newSyncResponseRecorder()
+	done := make(chan struct{})
+	go func() {
+		srv.streamSessionPeekRaw(ctx, rec, info, handle)
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(hangBudget):
+			t.Error("raw stream did not stop after cancellation")
+		}
+	}()
+
+	want := `"lead":"` + work.ID + `"`
+	if body := waitForRecorderSubstring(t, rec, want, 3*time.Second); !strings.Contains(body, want) {
+		t.Fatalf("raw stream body missing pending lead %q: %s", work.ID, body)
 	}
 }
 

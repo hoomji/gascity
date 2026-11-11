@@ -613,6 +613,8 @@ func TestReplayedSyncErrorRebuildsTheRefusal(t *testing.T) {
 		{opjournal.KindKill, opjournal.Scope{}, opjournal.ArmFailed, "refused:kill_pending", "being killed"},
 		{opjournal.KindSuspend, opjournal.Scope{}, opjournal.ArmFailed, "refused:illegal_transition", "illegal_transition:"},
 		{opjournal.KindKill, opjournal.Scope{Generation: 3}, opjournal.ArmFailed, "refused:" + refusedTargetMoved, refusedTargetMoved + ":"},
+		{opjournal.KindRespond, opjournal.Scope{}, opjournal.ArmFailed, opjournal.ReasonRefusedTextUnsupported, "interaction_text_unsupported:"},
+		{opjournal.KindRespond, opjournal.Scope{}, opjournal.ArmFailed, opjournal.ReasonReplyUndelivered, "reply_undelivered:"},
 	} {
 		op := opjournal.Op{
 			ID: "gc-op-1", Conversation: "gc-1", Kind: tc.kind, Scope: tc.scope, Status: opjournal.StatusClosed,
@@ -646,6 +648,8 @@ func TestSyncOpResultMapsTheLegacyErrors(t *testing.T) {
 		{opjournal.KindSuspend, runtime.ErrRuntimeUnavailable, true, opjournal.ArmFailed, opjournal.ReasonProviderUnavailable, false},
 		{opjournal.KindWake, &session.WakeConflictError{SessionID: "gc-1", State: "Archived"}, false, opjournal.ArmFailed, "refused:archived", true},
 		{opjournal.KindWake, &session.WakeConflictError{SessionID: "gc-1", State: "archived"}, true, opjournal.ArmFailed, "refused:archived", false},
+		{opjournal.KindRespond, session.ErrInteractionTextUnsupported, true, opjournal.ArmFailed, opjournal.ReasonRefusedTextUnsupported, false},
+		{opjournal.KindRespond, session.ErrInteractionReplyUndelivered, false, opjournal.ArmFailed, opjournal.ReasonReplyUndelivered, false},
 	} {
 		res := wakeOpResult(tc.err, tc.minted)
 		if tc.kind != opjournal.KindWake {

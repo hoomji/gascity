@@ -591,13 +591,20 @@ func (h *RuntimeHandle) Respond(ctx context.Context, req InteractionResponse) er
 // runtimeInteractionError reports the runtime's interaction refusals in the
 // session vocabulary, as session.Manager does, so a caller maps them the same
 // way for a runtime-only handle: a nudge refused while an interaction is
-// pending is session.ErrPendingInteraction, and a response the provider
-// rejects, or one naming an action the pending prompt does not offer, is
-// session.ErrInteractionMismatch. The runtime error stays wrapped.
+// pending is session.ErrPendingInteraction, typed reply text the provider
+// cannot deliver is session.ErrInteractionTextUnsupported, an answer that
+// landed with its reply lost is session.ErrInteractionReplyUndelivered, and
+// a response the provider rejects, or one naming an action the pending
+// prompt does not offer, is session.ErrInteractionMismatch. The runtime
+// error stays wrapped.
 func runtimeInteractionError(err error) error {
 	switch {
 	case errors.Is(err, runtime.ErrNudgeRefusedPendingInteraction):
 		return fmt.Errorf("%w: %w", sessionpkg.ErrPendingInteraction, err)
+	case errors.Is(err, runtime.ErrInteractionTextUnsupported):
+		return fmt.Errorf("%w: %w", sessionpkg.ErrInteractionTextUnsupported, err)
+	case errors.Is(err, runtime.ErrInteractionReplyUndelivered):
+		return fmt.Errorf("%w: %w", sessionpkg.ErrInteractionReplyUndelivered, err)
 	case errors.Is(err, runtime.ErrInteractionResponseInvalid),
 		errors.Is(err, runtime.ErrInteractionActionUnavailable),
 		errors.Is(err, runtime.ErrInteractionGone):

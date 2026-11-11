@@ -21,6 +21,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/beads/beadstest"
 	"github.com/gastownhall/gascity/internal/citylayout"
@@ -6790,6 +6791,65 @@ func TestHandleSessionPendingAndRespond(t *testing.T) {
 	}
 	if got := fs.sp.Responses[info.SessionName]; len(got) != 1 || got[0].Action != "approve" {
 		t.Fatalf("responses = %#v, want single approve", got)
+	}
+}
+
+// TestHandleSessionPendingCarriesBeadLineage proves the helper-lineage
+// contract on the pending shape: a session working a bead answers its
+// pending request with the bead linkage (lead/parent/origin), so a helper's
+// request shows under its lead.
+func TestHandleSessionPendingCarriesBeadLineage(t *testing.T) {
+	fs := newSessionFakeState(t)
+	srv := New(fs)
+	h := newTestCityHandlerWith(t, fs, srv)
+
+	info := createTestSession(t, fs.cityBeadStore, fs.sp, "Helper")
+	workStore := fs.stores["myrig"]
+	epic, err := workStore.Create(beads.Bead{Title: "epic"})
+	if err != nil {
+		t.Fatalf("Create epic: %v", err)
+	}
+	origin, err := workStore.Create(beads.Bead{Title: "workflow root"})
+	if err != nil {
+		t.Fatalf("Create origin: %v", err)
+	}
+	work, err := workStore.Create(beads.Bead{
+		Title:    "helper work",
+		ParentID: epic.ID,
+		Metadata: beads.StringMap{beadmeta.RootBeadIDMetadataKey: origin.ID},
+	})
+	if err != nil {
+		t.Fatalf("Create work: %v", err)
+	}
+	inProgress := "in_progress"
+	assignee := info.ID
+	if err := workStore.Update(work.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &assignee}); err != nil {
+		t.Fatalf("Update work: %v", err)
+	}
+	fs.sp.SetPendingInteraction(info.SessionName, &runtime.PendingInteraction{
+		RequestID: "req-1",
+		Kind:      "approval",
+		Prompt:    "approve?",
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", cityURL(fs, "/session/")+info.ID+"/pending", nil)
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("pending status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	var pendingResp sessionPendingResponse
+	if err := json.NewDecoder(w.Body).Decode(&pendingResp); err != nil {
+		t.Fatalf("decode pending: %v", err)
+	}
+	if pendingResp.Pending == nil {
+		t.Fatalf("Pending = nil, want req-1 with lineage")
+	}
+	got := pendingResp.Pending
+	if got.Lead != work.ID || got.Parent != epic.ID || got.Origin != origin.ID {
+		t.Fatalf("pending lineage = lead %q parent %q origin %q, want %q %q %q",
+			got.Lead, got.Parent, got.Origin, work.ID, epic.ID, origin.ID)
 	}
 }
 

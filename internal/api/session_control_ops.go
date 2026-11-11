@@ -85,6 +85,12 @@ const (
 const (
 	refusedSessionStarting = "session_starting"
 	refusedWillNotStart    = "will_not_start"
+	// refusedTextUnsupported refuses a respond whose typed reply text the
+	// session's provider cannot deliver. It matches
+	// opjournal.ReasonRefusedTextUnsupported, the reason the conversation
+	// lane closes the same refusal with, so both executors journal one
+	// reason.
+	refusedTextUnsupported = "text_unsupported"
 	// refusedTargetMoved closes a kill whose session moved to another
 	// generation than the one its op is scoped to, as gc session kill does.
 	refusedTargetMoved = "target_moved"
@@ -120,6 +126,7 @@ var syncVerbSentinels = legacyop.Sentinels{
 	Refusals: []legacyop.Refusal{
 		{Err: session.ErrSessionStarting, Why: refusedSessionStarting},
 		{Err: session.ErrRuntimeLeaseBusy, Why: refusedSessionStarting},
+		{Err: session.ErrInteractionTextUnsupported, Why: refusedTextUnsupported},
 		{Err: session.ErrSessionStopping, Why: "session_stopping"},
 		{Err: session.ErrSessionKillPending, Why: "kill_pending"},
 		{Err: session.ErrIllegalTransition, Why: "illegal_transition"},
@@ -132,6 +139,7 @@ var syncVerbSentinels = legacyop.Sentinels{
 var replaySentinels = map[string]error{
 	legacyop.RefusedNotASession: session.ErrNotSession,
 	refusedSessionStarting:      session.ErrSessionStarting,
+	refusedTextUnsupported:      session.ErrInteractionTextUnsupported,
 	"session_stopping":          session.ErrSessionStopping,
 	"kill_pending":              session.ErrSessionKillPending,
 	"illegal_transition":        session.ErrIllegalTransition,
@@ -382,6 +390,8 @@ func replayedSyncError(op opjournal.Op, mapErr func(error) error) error {
 		return replayed(fmt.Errorf("session %q: turn %q was not the current turn when the stop ran: %w", op.Conversation, op.Scope.Turn, runtime.ErrTurnNotCurrent))
 	case reason == opjournal.ReasonStale:
 		return replayed(session.ErrNoPendingInteraction)
+	case reason == opjournal.ReasonReplyUndelivered:
+		return replayed(session.ErrInteractionReplyUndelivered)
 	case strings.HasPrefix(reason, opjournal.RefusedReasonPrefix):
 		why := strings.TrimPrefix(reason, opjournal.RefusedReasonPrefix)
 		if sentinel, ok := replaySentinels[why]; ok {
@@ -410,6 +420,13 @@ func replayedSyncError(op opjournal.Op, mapErr func(error) error) error {
 // syncOpResult is the op result of a session command's legacy error (nil is
 // success), for a key the recorder minted or not.
 func syncOpResult(kind opjournal.Kind, err error, minted bool) legacyop.Result {
+	// Definitive, and closed on every key: the answer already reached
+	// its prompt, so a same-key retry replays the refusal instead of
+	// answering again. The Refusals slot cannot carry it: those stay open
+	// for a retry to adopt and re-execute.
+	if errors.Is(err, session.ErrInteractionReplyUndelivered) {
+		return legacyop.Result{Outcome: opjournal.Outcome{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonReplyUndelivered}}
+	}
 	return syncVerbSentinels.SyncResult(kind, err, minted)
 }
 

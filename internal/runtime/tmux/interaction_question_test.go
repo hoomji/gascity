@@ -559,6 +559,27 @@ func TestRespondRefusesAskUserQuestionDialog(t *testing.T) {
 // An open AskUserQuestion dialog is not an idle boundary even though its
 // focused row ("❯ 1. …") matches the ready-prompt prefix. Like an open approval
 // it reads indeterminate (no idle prompt, no busy indicator), never idle.
+// TestRespondSelectTypesNoFollowUpText proves text beside a question answer
+// is only the option selector: answering "Keep holding" types that
+// option's key and nothing else — the text is never typed as a follow-up
+// the way approval text is.
+func TestRespondSelectTypesNoFollowUpText(t *testing.T) {
+	withFastRespondVerify(t, 20*time.Millisecond)
+	tm0, _ := questionTmux(askUserQuestionPane)
+	pending, err := (&Provider{tm: tm0}).Pending("auq")
+	if err != nil || pending == nil {
+		t.Fatalf("Pending = %+v, %v", pending, err)
+	}
+	ex := &questionAnswerExecutor{paneExecutor: paneExecutor{pane: askUserQuestionPane, inMode: "0"}, after: answeredAskUserQuestionPane}
+	tm := &Tmux{cfg: DefaultConfig(), exec: ex}
+	if err := tm.Respond("auq", runtime.InteractionResponse{RequestID: pending.RequestID, Action: QuestionSelectAction, Text: "Keep holding"}); err != nil {
+		t.Fatalf("Respond(select) = %v", err)
+	}
+	if want := []string{"3"}; !slices.Equal(ex.keys, want) {
+		t.Fatalf("keys = %q, want %q: the option key only, never the text as a follow-up", ex.keys, want)
+	}
+}
+
 func TestSnapshotPaneIdleRejectsAskUserQuestionDialog(t *testing.T) {
 	tm, _ := questionTmux(askUserQuestionPane)
 	idle, err := tm.snapshotPaneIdleWithPrefix("auq", DefaultReadyPromptPrefix)

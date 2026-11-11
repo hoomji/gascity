@@ -4485,6 +4485,64 @@ func TestPendingAndRespond(t *testing.T) {
 	}
 }
 
+// TestRespondMapsTextUnsupported proves the typed-reply contract at the
+// manager seam: a provider that cannot deliver text beside an answer surfaces
+// its refusal in the session vocabulary, distinct from a mismatch, so the API
+// answers the named refusal instead of a state conflict.
+func TestRespondMapsTextUnsupported(t *testing.T) {
+	store := beads.NewMemStore()
+	sp := runtime.NewFake()
+	mgr := newTestManager(t, store, sp)
+
+	info, err := mgr.CreateSession(context.Background(), CreateOptions{Template: "helper", Title: "", Command: "claude", WorkDir: "/tmp", Provider: "claude", Env: nil, Resume: ProviderResume{}, Hints: runtime.Config{}, ExtraMeta: map[string]string{"session_origin": "manual"}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	sp.SetPendingInteraction(info.SessionName, &runtime.PendingInteraction{
+		RequestID: "req-1",
+		Kind:      "approval",
+		Prompt:    "approve?",
+	})
+	sp.RespondErrors[info.SessionName] = fmt.Errorf("deny with note: %w", runtime.ErrInteractionTextUnsupported)
+
+	err = mgr.Respond(info.ID, runtime.InteractionResponse{RequestID: "req-1", Action: "deny", Text: "use ls instead"})
+	if !errors.Is(err, ErrInteractionTextUnsupported) {
+		t.Fatalf("Respond = %v, want ErrInteractionTextUnsupported", err)
+	}
+}
+
+// TestRespondMapsReplyUndelivered proves the typed-reply failure contract at
+// the manager seam: an answer that landed with its follow-up text lost
+// surfaces in the session vocabulary, distinct from a refusal. The
+// reply-undelivered verdict wins over the delivery cause it wraps (here a
+// session that vanished between the clear and the typing), so it never
+// degrades to no-pending-interaction nothing-sent semantics.
+func TestRespondMapsReplyUndelivered(t *testing.T) {
+	store := beads.NewMemStore()
+	sp := runtime.NewFake()
+	mgr := newTestManager(t, store, sp)
+
+	info, err := mgr.CreateSession(context.Background(), CreateOptions{Template: "helper", Title: "", Command: "claude", WorkDir: "/tmp", Provider: "claude", Env: nil, Resume: ProviderResume{}, Hints: runtime.Config{}, ExtraMeta: map[string]string{"session_origin": "manual"}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	sp.SetPendingInteraction(info.SessionName, &runtime.PendingInteraction{
+		RequestID: "req-1",
+		Kind:      "approval",
+		Prompt:    "approve?",
+	})
+	sp.RespondErrors[info.SessionName] = fmt.Errorf("%w: session gone mid-reply: %w",
+		runtime.ErrInteractionReplyUndelivered, runtime.ErrSessionNotFound)
+
+	err = mgr.Respond(info.ID, runtime.InteractionResponse{RequestID: "req-1", Action: "deny", Text: "use ls instead"})
+	if !errors.Is(err, ErrInteractionReplyUndelivered) {
+		t.Fatalf("Respond = %v, want ErrInteractionReplyUndelivered", err)
+	}
+	if errors.Is(err, ErrNoPendingInteraction) {
+		t.Fatalf("Respond = %v, must not degrade to ErrNoPendingInteraction (the answer landed)", err)
+	}
+}
+
 // TestPendingByNameProbesProviderWithoutBeadLookup verifies the name-based
 // probe path the city-wide pending aggregate uses: given an already-resolved
 // runtime session name it returns the provider's interaction directly, and an

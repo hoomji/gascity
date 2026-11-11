@@ -289,7 +289,7 @@ func TestLiveStructuredTranscriptSchemaVariantsExcludeImpossibleFields(t *testin
 }
 
 func TestStructuredProjectionAllocatesRequiredEmptyArraysAndClosesDiscriminators(t *testing.T) {
-	messages, ids := historySnapshotStructuredMessages(nil, false)
+	messages, ids := historySnapshotStructuredMessages(nil, false, interactionLineage{})
 	if messages == nil || ids == nil {
 		t.Fatalf("nil snapshot = messages %#v ids %#v, want allocated empty arrays", messages, ids)
 	}
@@ -300,7 +300,7 @@ func TestStructuredProjectionAllocatesRequiredEmptyArraysAndClosesDiscriminators
 			Actor:  worker.Actor("provider-special-role"),
 			Status: worker.ResultStatus("provider-special-status"),
 		}},
-	}, false)
+	}, false, interactionLineage{})
 	if len(messages) != 1 {
 		t.Fatalf("messages = %#v, want one message", messages)
 	}
@@ -322,7 +322,7 @@ func TestStructuredProjectionAllocatesRequiredEmptyArraysAndClosesDiscriminators
 	if result == nil || result.Kind != "unknown" {
 		t.Fatalf("result = %#v, want unknown-kind projection", result)
 	}
-	block := historyBlockToStructuredBlock(worker.HistoryBlock{Kind: worker.BlockKind("provider-special-block")}, false)
+	block := historyBlockToStructuredBlock(worker.HistoryBlock{Kind: worker.BlockKind("provider-special-block")}, false, interactionLineage{})
 	if block == nil || block.Type != string(worker.BlockKindUnknown) {
 		t.Fatalf("block = %#v, want unknown-type projection", block)
 	}
@@ -350,7 +350,7 @@ func TestStructuredProjectionDropsImpossibleCrossVariantFields(t *testing.T) {
 		Usage:       &worker.HistoryUsage{InputTokens: 1},
 		UserPrompt:  &worker.HistoryUserPrompt{Text: "hello"},
 		SystemEvent: &worker.HistorySystemEvent{Kind: "wrong-role-event"},
-	}, false)
+	}, false, interactionLineage{})
 	if user.UserPrompt == nil {
 		t.Fatal("user prompt missing from user variant")
 	}
@@ -364,7 +364,7 @@ func TestStructuredProjectionDropsImpossibleCrossVariantFields(t *testing.T) {
 		ToolUseID:   "tool-1",
 		Name:        "Read",
 		ContentText: "wrong-kind-content",
-	}, false)
+	}, false, interactionLineage{})
 	if toolUse == nil || toolUse.ID != "tool-1" {
 		t.Fatalf("tool-use projection = %#v, want typed id", toolUse)
 	}
@@ -378,7 +378,7 @@ func TestStructuredProjectionDropsImpossibleCrossVariantFields(t *testing.T) {
 		ToolUseID:   "tool-1",
 		ContentText: "result content",
 		ImageURL:    "wrong-kind-image",
-	}, false)
+	}, false, interactionLineage{})
 	if toolResult == nil || toolResult.ToolCallID != "tool-1" || toolResult.Content != "result content" {
 		t.Fatalf("tool-result projection = %#v, want typed result fields", toolResult)
 	}

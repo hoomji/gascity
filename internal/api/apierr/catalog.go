@@ -48,6 +48,12 @@ var (
 	// dispatch (unknown/unwired sink, policy) — distinct from validation-failed,
 	// which is huma's schema-validation auto-stamp.
 	WebhookRejected = Register(ProblemType{Code: "webhook-rejected", Status: http.StatusUnprocessableEntity, Title: "Webhook Rejected"})
+	// InteractionTextUnsupported is typed reply text beside an interaction
+	// answer that the session's provider cannot deliver (its permission
+	// protocol carries the answer only). The request is well-formed; the
+	// client recovers by answering again without text. The interaction stays
+	// pending.
+	InteractionTextUnsupported = Register(ProblemType{Code: "interaction-text-unsupported", Status: http.StatusUnprocessableEntity, Title: "Interaction Text Unsupported"})
 	// DemandOnlySingleton refuses a session create or wake for a pool agent
 	// with max_active_sessions = 1 and no [[named_session]]: the controller
 	// starts its one session only from pool demand. The request is well-formed;
@@ -70,10 +76,11 @@ var (
 	// SessionConflict is the one code for the session 409s. Many carry a
 	// differentiating detail prefix the CLI already branches on
 	// (ambiguous:/pending_interaction:/no_pending:/invalid_interaction:/
-	// illegal_transition:), mirroring sling-source-workflow-conflict; the rest
-	// share a generic "conflict:" (or no) prefix. A later slice may split the
-	// create-time name/alias-uniqueness conflicts into their own code, since a
-	// client cannot today distinguish "pick a different name" from "resume/stop
+	// illegal_transition:/reply_undelivered:), mirroring
+	// sling-source-workflow-conflict; the rest share a generic "conflict:"
+	// (or no) prefix. A later slice may split the create-time
+	// name/alias-uniqueness conflicts into their own code, since a client
+	// cannot today distinguish "pick a different name" from "resume/stop
 	// first" by code or prefix.
 	SessionConflict = Register(ProblemType{Code: "session-conflict", Status: http.StatusConflict, Title: "Session State Conflict"})
 	// SessionInactive refuses gc session peek's read (GET /session/{id} with

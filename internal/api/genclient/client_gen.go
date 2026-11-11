@@ -4616,8 +4616,11 @@ type PatchOKResponseBody struct {
 // PendingInteraction defines model for PendingInteraction.
 type PendingInteraction struct {
 	Kind      string             `json:"kind"`
+	Lead      *string            `json:"lead,omitempty"`
 	Metadata  *map[string]string `json:"metadata,omitempty"`
 	Options   *[]string          `json:"options,omitempty"`
+	Origin    *string            `json:"origin,omitempty"`
+	Parent    *string            `json:"parent,omitempty"`
 	Prompt    *string            `json:"prompt,omitempty"`
 	RequestId string             `json:"request_id"`
 }
@@ -5789,7 +5792,7 @@ type SessionRespondInputBody struct {
 	// RequestId Pending interaction request ID (optional).
 	RequestId *string `json:"request_id,omitempty"`
 
-	// Text Optional response text.
+	// Text Optional typed reply delivered with the answer: a terminal transport types it as a follow-up message once the prompt clears. A provider whose permission protocol carries no text channel refuses the response with 422 interaction-text-unsupported and leaves the interaction pending.
 	Text *string `json:"text,omitempty"`
 }
 
@@ -6103,7 +6106,10 @@ type SessionStructuredIDESelection struct {
 type SessionStructuredInteraction struct {
 	Action    *string   `json:"action,omitempty"`
 	Kind      *string   `json:"kind,omitempty"`
+	Lead      *string   `json:"lead,omitempty"`
 	Options   *[]string `json:"options,omitempty"`
+	Origin    *string   `json:"origin,omitempty"`
+	Parent    *string   `json:"parent,omitempty"`
 	Prompt    *string   `json:"prompt,omitempty"`
 	RequestId *string   `json:"request_id,omitempty"`
 	State     string    `json:"state"`

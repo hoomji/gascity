@@ -1421,13 +1421,17 @@ func (s *Server) answerLaneRespond(ctx context.Context, id, key string, op opjou
 
 // laneRespondRefusal is the refusal a closed lane respond answers with, nil
 // when it succeeded: skipped{stale} is 409 no_pending; failed{unsupported}
-// 501; refused:action the runtime's refusal, 409 invalid_interaction; and
-// any other failure, or a cancel, 409 op_already_failed. That last one
-// offers a resend under a new Idempotency-Key only when nothing was sent. An
-// answer that may have reached its prompt (maybe_delivered, or
-// failed{ambiguous_delivery}) is never sent again, and a prompt pending now
-// may be a later, identical one, which a resend would answer as the next
-// occurrence (opjournal.RespondKey); so that answer offers none.
+// 501; refused:action the runtime's refusal, 409 invalid_interaction;
+// refused:text_unsupported the typed-reply refusal, 422
+// interaction_text_unsupported, as OJ-4 answers it; failed{reply_undelivered}
+// the landed answer whose typed reply never followed, 409 reply_undelivered,
+// offering no new-key resend; and any other failure, or a cancel, 409
+// op_already_failed. That last one offers a resend under a new
+// Idempotency-Key only when nothing was sent. An answer that may have
+// reached its prompt (maybe_delivered, or failed{ambiguous_delivery}) is
+// never sent again, and a prompt pending now may be a later, identical one,
+// which a resend would answer as the next occurrence (opjournal.RespondKey);
+// so that answer offers none.
 func laneRespondRefusal(op opjournal.Op) error {
 	arm, reason := op.Outcome.Effective()
 	closed := fmt.Sprintf("op %s closed %s", op.ID, laneOutcomeText(op))
@@ -1440,6 +1444,10 @@ func laneRespondRefusal(op opjournal.Op) error {
 		return humaSessionManagerError(fmt.Errorf("%s: %w", closed, session.ErrInteractionUnsupported))
 	case arm == opjournal.ArmFailed && op.Outcome.Reason == opjournal.ReasonRefusedAction:
 		return humaSessionManagerError(fmt.Errorf("%s: %w: %w", closed, session.ErrInteractionMismatch, runtime.ErrInteractionActionUnavailable))
+	case arm == opjournal.ArmFailed && op.Outcome.Reason == opjournal.ReasonRefusedTextUnsupported:
+		return humaSessionManagerError(fmt.Errorf("%s: %w", closed, session.ErrInteractionTextUnsupported))
+	case arm == opjournal.ArmFailed && op.Outcome.Reason == opjournal.ReasonReplyUndelivered:
+		return apierr.SessionConflict.Msg(fmt.Sprintf("reply_undelivered: %s: the answer reached its prompt but its typed reply did not land, so it is never sent again; send the text as a plain message instead of answering again", closed))
 	case op.MaybeDelivered > 0 || reason == opjournal.ReasonAmbiguousDelivery:
 		return apierr.OpAlreadyFailed.Msg(fmt.Sprintf("%s: %s: the answer may have reached its prompt, so it is never sent again; read the session's pending interaction before answering again", opAlreadyFailedCode, closed))
 	}

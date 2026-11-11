@@ -620,6 +620,15 @@ var (
 	// ErrInteractionMismatch reports that the response does not match the
 	// currently pending interaction request.
 	ErrInteractionMismatch = errors.New("pending interaction does not match request")
+	// ErrInteractionTextUnsupported reports that the response carries typed
+	// reply text the session's provider cannot deliver beside an answer.
+	// The interaction stays pending; answering again without text works.
+	ErrInteractionTextUnsupported = errors.New("session provider does not support text with interactive responses")
+	// ErrInteractionReplyUndelivered reports that the answer reached its
+	// prompt but the text beside it never landed as a follow-up. The
+	// caller must not answer again; it resends the text as a plain
+	// message instead.
+	ErrInteractionReplyUndelivered = errors.New("session provider delivered the interaction answer but not its typed reply")
 	// ErrPendingInteraction reports that the session is blocked on a pending
 	// approval or question and cannot accept a new user turn. It is the
 	// runtime sentinel, so a refusal raised by the provider itself (for
@@ -2124,6 +2133,15 @@ func (m *Manager) respond(id string, response runtime.InteractionResponse, send 
 		if err := send(ip, sessName, response); err != nil {
 			if errors.Is(err, runtime.ErrInteractionUnsupported) {
 				return ErrInteractionUnsupported
+			}
+			if errors.Is(err, runtime.ErrInteractionTextUnsupported) {
+				return fmt.Errorf("%w: %w", ErrInteractionTextUnsupported, err)
+			}
+			// Before the session-gone arm: the answer landed, so a reply
+			// the session's death lost is reply-undelivered, never
+			// no-pending-interaction.
+			if errors.Is(err, runtime.ErrInteractionReplyUndelivered) {
+				return fmt.Errorf("%w: %w", ErrInteractionReplyUndelivered, err)
 			}
 			if errors.Is(err, runtime.ErrInteractionGone) {
 				return fmt.Errorf("%w: %w", ErrInteractionMismatch, err)

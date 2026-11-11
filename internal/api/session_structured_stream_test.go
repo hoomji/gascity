@@ -4,7 +4,37 @@ import (
 	"testing"
 
 	"github.com/gastownhall/gascity/internal/sessionlog"
+	"github.com/gastownhall/gascity/internal/worker"
 )
+
+// TestRuntimePendingInteractionCarriesLineage proves the helper-lineage
+// contract on the streamed pending shape: the wire conversion stamps the
+// session's bead linkage, and the change-detection key covers it, so a
+// helper's live request shows under its lead.
+func TestRuntimePendingInteractionCarriesLineage(t *testing.T) {
+	pending := &worker.PendingInteraction{RequestID: "req-1", Kind: "approval", Prompt: "approve?"}
+	lin := interactionLineage{Lead: "bd-work", Parent: "bd-epic", Origin: "bd-root"}
+
+	wire := runtimePendingInteraction(pending, lin)
+	if wire.Lead != "bd-work" || wire.Parent != "bd-epic" || wire.Origin != "bd-root" {
+		t.Fatalf("wire lineage = lead %q parent %q origin %q, want bd-work bd-epic bd-root",
+			wire.Lead, wire.Parent, wire.Origin)
+	}
+	if wire.RequestID != "req-1" || wire.Kind != "approval" || wire.Prompt != "approve?" {
+		t.Fatalf("wire interaction = %+v, want the converted prompt", wire)
+	}
+
+	unstamped := runtimePendingInteraction(pending, interactionLineage{})
+	if unstamped.Lead != "" || unstamped.Parent != "" || unstamped.Origin != "" {
+		t.Fatalf("unstamped wire = %+v, want empty lineage", unstamped)
+	}
+	if pendingInteractionKey(pending, lin) == pendingInteractionKey(pending, interactionLineage{}) {
+		t.Fatal("pending key ignores lineage; a lineage change would not re-emit")
+	}
+	if pendingInteractionKey(nil, lin) != "" {
+		t.Fatalf("nil pending key = %q, want empty", pendingInteractionKey(nil, lin))
+	}
+}
 
 func TestBuildStructuredStreamUpdateStartsWithSnapshot(t *testing.T) {
 	projection := testStructuredStreamProjection("stream-a", testStructuredMessage("m1", "partial"))

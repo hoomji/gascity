@@ -2895,10 +2895,13 @@ export type PatchOkResponseBody = {
 
 export type PendingInteraction = {
     kind: string;
+    lead?: string;
     metadata?: {
         [key: string]: string;
     };
     options?: Array<string> | null;
+    origin?: string;
+    parent?: string;
     prompt?: string;
     request_id: string;
 };
@@ -4295,7 +4298,7 @@ export type SessionRespondInputBody = {
      */
     request_id?: string;
     /**
-     * Optional response text.
+     * Optional typed reply delivered with the answer: a terminal transport types it as a follow-up message once the prompt clears. A provider whose permission protocol carries no text channel refuses the response with 422 interaction-text-unsupported and leaves the interaction pending.
      */
     text?: string;
 };
@@ -4665,7 +4668,10 @@ export type SessionStructuredIdeSelection = {
 export type SessionStructuredInteraction = {
     action?: string;
     kind?: string;
+    lead?: string;
     options?: Array<string> | null;
+    origin?: string;
+    parent?: string;
     prompt?: string;
     request_id?: string;
     state: string;

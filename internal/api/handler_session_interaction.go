@@ -147,13 +147,8 @@ func (s *Server) handleSessionPending(w http.ResponseWriter, r *http.Request) {
 	}
 	var pendingResp *runtime.PendingInteraction
 	if pending != nil {
-		pendingResp = &runtime.PendingInteraction{
-			RequestID: pending.RequestID,
-			Kind:      pending.Kind,
-			Prompt:    pending.Prompt,
-			Options:   append([]string(nil), pending.Options...),
-			Metadata:  cloneStringMap(pending.Metadata),
-		}
+		wire := runtimePendingInteraction(pending, s.pendingLineageForSession(store, id))
+		pendingResp = &wire
 	}
 	writeJSON(w, http.StatusOK, sessionPendingResponse{
 		Supported: supported,

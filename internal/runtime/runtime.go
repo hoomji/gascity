@@ -58,6 +58,20 @@ var ErrInteractionActionUnavailable = errors.New("pending interaction has no opt
 // A response naming no outstanding request is ErrInteractionGone instead.
 var ErrInteractionResponseInvalid = errors.New("interaction response is invalid")
 
+// ErrInteractionTextUnsupported reports that a provider cannot deliver typed
+// reply text beside an answer: its permission protocol carries the answer
+// only (ACP's RequestPermissionOutcome is an outcome plus an option, with no
+// text channel). The interaction stays pending so the caller can answer
+// again without text. A provider that can deliver the text (a terminal
+// transport types it after the answer) never returns this.
+var ErrInteractionTextUnsupported = errors.New("interaction response text is unsupported")
+
+// ErrInteractionReplyUndelivered reports that the answer reached its prompt
+// but the text beside it never landed as a follow-up: the typed-reply
+// delivery failed after the prompt cleared. The caller must not answer
+// again; it resends the text as a plain message instead.
+var ErrInteractionReplyUndelivered = errors.New("interaction answer was delivered but its typed reply was not")
+
 // ErrNudgeRefusedPendingInteraction reports that a nudge was refused because
 // the session is blocked on a pending interaction, such as a tool-call
 // approval a client has not answered yet. Delivery layers translate it into
@@ -638,6 +652,14 @@ type PendingInteraction struct {
 	Prompt    string            `json:"prompt,omitempty"`
 	Options   []string          `json:"options,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+	// Lead, Parent and Origin carry the bead linkage of the work the
+	// session is doing, stamped by the API at read time — providers leave
+	// them empty. Lead is the session's active bead, Parent its parent
+	// bead, Origin its workflow root bead, so a helper's request shows
+	// under its lead.
+	Lead   string `json:"lead,omitempty"`
+	Parent string `json:"parent,omitempty"`
+	Origin string `json:"origin,omitempty"`
 }
 
 // InteractionResponse is the client's answer to a pending interaction.

@@ -205,7 +205,7 @@ func (s *Server) emitClosedSessionSnapshotStructuredHuma(send StringIDSender, in
 		s.emitStructuredFallbackSnapshotHuma(send, info, "", includeThinking, resumeToken)
 		return
 	}
-	messages, _ := historySnapshotStructuredMessages(history, includeThinking)
+	messages, _ := historySnapshotStructuredMessages(history, includeThinking, s.activeBeadLineage(info))
 	projection := SessionStreamStructuredMessageEvent{
 		ID:                 info.ID,
 		Template:           info.Template,
