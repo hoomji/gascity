@@ -527,6 +527,107 @@ gc_harness_group_binaries_over_budget 77777 10
 	}
 }
 
+// TestGroupBinariesOverBudgetIgnoresToolArgvContainingTestPath pins the
+// gs-xjon fix round: the ".test" token must complete argv[0] itself. A tool
+// being *told about* a test binary — g++ linking it, `go test -c -o` writing
+// it — carries ".test" mid-command-line, and matching that fires the
+// per-binary bound on a healthy compile (a g++ linking gen-client.test
+// matched and the watchdog SIGQUIT a healthy unit-core run). Fails on the
+// gs-o4i4 matcher, which reports the linker.
+func TestGroupBinariesOverBudgetIgnoresToolArgvContainingTestPath(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(binDir, 0o755); err != nil {
+		t.Fatalf("create bin dir: %v", err)
+	}
+	fixture := filepath.Join(dir, "ps.txt")
+	table := strings.Join([]string{
+		" 12349 77777 00:30:00 /usr/bin/g++ -m64 -s -o /tmp/build/foo.test -lfoo",
+		" 12350 77777 00:30:00 /tmp/real.test -test.run=TestA",
+		"",
+	}, "\n")
+	if err := os.WriteFile(fixture, []byte(table), 0o644); err != nil {
+		t.Fatalf("write ps fixture: %v", err)
+	}
+	writeExecutable(t, filepath.Join(binDir, "ps"), fmt.Sprintf(`#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "-p" ]; then
+    exit 0
+  fi
+done
+cat %q
+`, fixture))
+	script := fmt.Sprintf(`set -euo pipefail
+source %q
+gc_harness_group_binaries_over_budget 77777 10
+`, filepath.Join(repoRoot(t), "scripts", "lib", "harness-reap.sh"))
+	cmd := harnessBash(script)
+	cmd.Env = append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("tool-argv harness failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	if !strings.Contains(output, "12350 1800 /tmp/real.test") {
+		t.Errorf("over-budget listing lacks the real binary:\n%s", output)
+	}
+	if strings.Contains(output, "12349") {
+		t.Errorf("over-budget listing reports the linker, which merely names a .test path:\n%s", output)
+	}
+}
+
+// TestFirstSeenFireGatesOnPersistence pins the gs-xjon fix round: the
+// per-binary budget is gated on observed persistence across polls, never on a
+// single ps elapsed sample. ps can report garbage elapsed for a process
+// mid-fork (a g++ read 441077233 days old in one snapshot and 00:00 in the
+// next); the candidate's ps age column is therefore ignored and only
+// first-seen persistence in the shell's own monotonic SECONDS fires the
+// bound. Drives gc_harness_seen_update directly over simulated polls.
+func TestFirstSeenFireGatesOnPersistence(t *testing.T) {
+	script := fmt.Sprintf(`set -euo pipefail
+source %q
+gc_harness_seen_state=""
+gc_harness_seen_update 5 1000 <<<'111 38109073018720 /tmp/a.test -test.x'
+echo "poll1 fire=[${gc_harness_fire_line:-none}]"
+gc_harness_seen_update 5 1003 <<'EOF'
+111 38109073018720 /tmp/a.test -test.x
+222 4 /tmp/b.test -test.y
+EOF
+echo "poll2 fire=[${gc_harness_fire_line:-none}]"
+echo "poll2 state=[$(printf '%%s' "$gc_harness_seen_state" | tr '\n' ';')]"
+gc_harness_seen_update 5 1005 <<<'111 38109073018720 /tmp/a.test -test.x'
+echo "poll3 fire=[${gc_harness_fire_line:-none}]"
+gc_harness_seen_update 5 1006 </dev/null
+echo "poll4 fire=[${gc_harness_fire_line:-none}] state=[$(printf '%%s' "$gc_harness_seen_state" | tr '\n' ';')]"
+gc_harness_seen_state="333 2000"
+gc_harness_seen_update 5 2005 <<<'333 1 /tmp/my dir/pkg.test -test.z'
+echo "poll5 fire=[${gc_harness_fire_line:-none}]"
+`, filepath.Join(repoRoot(t), "scripts", "lib", "harness-reap.sh"))
+	cmd := harnessBash(script)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("first-seen harness failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	for _, want := range []string{
+		// Garbage ps age alone never fires; the pid is only recorded.
+		"poll1 fire=[none]",
+		// Neither pid has persisted for the budget yet; both are tracked.
+		"poll2 fire=[none]",
+		"poll2 state=[111 1000;222 1003;]",
+		// Five observed seconds: fires with the observed age, not ps age.
+		"poll3 fire=[111 5 /tmp/a.test -test.x]",
+		// A departed pid is dropped, firing nothing.
+		"poll4 fire=[none] state=[]",
+		// Space-bearing argv[0] survives the gate intact.
+		"poll5 fire=[333 5 /tmp/my dir/pkg.test -test.z]",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("first-seen gate lacks %q:\n%s", want, output)
+		}
+	}
+}
+
 // TestGoTestShardLeavesNothingHoldingTheCallersPipe pins that a completed
 // shard leaves no descendant holding the caller's stdout. CombinedOutput
 // reads until every inheritor of the write end closes it, so a single leaked

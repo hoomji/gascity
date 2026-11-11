@@ -222,16 +222,23 @@ gc_harness_list_group() {
 # gc_harness_group_binaries_over_budget prints one line per member of process
 # group pgid whose argv[0] ends in ".test" and whose elapsed time is at least
 # budget seconds: "<pid> <age-seconds> <argv0>". It is the per-binary
-# watchdog's trigger (gs-jfy fix round): `go test -timeout` bounds each test
-# binary, not the whole multi-package invocation, so only an aged-out binary
-# proves a wedge — the parent `go` process legitimately outlives the budget
-# on a healthy 35-45 minute unit-core run. Best-effort like
+# watchdog's candidate list (gs-jfy fix round): `go test -timeout` bounds each
+# test binary, not the whole multi-package invocation, so only an aged-out
+# binary proves a wedge — the parent `go` process legitimately outlives the
+# budget on a healthy 35-45 minute unit-core run. Best-effort like
 # gc_harness_list_group: when ps cannot list the group it prints nothing and
 # the watchdog keeps polling rather than firing blind, but after three
 # consecutive failures it warns once so a blind bound is visible (gs-o4i4).
 # argv[0] may contain spaces (a GOTMPDIR/TMPDIR with spaces), so the match is
 # on the ".test" token boundary rather than the first whitespace: the path is
-# rebuilt up to the first ".test", preserving spaces.
+# rebuilt up to the first ".test", preserving spaces. The ".test" token must
+# still complete argv[0] itself: anything before the first ".test" that already
+# looks like flags (" -") is a tool being *told about* a test binary — a
+# linker, `go test -c -o`, a grep — not the binary, and matching it fires the
+# bound on a healthy compile (gs-xjon: g++ linking gen-client.test matched and
+# the watchdog SIGQUIT a healthy unit-core run). A space-bearing argv[0] has
+# no " -" in it, so those still match; only a path containing space-dash —
+# pathological — is missed.
 gc_harness_group_binaries_over_budget() {
   local pgid="${1:-}" budget="${2:-0}"
   [[ -n "$pgid" ]] || return 0
@@ -256,6 +263,9 @@ gc_harness_group_binaries_over_budget() {
       *.test|*.test\ *) ;;
       *) continue ;;
     esac
+    case "${rest%%.test*}" in
+      *" -"*) continue ;;
+    esac
     argv0="${rest%%.test*}"
     argv0="${argv0}.test"
     age="$(gc_harness_etime_seconds "$etime")" || continue
@@ -263,6 +273,63 @@ gc_harness_group_binaries_over_budget() {
       printf '%s %s %s\n' "$pid" "$age" "$argv0"
     fi
   done <<< "$listing"
+}
+
+# First-seen times ("pid firstseconds" lines) for the per-binary watchdog's
+# persistence gate. gc_harness_watchdog_per_binary resets it on entry;
+# gc_harness_seen_update threads it poll to poll.
+gc_harness_seen_state=""
+
+# The persistence gate's selected culprit: "pid observed_age argv0", or empty
+# when no candidate has persisted past the budget. Set by
+# gc_harness_seen_update alongside gc_harness_seen_state.
+gc_harness_fire_line=""
+
+# gc_harness_seen_update gates per-binary candidates on observed persistence.
+# Candidates arrive on stdin as "<pid> <age> <argv0...>" lines (the
+# gc_harness_group_binaries_over_budget shape, argv0 possibly space-bearing);
+# the ps-derived age column is ignored on purpose. $1 is the budget in
+# seconds, $2 is now in the shell's own monotonic SECONDS. A candidate fires
+# only once it has been listed on every poll for the budget: ps elapsed time
+# is sampled per poll and can report garbage for a process mid-fork (gs-xjon:
+# a g++ linking gen-client.test read 441077233 days old in one snapshot and
+# 00:00 in the next, and the etime-only gate SIGQUIT a healthy run on that
+# one sample), while first-seen persistence measures the run the watchdog
+# actually observed. Pids absent from this poll's candidates are dropped, so a
+# recycled pid re-enters as new. Prints nothing; sets gc_harness_seen_state to
+# the new state and gc_harness_fire_line to the first persisted culprit.
+gc_harness_seen_update() {
+  local budget="${1}" now="${2}"
+  local new_state="" fire=""
+  local line pid rest argv0 first seen_age seen_line
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    case "$line" in
+      *\ *\ *) ;;
+      *) continue ;;
+    esac
+    pid="${line%% *}"
+    rest="${line#* }"
+    argv0="${rest#* }"
+    first=""
+    while IFS= read -r seen_line; do
+      [[ -n "$seen_line" ]] || continue
+      if [[ "${seen_line%% *}" == "$pid" ]]; then
+        first="${seen_line#* }"
+        break
+      fi
+    done <<< "$gc_harness_seen_state"
+    [[ "$first" =~ ^[0-9]+$ ]] || first="$now"
+    new_state+="${pid} ${first}"$'\n'
+    if [[ -z "$fire" ]]; then
+      seen_age=$(( now - first ))
+      if (( seen_age >= budget )); then
+        fire="${pid} ${seen_age} ${argv0}"
+      fi
+    fi
+  done
+  gc_harness_seen_state="$new_state"
+  gc_harness_fire_line="$fire"
 }
 
 # gc_harness_watchdog kills process group pgid once fire_after seconds have
@@ -301,22 +368,29 @@ gc_harness_watchdog() {
 # poll interval scales with the budget (a tenth, 1-30s) so short test budgets
 # still detect promptly. A wedged `go` parent with no test children never
 # trips this; the push-suite whole-run bound backstops that shape instead.
+# The budget is gated on observed persistence (gc_harness_seen_update), not on
+# ps elapsed time: one garbage etime sample must never fire the bound
+# (gs-xjon). The candidate listing therefore runs with budget 0 — every test
+# member listed, the gate deciding — and the reported culprit age is observed
+# seconds, not ps elapsed.
 gc_harness_watchdog_per_binary() {
   local pgid="${1}" fire_after="${2}" quit_grace="${3}" label="${4}"
   local poll=$(( fire_after / 10 ))
   (( poll >= 1 )) || poll=1
   (( poll <= 30 )) || poll=30
-  local aged culprit_pid culprit_age culprit_argv0
+  gc_harness_seen_state=""
+  gc_harness_fire_line=""
+  local members culprit_pid culprit_age culprit_argv0 rest
   while true; do
     sleep "$poll"
     gc_harness_group_alive "$pgid" || return 0
-    aged="$(gc_harness_group_binaries_over_budget "$pgid" "$fire_after")"
-    [[ -n "$aged" ]] || continue
-    aged="${aged%%$'\n'*}"
-    culprit_pid="${aged%% *}"
-    culprit_age="${aged#* }"
-    culprit_age="${culprit_age%% *}"
-    culprit_argv0="${aged#* * }"
+    members="$(gc_harness_group_binaries_over_budget "$pgid" 0)"
+    gc_harness_seen_update "$fire_after" "$SECONDS" <<< "$members"
+    [[ -n "$gc_harness_fire_line" ]] || continue
+    culprit_pid="${gc_harness_fire_line%% *}"
+    rest="${gc_harness_fire_line#* }"
+    culprit_age="${rest%% *}"
+    culprit_argv0="${rest#* }"
     printf 'harness watchdog: %s test binary pid %s (%s, age %ss) exceeded its %ss per-binary budget and defeated go'\''s own -timeout; dumping goroutine stacks (SIGQUIT) then killing the process group\n' \
       "$label" "$culprit_pid" "$culprit_argv0" "$culprit_age" "$fire_after" >&2
     gc_harness_list_group "$pgid"
