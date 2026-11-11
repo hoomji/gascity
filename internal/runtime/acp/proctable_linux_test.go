@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/pidutil"
 	"github.com/gastownhall/gascity/internal/runtime"
 	"github.com/gastownhall/gascity/internal/runtime/proctable"
 )
@@ -432,6 +433,25 @@ func TestFindRuntimesBySessionIDTracksPerSessionAcrossSessions(t *testing.T) {
 	case <-deadConn.done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("agent conn did not observe the process exit")
+	}
+
+	// The empty-id scan below is the orphan sweep's: it only reads processes
+	// reparented to init or the systemd user manager
+	// (proctable.OrphanCandidate). Under a foreign subreaper the dead tool is
+	// alive but invisible to that scan, which is the scanner's
+	// production-correct behavior: an arbitrary adopter is unrecognizable
+	// (PR_GET_CHILD_SUBREAPER answers for self only), so the sweep stays
+	// fail-closed. Bazel's process-wrapper is such a subreaper, so a locally
+	// executed bazel test adopts its orphans to the wrapper instead of init
+	// (gs-xc47). Skip there with the adopter named; a tool with no readable
+	// parent is a setup failure, not a skip.
+	adopter, err := pidutil.ParentPID(deadTool)
+	if err != nil {
+		t.Fatalf("dead tool %d has no readable parent: %v", deadTool, err)
+	}
+	if subreaper := pidutil.DetectUserSubreaperPID(os.Getpid()); !proctable.OrphanCandidate(adopter, subreaper) {
+		t.Skipf("foreign-subreaper-adopter: dead tool %d reparented to pid %d (%q), not init or the systemd user manager (%d); the orphan sweep cannot see it here",
+			deadTool, adopter, pidutil.Comm(adopter), subreaper)
 	}
 
 	// The empty-id scan is the orphan sweep's: only reparented roots
