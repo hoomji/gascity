@@ -148,6 +148,172 @@ func TestSessionPeekRawPendingCarriesReadTimeLineage(t *testing.T) {
 	}
 }
 
+// TestSessionPeekRawPendingRefreshesLineageOnNewRequest proves the raw
+// stream re-resolves its bead lineage when a new pending request ID appears
+// (gascity#90 review F2): after the session's work moves from bead A to bead
+// B mid-stream, the next pending event carries B as its lead instead of the
+// stream's initial, now-stale lead.
+func TestSessionPeekRawPendingRefreshesLineageOnNewRequest(t *testing.T) {
+	state := newFakeState(t)
+	store := beads.NewMemStore()
+	state.stores = map[string]beads.Store{"a": store}
+	beadA, err := store.Create(beads.Bead{Title: "first work"})
+	if err != nil {
+		t.Fatalf("Create bead A: %v", err)
+	}
+	inProgress := "in_progress"
+	assignee := "worker-session"
+	if err := store.Update(beadA.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &assignee}); err != nil {
+		t.Fatalf("Update bead A: %v", err)
+	}
+
+	srv := New(state)
+	info := session.Info{ID: "worker-session", SessionName: "worker-1", Template: "worker", Provider: "test"}
+	handle := &mutableStructuredPendingHandle{output: "peek output"}
+	handle.SetPending(&worker.PendingInteraction{RequestID: "request-1", Kind: "approval", Prompt: "Proceed?"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rec := newSyncResponseRecorder()
+	done := make(chan struct{})
+	go func() {
+		srv.streamSessionPeekRaw(ctx, rec, info, handle)
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(hangBudget):
+			t.Error("raw stream did not stop after cancellation")
+		}
+	}()
+
+	wantA := `"lead":"` + beadA.ID + `"`
+	if body := waitForRecorderSubstring(t, rec, wantA, 3*time.Second); !strings.Contains(body, wantA) {
+		t.Fatalf("raw stream body missing pending lead %q: %s", beadA.ID, body)
+	}
+
+	// The session's work moves to a newer bead mid-stream; the next
+	// pending request must carry the fresh lead.
+	movedAway := "someone-else"
+	if err := store.Update(beadA.ID, beads.UpdateOpts{Assignee: &movedAway}); err != nil {
+		t.Fatalf("Update bead A: %v", err)
+	}
+	beadB, err := store.Create(beads.Bead{Title: "second work"})
+	if err != nil {
+		t.Fatalf("Create bead B: %v", err)
+	}
+	if err := store.Update(beadB.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &assignee}); err != nil {
+		t.Fatalf("Update bead B: %v", err)
+	}
+	handle.SetPending(&worker.PendingInteraction{RequestID: "request-2", Kind: "approval", Prompt: "Proceed again?"})
+	state.eventProv.(*events.Fake).Record(events.Event{Type: events.WorkerOperation, Subject: info.ID})
+
+	wantB := `"lead":"` + beadB.ID + `"`
+	if body := waitForRecorderSubstring(t, rec, wantB, 3*time.Second); !strings.Contains(body, wantB) {
+		t.Fatalf("raw stream body missing refreshed pending lead %q: %s", beadB.ID, body)
+	}
+}
+
+// TestStructuredPeekPendingRefreshesLineageOnNewRequest proves the structured
+// peek stream, on both transports, re-resolves its bead lineage when a new
+// pending request ID appears (gascity#90 review F2): after the session's
+// work moves mid-stream, the next pending event carries the new lead.
+func TestStructuredPeekPendingRefreshesLineageOnNewRequest(t *testing.T) {
+	for _, transport := range []string{"legacy", "huma"} {
+		t.Run(transport, func(t *testing.T) {
+			fs := newSessionFakeState(t)
+			store := beads.NewMemStore()
+			fs.stores = map[string]beads.Store{"a": store}
+			beadA, err := store.Create(beads.Bead{Title: "first work"})
+			if err != nil {
+				t.Fatalf("Create bead A: %v", err)
+			}
+			inProgress := "in_progress"
+			assignee := "session-1"
+			if err := store.Update(beadA.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &assignee}); err != nil {
+				t.Fatalf("Update bead A: %v", err)
+			}
+
+			srv := New(fs)
+			info := session.Info{ID: "session-1", SessionName: "worker-1", Template: "worker", Provider: "test"}
+			handle := &mutableStructuredPendingHandle{output: "fallback output"}
+			handle.SetPending(&worker.PendingInteraction{RequestID: "request-1", Kind: "approval", Prompt: "Proceed?"})
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan struct{})
+			var waitForLead func(string)
+
+			switch transport {
+			case "legacy":
+				rec := newSyncResponseRecorder()
+				go func() {
+					srv.streamSessionPeekStructured(ctx, rec, info, handle, false, "")
+					close(done)
+				}()
+				waitForLead = func(lead string) {
+					want := `"lead":"` + lead + `"`
+					if body := waitForRecorderSubstring(t, rec, want, hangBudget); !strings.Contains(body, want) {
+						t.Fatalf("structured stream body missing pending lead %q: %s", lead, body)
+					}
+				}
+			case "huma":
+				leads := make(chan string, 4)
+				go func() {
+					srv.streamSessionPeekStructuredHuma(ctx, func(msg StringIDMessage) error {
+						raw, _ := json.Marshal(msg.Data)
+						var pending struct {
+							RequestID string `json:"request_id"`
+							Lead      string `json:"lead"`
+						}
+						if json.Unmarshal(raw, &pending) == nil && pending.RequestID != "" && pending.Lead != "" {
+							leads <- pending.Lead
+						}
+						return nil
+					}, info, handle, false, "")
+					close(done)
+				}()
+				waitForLead = func(want string) {
+					select {
+					case got := <-leads:
+						if got != want {
+							t.Fatalf("pending lead = %q, want %q", got, want)
+						}
+					case <-time.After(hangBudget):
+						t.Fatalf("structured stream missing pending lead %q", want)
+					}
+				}
+			}
+
+			waitForLead(beadA.ID)
+
+			movedAway := "someone-else"
+			if err := store.Update(beadA.ID, beads.UpdateOpts{Assignee: &movedAway}); err != nil {
+				t.Fatalf("Update bead A: %v", err)
+			}
+			beadB, err := store.Create(beads.Bead{Title: "second work"})
+			if err != nil {
+				t.Fatalf("Create bead B: %v", err)
+			}
+			if err := store.Update(beadB.ID, beads.UpdateOpts{Status: &inProgress, Assignee: &assignee}); err != nil {
+				t.Fatalf("Update bead B: %v", err)
+			}
+			handle.SetPending(&worker.PendingInteraction{RequestID: "request-2", Kind: "approval", Prompt: "Proceed again?"})
+			fs.eventProv.(*events.Fake).Record(events.Event{Type: events.WorkerOperation, Subject: info.ID})
+			waitForLead(beadB.ID)
+
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(hangBudget):
+				t.Fatal("structured stream did not stop after cancellation")
+			}
+		})
+	}
+}
+
 func TestStructuredPeekEmitsSameRequestPendingUpdates(t *testing.T) {
 	for _, transport := range []string{"legacy", "huma"} {
 		t.Run(transport, func(t *testing.T) {

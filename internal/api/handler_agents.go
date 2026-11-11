@@ -470,10 +470,11 @@ func (lin interactionLineage) stamp(pending *runtime.PendingInteraction) {
 //
 // The lead is a read-time heuristic: the newest in_progress bead for the
 // session's identities (Limit 1, newest first), so with several
-// in_progress beads the newest wins. Callers resolve once per stream or
-// transcript read, so a session whose bead changes mid-stream keeps the
-// stream's initial lineage on later pending events (a stale lead) until
-// the client reconnects.
+// in_progress beads the newest wins. One-shot reads resolve once per
+// request; streams resolve at start and re-resolve whenever a new pending
+// request ID appears, so a pending event's lineage is never older than
+// the latest new request the stream has seen. A bead change with no new
+// request keeps the previous lineage on that same request's updates.
 func (s *Server) activeBeadLineage(info session.Info) interactionLineage {
 	if s == nil || s.state == nil {
 		return interactionLineage{}
