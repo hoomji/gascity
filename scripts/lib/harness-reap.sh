@@ -31,6 +31,11 @@ gc_harness_supervised_pgid=""
 # reason. Empty when no run is in flight or the run has no watchdog.
 gc_harness_watchdog_pgid=""
 
+# Consecutive `ps` failures seen by gc_harness_group_binaries_over_budget.
+# The per-binary watchdog polls, so one failed listing is noise; three in a
+# row means the bound is blind, and the function warns once (gs-o4i4).
+gc_harness_ps_fail_count=0
+
 # A launch whose PID is not yet published: "run" or "watchdog" from just before
 # its fork until gc_harness_launch_publish records the PID, otherwise empty.
 # gc_harness_launch_prior_pid is $! as it stood before that fork (empty when
@@ -222,7 +227,11 @@ gc_harness_list_group() {
 # proves a wedge — the parent `go` process legitimately outlives the budget
 # on a healthy 35-45 minute unit-core run. Best-effort like
 # gc_harness_list_group: when ps cannot list the group it prints nothing and
-# the watchdog keeps polling rather than firing blind.
+# the watchdog keeps polling rather than firing blind, but after three
+# consecutive failures it warns once so a blind bound is visible (gs-o4i4).
+# argv[0] may contain spaces (a GOTMPDIR/TMPDIR with spaces), so the match is
+# on the ".test" token boundary rather than the first whitespace: the path is
+# rebuilt up to the first ".test", preserving spaces.
 gc_harness_group_binaries_over_budget() {
   local pgid="${1:-}" budget="${2:-0}"
   [[ -n "$pgid" ]] || return 0
@@ -232,17 +241,23 @@ gc_harness_group_binaries_over_budget() {
   fi
   local listing=""
   if ! listing="$(ps -e -o "pid=,${group_key}=,etime=,args=" 2>/dev/null)"; then
+    gc_harness_ps_fail_count=$((${gc_harness_ps_fail_count:-0} + 1))
+    if (( gc_harness_ps_fail_count == 3 )); then
+      printf 'harness watchdog: process listing unavailable (ps failed %s times); per-binary bound is blind until ps recovers\n' "$gc_harness_ps_fail_count" >&2
+    fi
     return 0
   fi
+  gc_harness_ps_fail_count=0
   local pid grp etime rest argv0 age
   while read -r pid grp etime rest; do
     [[ -n "${pid:-}" ]] || continue
     [[ "$grp" == "$pgid" ]] || continue
-    argv0="${rest%% *}"
-    case "$argv0" in
-      *.test) ;;
+    case "$rest" in
+      *.test|*.test\ *) ;;
       *) continue ;;
     esac
+    argv0="${rest%%.test*}"
+    argv0="${argv0}.test"
     age="$(gc_harness_etime_seconds "$etime")" || continue
     if (( age >= budget )); then
       printf '%s %s %s\n' "$pid" "$age" "$argv0"
@@ -255,13 +270,17 @@ gc_harness_group_binaries_over_budget() {
 # every goroutine's stack, which names the wedged test in the shard log. That
 # is the only artifact that answers "which test wedges" for a hang that
 # defeats -test.timeout, and kit-k72d had to be diagnosed without it.
+# The kill message is label-neutral: the same watchdog bounds the whole
+# push-time suite (a bazel run or a non-go wedge), where "defeated go's own
+# -timeout" would mislead (gs-o4i4 fix round). The per-binary watchdog keeps
+# the go-specific wording, since it only fires on *.test members.
 # GC_HARNESS_RERUN_HINT, when set, is printed as the rerun line after the
 # still-running list (scripts/bounded-run sets it from --rerun-hint).
 gc_harness_watchdog() {
   local pgid="${1}" fire_after="${2}" quit_grace="${3}" label="${4}"
   sleep "$fire_after"
   gc_harness_group_alive "$pgid" || return 0
-  printf 'harness watchdog: %s exceeded its %ss budget and defeated go'\''s own -timeout; dumping goroutine stacks (SIGQUIT) then killing the process group\n' \
+  printf 'harness watchdog: %s exceeded its %ss budget; dumping goroutine stacks (SIGQUIT) then killing the process group\n' \
     "$label" "$fire_after" >&2
   gc_harness_list_group "$pgid"
   if [[ -n "${GC_HARNESS_RERUN_HINT:-}" ]]; then

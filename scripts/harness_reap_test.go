@@ -439,6 +439,94 @@ func TestHarnessDurationParsingDisarmsRatherThanGuesses(t *testing.T) {
 	}
 }
 
+// TestGroupBinariesOverBudgetWarnsOnceWhenPsFailsRepeatedly pins the gs-o4i4
+// fix round: a `ps` that fails once is noise, but three consecutive failures
+// mean the per-binary bound is blind, so the function warns once instead of
+// disarming silently. Fails on e8335c0d, which never warns.
+func TestGroupBinariesOverBudgetWarnsOnceWhenPsFailsRepeatedly(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(binDir, 0o755); err != nil {
+		t.Fatalf("create bin dir: %v", err)
+	}
+	writeExecutable(t, filepath.Join(binDir, "ps"), "#!/bin/sh\nexit 1\n")
+	script := fmt.Sprintf(`set -euo pipefail
+source %q
+for i in 1 2 3 4 5; do
+  gc_harness_group_binaries_over_budget 99999 10
+done
+`, filepath.Join(repoRoot(t), "scripts", "lib", "harness-reap.sh"))
+	cmd := harnessBash(script)
+	cmd.Env = append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ps-failure harness failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	if !strings.Contains(output, "process listing unavailable") {
+		t.Fatalf("no warning after five consecutive ps failures:\n%s", output)
+	}
+	if got := strings.Count(output, "process listing unavailable"); got != 1 {
+		t.Fatalf("warning printed %d times, want exactly once (no spam):\n%s", got, output)
+	}
+}
+
+// TestGroupBinariesOverBudgetMatchesSpaceInTestPath pins the gs-o4i4 fix
+// round: a test binary under a GOTMPDIR/TMPDIR containing spaces must still
+// trip the per-binary bound. The old `${rest%% *}` split took only up to the
+// first space, so "/tmp/my dir/pkg.test" never matched and the watchdog
+// never fired. Fails on e8335c0d, which reports only the space-free binary.
+func TestGroupBinariesOverBudgetMatchesSpaceInTestPath(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(binDir, 0o755); err != nil {
+		t.Fatalf("create bin dir: %v", err)
+	}
+	fixture := filepath.Join(dir, "ps.txt")
+	table := strings.Join([]string{
+		" 12345 77777 00:00:20 /tmp/my dir/pkg.test -test.run=TestX",
+		" 12346 77777 00:00:25 /tmp/normal.test -test.run=TestY",
+		" 12347 77777 00:00:05 /tmp/young.test -test.run=TestZ",
+		" 12348 88888 00:00:30 /tmp/other-group.test",
+		"",
+	}, "\n")
+	if err := os.WriteFile(fixture, []byte(table), 0o644); err != nil {
+		t.Fatalf("write ps fixture: %v", err)
+	}
+	writeExecutable(t, filepath.Join(binDir, "ps"), fmt.Sprintf(`#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "-p" ]; then
+    exit 0
+  fi
+done
+cat %q
+`, fixture))
+	script := fmt.Sprintf(`set -euo pipefail
+source %q
+gc_harness_group_binaries_over_budget 77777 10
+`, filepath.Join(repoRoot(t), "scripts", "lib", "harness-reap.sh"))
+	cmd := harnessBash(script)
+	cmd.Env = append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("space-path harness failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	for _, want := range []string{
+		"12345 20 /tmp/my dir/pkg.test",
+		"12346 25 /tmp/normal.test",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("over-budget listing lacks %q:\n%s", want, output)
+		}
+	}
+	for _, absent := range []string{"12347", "12348"} {
+		if strings.Contains(output, absent) {
+			t.Errorf("over-budget listing must not report pid %s (young or other group):\n%s", absent, output)
+		}
+	}
+}
+
 // TestGoTestShardLeavesNothingHoldingTheCallersPipe pins that a completed
 // shard leaves no descendant holding the caller's stdout. CombinedOutput
 // reads until every inheritor of the write end closes it, so a single leaked

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -338,6 +339,86 @@ func TestUnitCoreJobRunsUnderBoundedRun(t *testing.T) {
 	}
 }
 
+// TestUnitCoreJobHintQuotingSurvivesEvalPath proves the gs-o4i4 fix round:
+// add_unit_core_job builds its bounded-run invocation as a string passed to
+// add_job, and the runner later evaluates it via `bash -lc`. A substring
+// assertion (TestUnitCoreJobRunsUnderBoundedRun) passes even when the hint
+// quoting is broken; this test generates the real jobspec from the real
+// function, evaluates it the way the runner does against a stub
+// bounded-run, and checks the hint arrives as one argument. It passes on
+// e8335c0d (the quoting was already correct); it guards the eval path, not
+// a behavior change.
+func TestUnitCoreJobHintQuotingSurvivesEvalPath(t *testing.T) {
+	script := localParallelScript(t)
+	addJob := shellFunctionBody(t, script, "add_job")
+	addUnitCore := shellFunctionBody(t, script, "add_unit_core_job")
+	gen := fmt.Sprintf(`set -euo pipefail
+add_job() {
+%s
+}
+add_unit_core_job() {
+%s
+}
+go_test_timeout="20m"
+unit_core_deadline="1800"
+jobspecs=()
+add_unit_core_job
+printf '%%s' "${jobspecs[0]}"
+`, addJob, addUnitCore)
+	genCmd := harnessBash(gen)
+	jobspecOut, err := genCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generate unit-core jobspec: %v\n%s", err, jobspecOut)
+	}
+	jobspec := string(jobspecOut)
+	const prefix = "unit-core::"
+	if !strings.HasPrefix(jobspec, prefix) {
+		t.Fatalf("unit-core jobspec has no %q prefix:\n%s", prefix, jobspec)
+	}
+	command := strings.TrimPrefix(jobspec, prefix)
+
+	dir := t.TempDir()
+	scriptsDir := filepath.Join(dir, "scripts")
+	if err := os.Mkdir(scriptsDir, 0o755); err != nil {
+		t.Fatalf("create scripts dir: %v", err)
+	}
+	argvLog := filepath.Join(dir, "argv.log")
+	writeExecutable(t, filepath.Join(scriptsDir, "bounded-run"), fmt.Sprintf(`#!/bin/sh
+printf '<%%s>\n' "$@" > %q
+exit 0
+`, argvLog))
+	binDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(binDir, 0o755); err != nil {
+		t.Fatalf("create bin dir: %v", err)
+	}
+	writeExecutable(t, filepath.Join(binDir, "go"), `#!/bin/sh
+if [ "${1:-}" = "list" ]; then
+  printf '%s\n' 'github.com/gastownhall/gascity/scripts'
+  exit 0
+fi
+exit 0
+`)
+
+	evalCmd := harnessBash("bash -lc " + shellQuote(command))
+	evalCmd.Dir = dir
+	evalCmd.Env = append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if out, err := evalCmd.CombinedOutput(); err != nil {
+		t.Fatalf("eval unit-core jobspec: %v\n%s", err, out)
+	}
+	argv, err := os.ReadFile(argvLog)
+	if err != nil {
+		t.Fatalf("stub bounded-run never ran (argv log missing): %v", err)
+	}
+	log := string(argv)
+	hintLine := "<--rerun-hint>\n<make test-fast-parallel>"
+	if !strings.Contains(log, hintLine) {
+		t.Fatalf("rerun hint did not survive the eval path as one argument; stub saw:\n%s", log)
+	}
+	if !strings.Contains(log, "<--per-binary>") {
+		t.Fatalf("stub bounded-run argv lacks --per-binary:\n%s", log)
+	}
+}
+
 // TestPrePushSuiteRunsUnderBoundedRun pins the hook-level half of ci-gke0
 // fix 2: push-suite.sh's run_suite — the one choke point both engines run
 // through — enforces a hard wall-clock bound over the whole push-time suite,
@@ -357,6 +438,100 @@ func TestPrePushSuiteRunsUnderBoundedRun(t *testing.T) {
 		if !strings.Contains(runSuite, want) {
 			t.Fatalf("run_suite does not enforce a wall-clock bound over the push-time suite (lacks %q):\n%s", want, runSuite)
 		}
+	}
+}
+
+// TestBoundedRunWallClockMessageIsLabelNeutral pins the gs-o4i4 fix round:
+// the wall-clock watchdog also bounds the whole push-time suite (a bazel run
+// or a non-go wedge), so its kill message must not claim the run "defeated
+// go's own -timeout". The per-binary watchdog keeps that wording, since it
+// only fires on *.test members. Fails on e8335c0d, whose wall-clock message
+// carries the go-specific clause.
+func TestBoundedRunWallClockMessageIsLabelNeutral(t *testing.T) {
+	root := repoRoot(t)
+	boundedRun := filepath.Join(root, "scripts", "bounded-run")
+	if _, err := os.Stat(boundedRun); err != nil {
+		t.Fatalf("bounded wrapper is missing: %v", err)
+	}
+	cmd := harnessBash(fmt.Sprintf(`exec %s 2s suite --quit-grace 1 -- sleep %d`,
+		shellQuote(boundedRun), fixtureLifetimeSeconds))
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("bounded-run exited 0; a bound kill must be a failure")
+	}
+	output := string(out)
+	if !strings.Contains(output, "exceeded its 2s budget") {
+		t.Errorf("bounded-run output lacks the budget line:\n%s", output)
+	}
+	if strings.Contains(output, "defeated go's own -timeout") {
+		t.Errorf("wall-clock watchdog message claims a go timeout defeat; it must be label-neutral:\n%s", output)
+	}
+}
+
+// TestBoundedRunDoubleTerminateOnSignalIsSafe pins the gs-o4i4 fix round:
+// bounded_run_on_signal tears the supervised tree down, then re-raises the
+// signal; the EXIT trap then runs gc_harness_terminate_supervised a second
+// time. That double invocation is idempotent by design (the second call finds
+// empty or drained groups and returns), but was untested. This test sends
+// SIGTERM to a live bounded-run and checks the runner dies by signal, the
+// product is reaped, and the run exits promptly rather than hanging or
+// erroring in the second terminate. It passes on e8335c0d (the path was
+// already idempotent); it guards the signal path, not a behavior change.
+func TestBoundedRunDoubleTerminateOnSignalIsSafe(t *testing.T) {
+	root := repoRoot(t)
+	boundedRun := filepath.Join(root, "scripts", "bounded-run")
+	if _, err := os.Stat(boundedRun); err != nil {
+		t.Fatalf("bounded wrapper is missing: %v", err)
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "runner.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("create runner log: %v", err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+	pidFile := filepath.Join(dir, "product.pid")
+
+	product := fmt.Sprintf(`echo $$ > %s; exec sleep %d`,
+		shellQuote(pidFile), fixtureLifetimeSeconds)
+	cmd := harnessBash(fmt.Sprintf(`exec %s 60s sigtest --quit-grace 1 -- bash -c %s`,
+		shellQuote(boundedRun), shellQuote(product)))
+	cmd.Dir = root
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	start := time.Now()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start bounded-run: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+	productPid := waitForPIDFile(t, pidFile)
+
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("signal bounded-run: %v", err)
+	}
+	waitErr := waitWithin(t, cmd, 60*time.Second)
+	elapsed := time.Since(start)
+	if waitErr == nil {
+		t.Fatalf("bounded-run exited 0 after SIGTERM; signal death must be a failure")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(waitErr, &exitErr) {
+		t.Fatalf("wait bounded-run: %v", waitErr)
+	}
+	if elapsed > 45*time.Second {
+		t.Fatalf("bounded-run took %s to die after SIGTERM; the double terminate must not hang", elapsed)
+	}
+	if !processGone(productPid) {
+		t.Fatalf("product pid %d survived SIGTERM to bounded-run: the signal path must reap the tree", productPid)
+	}
+	if out := readLogFile(t, logPath); strings.Contains(out, "unbound variable") {
+		t.Fatalf("double terminate hit a nounset error:\n%s", out)
 	}
 }
 
