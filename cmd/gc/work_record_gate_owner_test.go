@@ -179,7 +179,7 @@ func TestEvaluateWorkRecordCloseGateDegradesForAnUnknownOwner(t *testing.T) {
 		}},
 	}
 	var stderr strings.Builder
-	if block := evaluateWorkRecordCloseGate([]string{"close", "wr-ghost-owned"}, panicOnGetStore{}, shipped, dirs, true, &stderr); block {
+	if block := evaluateWorkRecordCloseGate([]string{"close", "wr-ghost-owned"}, panicOnGetStore{}, shipped, dirs, true, "", &stderr); block {
 		t.Fatalf("an unanswerable reachability clause blocked the close: %s", stderr.String())
 	}
 	if out := stderr.String(); !strings.Contains(out, "reachability unverified") {
@@ -192,7 +192,7 @@ func TestEvaluateWorkRecordCloseGateDegradesForAnUnknownOwner(t *testing.T) {
 		}},
 	}
 	var refusal strings.Builder
-	if block := evaluateWorkRecordCloseGate([]string{"close", "wr-ghost-recordless"}, panicOnGetStore{}, recordless, dirs, true, &refusal); !block {
+	if block := evaluateWorkRecordCloseGate([]string{"close", "wr-ghost-recordless"}, panicOnGetStore{}, recordless, dirs, true, "", &refusal); !block {
 		t.Fatalf("an outcome-less close was accepted because the repository was unknown: %s", refusal.String())
 	}
 	if out := refusal.String(); !strings.Contains(out, "missing "+beadmeta.WorkOutcomeMetadataKey) {

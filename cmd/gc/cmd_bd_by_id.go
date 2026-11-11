@@ -1347,7 +1347,10 @@ func gateBdByIDClassClose(door bdByIDClassDoor, op bdByIDOp, bdArgs []string, re
 		return false
 	}
 	preFetched := map[string]beads.Bead{op.ID: resolution.Bead}
-	return evaluateWorkRecordCloseGate(bdArgs, door.Store, preFetched, repoDirs, workRecordEnforceEnabled(), stderr)
+	// No rig scope travels: an explicit --rig over a class-owned bead is
+	// refused before this gate runs (see maybeRouteBdByID), so the fix hint
+	// never needs to repeat one on this path.
+	return evaluateWorkRecordCloseGate(bdArgs, door.Store, preFetched, repoDirs, workRecordEnforceEnabled(), "", stderr)
 }
 
 // refuseRigScopedClassOwnedTarget refuses a by-ID invocation that pins a rig
