@@ -80,8 +80,15 @@ if [[ -z "$rerun_hint" ]]; then
   rerun_hint="$*"
 fi
 export GC_HARNESS_RERUN_HINT="$rerun_hint"
+# Pin the watchdog mode explicitly in both branches: the unit-core sweep runs
+# under --per-binary, and an exported mode would otherwise leak into every
+# nested wall-clock run (notably the scripts package's own bounded-run tests),
+# where the per-binary watchdog never fires on a non-.test tree and the bound
+# silently disarms (gs-xjon fix round).
 if (( per_binary == 1 )); then
   export GC_HARNESS_WATCHDOG_MODE="per-binary"
+else
+  export GC_HARNESS_WATCHDOG_MODE="wall-clock"
 fi
 
 bounded_run_on_signal() {

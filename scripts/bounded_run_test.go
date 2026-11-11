@@ -469,6 +469,42 @@ func TestBoundedRunWallClockMessageIsLabelNeutral(t *testing.T) {
 	}
 }
 
+// TestBoundedRunWallClockIgnoresInheritedPerBinaryMode pins the gs-xjon fix
+// round: the unit-core sweep runs under --per-binary, which exports
+// GC_HARNESS_WATCHDOG_MODE into every nested process, including the scripts
+// package's own test binary. A wall-clock run must take its mode from its own
+// flags, never from the environment: with per-binary inherited, the per-binary
+// watchdog never fires on a non-.test tree and the bound silently disarms
+// (the GTX reds: a 300s sleep exiting 0, a SIGTERM-ignoring tree surviving
+// past 90s). The sibling wall-clock tests only catch this when the suite
+// itself runs nested; this one sets the inheritance explicitly, so it fails
+// standalone before the fix and passes after.
+func TestBoundedRunWallClockIgnoresInheritedPerBinaryMode(t *testing.T) {
+	root := repoRoot(t)
+	boundedRun := filepath.Join(root, "scripts", "bounded-run")
+	if _, err := os.Stat(boundedRun); err != nil {
+		t.Fatalf("bounded wrapper is missing: %v", err)
+	}
+	// A 30s product keeps a regression failing fast; the 2s bound plus 1s
+	// grace must still end it in seconds.
+	cmd := harnessBash(fmt.Sprintf(`exec %s 2s suite --quit-grace 1 -- sleep 30`,
+		shellQuote(boundedRun)))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GC_HARNESS_WATCHDOG_MODE=per-binary")
+	start := time.Now()
+	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("bounded-run exited 0 with per-binary mode inherited; the wall-clock bound must fire")
+	}
+	if elapsed > 45*time.Second {
+		t.Fatalf("bounded-run took %s to fire a 2s wall-clock bound with per-binary mode inherited", elapsed)
+	}
+	if output := string(out); !strings.Contains(output, "exceeded its 2s budget") {
+		t.Errorf("bounded-run output lacks the budget line:\n%s", output)
+	}
+}
+
 // TestBoundedRunDoubleTerminateOnSignalIsSafe pins the gs-o4i4 fix round:
 // bounded_run_on_signal tears the supervised tree down, then re-raises the
 // signal; the EXIT trap then runs gc_harness_terminate_supervised a second
