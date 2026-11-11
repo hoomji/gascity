@@ -469,8 +469,9 @@ func structuredFallbackMessages(sessionID, provider, text string) []SessionStruc
 
 // historySnapshotStructuredMessages projects a normalized history snapshot
 // to the wire shape. lin is the session's bead linkage, resolved once per
-// read by the caller; every interaction block in the projection carries it,
-// so a helper's request shows under its lead.
+// read by the caller; only still-pending interaction blocks in the
+// projection carry it, so a helper's request shows under its lead while
+// settled history stays unattributed to the current bead.
 func historySnapshotStructuredMessages(snapshot *worker.HistorySnapshot, includeThinking bool, lin interactionLineage) ([]SessionStructuredMessage, []string) {
 	if snapshot == nil {
 		return []SessionStructuredMessage{}, []string{}
@@ -976,6 +977,12 @@ func sessionStructuredTodosFromWorker(todos []worker.StructuredTodoItem) []Sessi
 func structuredInteraction(in *worker.HistoryInteraction, lin interactionLineage) *SessionStructuredInteraction {
 	if in == nil {
 		return nil
+	}
+	if !in.State.StillPending() {
+		// Settled history keeps no read-time attribution: stamping the
+		// session's current bead onto a past approval would blame it on
+		// whatever bead the session holds now.
+		lin = interactionLineage{}
 	}
 	return &SessionStructuredInteraction{
 		RequestID: in.RequestID,

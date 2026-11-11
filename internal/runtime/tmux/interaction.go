@@ -987,10 +987,11 @@ var (
 //
 // Text beside an approval answer is delivered as a follow-up message once
 // the prompt clears (sendTypedReply): typing it before the clear could land
-// in the prompt itself. A delivery that fails returns an error naming the
-// typed reply, after the answer already landed; the caller resends the text
-// as a plain message instead of answering again. Text beside a question
-// answer is the option selector (respondQuestion), never a follow-up.
+// in the prompt itself. A delivery that fails returns
+// runtime.ErrInteractionReplyUndelivered naming the typed reply, after the
+// answer already landed; the caller resends the text as a plain message
+// instead of answering again. Text beside a question answer is the option
+// selector (respondQuestion), never a follow-up.
 func (t *Tmux) Respond(name string, response runtime.InteractionResponse) error {
 	return t.respond(context.Background(), name, response)
 }
@@ -1072,12 +1073,15 @@ func (t *Tmux) respond(ctx context.Context, name string, response runtime.Intera
 			return err
 		}
 		if cleared {
+			// The answer landed: forget the prompt before delivering any
+			// follow-up text, so a reply failure cannot suppress the next
+			// identical prompt.
+			t.approvalDedup().clear(name)
 			if response.Text != "" {
 				if err := t.sendTypedReply(inputCtx(ctx), target, response.Text); err != nil {
-					return err
+					return fmt.Errorf("%w: %w", runtime.ErrInteractionReplyUndelivered, err)
 				}
 			}
-			t.approvalDedup().clear(name)
 			return nil
 		}
 	}

@@ -394,6 +394,15 @@ options — a multi-select page, or one whose options show previews — is
 answered in the session's terminal, as are free-text and chat rows. A
 `respond` the page does not offer returns 409 `invalid_interaction`.
 
+Every pending shape — the REST reads, the per-session stream `pending`
+event in every variant, and the structured transcript's still-pending
+interaction — carries the same read-time bead lineage: `lead` names the
+session's active bead, `parent` its parent bead, and `origin` its workflow
+root, so a helper's request shows under the work that raised it. The fields
+stay empty when the session has no active bead. Lineage is resolved once
+per read or stream, so a stream keeps its initial lineage even if the
+session's bead changes mid-stream.
+
 The city event stream (and the supervisor stream, tagged with the city)
 also carries each change as an event, so a client does not have to poll:
 

@@ -893,6 +893,120 @@ func TestRespond_DeliversTypedReplyAfterTheAnswer(t *testing.T) {
 	}
 }
 
+// TestRespond_DeliversLongTypedReplyThroughThePastePath targets the
+// typed-reply paste contract on tmux: text over the send-keys literal limit
+// reaches the pane through a paste buffer (load-buffer, paste-buffer), never
+// as a send-keys literal, with Enter still submitting it after.
+func TestRespond_DeliversLongTypedReplyThroughThePastePath(t *testing.T) {
+	session := "typed-reply-paste"
+	fe := &fakeExecutor{
+		agentPane: true,
+		// pre-verify capture, #{pane_in_mode} probe (not parked),
+		// send-keys for the answer, the verify capture showing the prompt
+		// cleared, then the paste buffer load and paste, and Enter.
+		outs: []string{
+			readApprovalFixture(t, "bash-automode-option.txt"),
+			"0",
+			"",
+			readApprovalFixture(t, "idle-after-deny-80x24.txt"),
+			"",
+			"",
+			"",
+		},
+	}
+	provider := &Provider{tm: &Tmux{exec: fe}}
+	typed := strings.Repeat("x", maxSendKeysLiteralLen+1)
+	if err := provider.Respond(session, runtime.InteractionResponse{Action: "deny", Text: typed}); err != nil {
+		t.Fatalf("Respond(deny with long text): %v", err)
+	}
+	var loaded, pasted bool
+	var sent []string
+	for _, call := range fe.calls {
+		switch {
+		case slices.Contains(call, "load-buffer"):
+			loaded = true
+		case slices.Contains(call, "paste-buffer"):
+			pasted = true
+		case sendsKeys(call):
+			sent = append(sent, call[len(call)-1])
+		}
+	}
+	if !loaded || !pasted {
+		t.Fatalf("load-buffer = %v, paste-buffer = %v, want the long reply pasted, not typed", loaded, pasted)
+	}
+	if want := []string{"4", "Enter"}; !slices.Equal(sent, want) {
+		t.Fatalf("send-keys payloads = %q, want %q (answer and submit only)", sent, want)
+	}
+}
+
+// TestRespond_TypedReplyFailureClearsDedupAndReportsReplyUndelivered targets
+// the typed-reply failure contract on tmux: when the prompt cleared but the
+// follow-up text never landed, the answer stays landed (its key was typed),
+// the prompt's dedup record is forgotten so the next identical prompt
+// counts as new, and the error is the distinct
+// ErrInteractionReplyUndelivered (wrapping the delivery failure) so no
+// caller answers again.
+func TestRespond_TypedReplyFailureClearsDedupAndReportsReplyUndelivered(t *testing.T) {
+	failures := []struct {
+		name    string
+		deliver error
+	}{
+		{"session gone", ErrSessionNotFound},
+		{"no server", ErrNoServer},
+	}
+	for _, tc := range failures {
+		t.Run(tc.name, func(t *testing.T) {
+			session := "typed-reply-failed"
+			prompt := readApprovalFixture(t, "bash-automode-option.txt")
+			fe := &fakeExecutor{
+				agentPane: true,
+				// pre-verify capture, #{pane_in_mode} probe (not parked),
+				// send-keys for the answer, the verify capture showing the
+				// prompt cleared, then the typed text's send-keys failing.
+				outs: []string{
+					prompt,
+					"0",
+					"",
+					readApprovalFixture(t, "idle-after-deny-80x24.txt"),
+					"",
+					"",
+				},
+				errs: []error{nil, nil, nil, nil, tc.deliver},
+			}
+			tm := &Tmux{exec: fe}
+			provider := &Provider{tm: tm}
+			approval := parseApprovalPrompt(prompt)
+			if approval == nil {
+				t.Fatal("fixture prompt did not parse as an approval")
+			}
+			// The prompt was observed pending before it was answered.
+			if !tm.approvalDedup().isNew(session, approval) {
+				t.Fatal("seeding isNew = false, want true for the first sighting")
+			}
+			const typed = "please use ls instead of rm"
+			err := provider.Respond(session, runtime.InteractionResponse{Action: "deny", Text: typed})
+			if !errors.Is(err, runtime.ErrInteractionReplyUndelivered) {
+				t.Errorf("Respond = %v, want runtime.ErrInteractionReplyUndelivered", err)
+			}
+			if !errors.Is(err, tc.deliver) {
+				t.Errorf("Respond = %v, want the %v delivery failure wrapped", err, tc.deliver)
+			}
+			var sent []string
+			for _, call := range fe.calls {
+				if sendsKeys(call) {
+					sent = append(sent, call[len(call)-1])
+				}
+			}
+			if len(sent) == 0 || sent[0] != "4" {
+				t.Errorf("send-keys payloads = %q, want the answer key first (the answer landed)", sent)
+			}
+			if !tm.approvalDedup().isNew(session, approval) {
+				t.Errorf("isNew after the failed reply = false, want true (the prompt was forgotten)")
+			}
+		})
+	}
+}
+
 func TestRespond_UnresolvableMenuSendsNothing(t *testing.T) {
 	session := "no-reject"
 	pane := ` Bash command

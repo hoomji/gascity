@@ -390,6 +390,8 @@ func replayedSyncError(op opjournal.Op, mapErr func(error) error) error {
 		return replayed(fmt.Errorf("session %q: turn %q was not the current turn when the stop ran: %w", op.Conversation, op.Scope.Turn, runtime.ErrTurnNotCurrent))
 	case reason == opjournal.ReasonStale:
 		return replayed(session.ErrNoPendingInteraction)
+	case reason == opjournal.ReasonReplyUndelivered:
+		return replayed(session.ErrInteractionReplyUndelivered)
 	case strings.HasPrefix(reason, opjournal.RefusedReasonPrefix):
 		why := strings.TrimPrefix(reason, opjournal.RefusedReasonPrefix)
 		if sentinel, ok := replaySentinels[why]; ok {
@@ -418,6 +420,13 @@ func replayedSyncError(op opjournal.Op, mapErr func(error) error) error {
 // syncOpResult is the op result of a session command's legacy error (nil is
 // success), for a key the recorder minted or not.
 func syncOpResult(kind opjournal.Kind, err error, minted bool) legacyop.Result {
+	// Definitive, and closed on every key: the answer already reached
+	// its prompt, so a same-key retry replays the refusal instead of
+	// answering again. The Refusals slot cannot carry it: those stay open
+	// for a retry to adopt and re-execute.
+	if errors.Is(err, session.ErrInteractionReplyUndelivered) {
+		return legacyop.Result{Outcome: opjournal.Outcome{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonReplyUndelivered}}
+	}
 	return syncVerbSentinels.SyncResult(kind, err, minted)
 }
 

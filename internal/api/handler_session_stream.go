@@ -317,6 +317,10 @@ func (s *Server) streamSessionTranscriptHistoryRaw(ctx context.Context, w http.R
 	worker.InteractionHandle
 }, initial *worker.HistorySnapshot, req worker.HistoryRequest,
 ) {
+	// lin is the session's bead linkage, resolved once: pending events on
+	// this stream carry the same read-time lineage as every other stream
+	// variant, so transports of one stream never disagree on the shape.
+	lin := s.activeBeadLineage(info)
 	logPath := sessionStreamTranscriptPath(ctx, handle)
 	poll := time.NewTicker(outputStreamPollInterval)
 	keepalive := time.NewTicker(sseKeepalive)
@@ -417,16 +421,17 @@ func (s *Server) streamSessionTranscriptHistoryRaw(ctx context.Context, w http.R
 			}
 			return false
 		}
-		// Raw streams marshal the worker shape directly, so the key carries
-		// no read-time lineage: the pending event keeps today's bytes.
-		pendingKey := pendingInteractionKey(pending, interactionLineage{})
+		// The pending event carries the stream's read-time lineage through
+		// the same wire shape as every other stream variant; without an
+		// active bead the lineage fields stay empty.
+		pendingKey := pendingInteractionKey(pending, lin)
 		if pendingKey == lastPendingKey {
 			return false
 		}
 		lastPendingID = pending.RequestID
 		lastPendingKey = pendingKey
 		seq++
-		pendingData, _ := json.Marshal(pending)
+		pendingData, _ := json.Marshal(runtimePendingInteraction(pending, lin))
 		writeSSE(w, "pending", seq, pendingData)
 		return true
 	}
@@ -607,9 +612,9 @@ func (s *Server) streamSessionTranscriptHistoryStructured(ctx context.Context, w
 	worker.PeekHandle
 }, initial *worker.HistorySnapshot, includeThinking bool, resumeToken, pendingRequestID, pendingKey string,
 ) {
-	// lin is the session's bead linkage, resolved once: every interaction
-	// block and pending event on this stream carries the same read-time
-	// lineage.
+	// lin is the session's bead linkage, resolved once: still-pending
+	// interaction blocks and pending events on this stream carry the same
+	// read-time lineage, while settled history stays unattributed.
 	lin := s.activeBeadLineage(info)
 	logPath := sessionStreamTranscriptPath(ctx, handle)
 	poll := time.NewTicker(outputStreamPollInterval)
@@ -789,6 +794,10 @@ func (s *Server) streamSessionPeekRaw(ctx context.Context, w http.ResponseWriter
 	worker.InteractionHandle
 },
 ) {
+	// lin is the session's bead linkage, resolved once: pending events on
+	// this stream carry the same read-time lineage as every other stream
+	// variant, so transports of one stream never disagree on the shape.
+	lin := s.activeBeadLineage(info)
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
 	keepalive := time.NewTicker(sseKeepalive)
@@ -802,15 +811,15 @@ func (s *Server) streamSessionPeekRaw(ctx context.Context, w http.ResponseWriter
 
 	emitPending := func() {
 		pending, pErr := handle.Pending(ctx)
-		// Raw streams marshal the worker shape directly, so the key
-		// carries no read-time lineage: the pending event keeps today's
-		// bytes.
-		pendingKey := pendingInteractionKey(pending, interactionLineage{})
+		// The pending event carries the stream's read-time lineage through
+		// the same wire shape as every other stream variant; without an
+		// active bead the lineage fields stay empty.
+		pendingKey := pendingInteractionKey(pending, lin)
 		if pErr == nil && pending != nil && pendingKey != lastPeekPendingKey {
 			lastPeekPendingID = pending.RequestID
 			lastPeekPendingKey = pendingKey
 			seq++
-			pendingData, _ := json.Marshal(pending)
+			pendingData, _ := json.Marshal(runtimePendingInteraction(pending, lin))
 			writeSSE(w, "pending", seq, pendingData)
 		} else if pending == nil && lastPeekPendingID != "" {
 			lastPeekPendingID = ""
@@ -1356,9 +1365,9 @@ func (s *Server) streamSessionTranscriptLogStructuredHuma(ctx context.Context, s
 	worker.PeekHandle
 }, initial *worker.HistorySnapshot, includeThinking bool, resumeToken, pendingRequestID, pendingKey string,
 ) {
-	// lin is the session's bead linkage, resolved once: every interaction
-	// block and pending event on this stream carries the same read-time
-	// lineage.
+	// lin is the session's bead linkage, resolved once: still-pending
+	// interaction blocks and pending events on this stream carry the same
+	// read-time lineage, while settled history stays unattributed.
 	lin := s.activeBeadLineage(info)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

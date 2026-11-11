@@ -1696,6 +1696,11 @@ func TestRuntimeHandleReportsInteractionRefusalsInSessionVocabulary(t *testing.T
 	if !errors.Is(err, sessionpkg.ErrInteractionMismatch) || !errors.Is(err, runtime.ErrInteractionActionUnavailable) {
 		t.Errorf("Respond to a prompt without that action = %v, want session.ErrInteractionMismatch wrapping runtime.ErrInteractionActionUnavailable", err)
 	}
+	sp.err = fmt.Errorf("%w: server gone mid-reply: %w", runtime.ErrInteractionReplyUndelivered, runtime.ErrRuntimeUnavailable)
+	err = handle.Respond(ctx, InteractionResponse{Action: "approve", Text: "use ls instead"})
+	if !errors.Is(err, sessionpkg.ErrInteractionReplyUndelivered) || !errors.Is(err, runtime.ErrInteractionReplyUndelivered) {
+		t.Errorf("Respond with the reply lost = %v, want session.ErrInteractionReplyUndelivered wrapping runtime.ErrInteractionReplyUndelivered", err)
+	}
 
 	other := errors.New("session unavailable")
 	sp.NudgeErrors = map[string]error{"legacy-worker": other}

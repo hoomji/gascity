@@ -66,6 +66,12 @@ var ErrInteractionResponseInvalid = errors.New("interaction response is invalid"
 // transport types it after the answer) never returns this.
 var ErrInteractionTextUnsupported = errors.New("interaction response text is unsupported")
 
+// ErrInteractionReplyUndelivered reports that the answer reached its prompt
+// but the text beside it never landed as a follow-up: the typed-reply
+// delivery failed after the prompt cleared. The caller must not answer
+// again; it resends the text as a plain message instead.
+var ErrInteractionReplyUndelivered = errors.New("interaction answer was delivered but its typed reply was not")
+
 // ErrNudgeRefusedPendingInteraction reports that a nudge was refused because
 // the session is blocked on a pending interaction, such as a tool-call
 // approval a client has not answered yet. Delivery layers translate it into

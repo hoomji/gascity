@@ -45,6 +45,15 @@ Violating any fails the build; full rationale is in the architecture docs.
   `nudgequeue.StateFileQueue`. Enforced by
   `TestAPIReachesTheNudgeQueueOnlyThroughState`.
 
+## Error-code spelling
+
+One refusal is spelled three ways, intentionally: a kebab-case problem
+type in the `apierr` catalog (`interaction-text-unsupported`), a
+snake_case detail prefix on the wire (`interaction_text_unsupported:`),
+and a snake_case opjournal reason (`refused:text_unsupported`,
+`reply_undelivered`). Clients branch on the problem type or the detail
+prefix; the journal reads the reason.
+
 ## Configuration publication
 
 API config edits, validation, snapshot publication and city-config rollback

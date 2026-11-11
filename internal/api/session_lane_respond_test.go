@@ -759,6 +759,23 @@ func TestLaneRespondRefusalTextUnsupported(t *testing.T) {
 	}
 }
 
+// TestLaneRespondRefusalReplyUndelivered: a lane respond whose answer
+// landed with its typed reply lost answers the named 409
+// reply_undelivered, never op_already_failed, and offers no new-key
+// resend: the answer must not be sent again.
+func TestLaneRespondRefusalReplyUndelivered(t *testing.T) {
+	err := laneRespondRefusal(opjournal.Op{
+		ID: "gc-op-1", Kind: opjournal.KindRespond, Executor: opjournal.ExecutorLane,
+		Status: opjournal.StatusClosed, Outcome: opjournal.Outcome{Arm: opjournal.ArmFailed, Reason: opjournal.ReasonReplyUndelivered},
+	})
+	if err == nil || statusOf(err) != http.StatusConflict || !strings.Contains(err.Error(), "reply_undelivered") {
+		t.Fatalf("refusal = %v (%d), want 409 reply_undelivered", err, statusOf(err))
+	}
+	if strings.Contains(err.Error(), "new Idempotency-Key") {
+		t.Fatalf("refusal = %v, must not offer answering again under a new key", err)
+	}
+}
+
 // rollBackRespond restarts e's API with respond unlisted again, as a
 // rollback leaves it, and ops.control set to control ("" leaves it unset,
 // at its builtin default): /respond takes OJ-4's path.
@@ -1356,6 +1373,26 @@ func TestRespondWithoutLaneRespondKeepsOJ4(t *testing.T) {
 	}
 	if n := e.fs.sp.CountCalls("Respond", info.SessionName); n != 1 {
 		t.Fatalf("Respond calls = %d, want the legacy respond's one", n)
+	}
+}
+
+// TestRespondWithTextOnAnACPSessionAnswers422 proves the typed-reply
+// refusal end to end: POST .../respond with text when the session's
+// provider cannot deliver text beside an answer (ACP's permission protocol
+// carries the answer only) answers 422 with the
+// interaction-text-unsupported problem type.
+func TestRespondWithTextOnAnACPSessionAnswers422(t *testing.T) {
+	e, st := newLaneOpsEnv(t, "message")
+	e.fs.cfg.Ops.ControlMode = "auto"
+	e.restart(t)
+	e.resolver.state = st
+	info := e.session(t, "ACP text respond")
+	e.fs.sp.SetPendingInteraction(info.SessionName, pendingApproval())
+	e.fs.sp.RespondErrors[info.SessionName] = fmt.Errorf("ACP permission replies carry no text: %w", runtime.ErrInteractionTextUnsupported)
+	rec := e.post(t, "/session/"+info.ID+"/respond", "r-1", `{"action":"approve","text":"a note"}`)
+	wantStatus(t, "text respond", rec, http.StatusUnprocessableEntity)
+	if !strings.Contains(rec.Body.String(), "interaction-text-unsupported") {
+		t.Fatalf("body = %s, want the interaction-text-unsupported problem type", rec.Body.String())
 	}
 }
 

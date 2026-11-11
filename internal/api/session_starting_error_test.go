@@ -118,3 +118,19 @@ func TestInteractionTextUnsupportedIsUnprocessable(t *testing.T) {
 		t.Errorf("humaSessionManagerError = %v, want 422 interaction_text_unsupported", got)
 	}
 }
+
+// TestInteractionReplyUndeliveredIsConflict: an answer that landed with its
+// typed reply lost answers the named 409 reply_undelivered in both error
+// mappers — distinct from a refusal, and never a silent 500.
+func TestInteractionReplyUndeliveredIsConflict(t *testing.T) {
+	err := fmt.Errorf("respond: %w", session.ErrInteractionReplyUndelivered)
+	rec := httptest.NewRecorder()
+	writeSessionManagerError(rec, err)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "reply_undelivered") {
+		t.Errorf("writeSessionManagerError = %d %s, want 409 reply_undelivered", rec.Code, rec.Body.String())
+	}
+	var se huma.StatusError
+	if got := humaSessionManagerError(err); !errors.As(got, &se) || se.GetStatus() != http.StatusConflict || !strings.Contains(got.Error(), "reply_undelivered") {
+		t.Errorf("humaSessionManagerError = %v, want 409 reply_undelivered", got)
+	}
+}

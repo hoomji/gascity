@@ -76,10 +76,11 @@ var (
 	// SessionConflict is the one code for the session 409s. Many carry a
 	// differentiating detail prefix the CLI already branches on
 	// (ambiguous:/pending_interaction:/no_pending:/invalid_interaction:/
-	// illegal_transition:), mirroring sling-source-workflow-conflict; the rest
-	// share a generic "conflict:" (or no) prefix. A later slice may split the
-	// create-time name/alias-uniqueness conflicts into their own code, since a
-	// client cannot today distinguish "pick a different name" from "resume/stop
+	// illegal_transition:/reply_undelivered:), mirroring
+	// sling-source-workflow-conflict; the rest share a generic "conflict:"
+	// (or no) prefix. A later slice may split the create-time
+	// name/alias-uniqueness conflicts into their own code, since a client
+	// cannot today distinguish "pick a different name" from "resume/stop
 	// first" by code or prefix.
 	SessionConflict = Register(ProblemType{Code: "session-conflict", Status: http.StatusConflict, Title: "Session State Conflict"})
 	// SessionInactive refuses gc session peek's read (GET /session/{id} with

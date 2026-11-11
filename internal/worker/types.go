@@ -84,6 +84,18 @@ const ( //nolint:revive // exported enum values are documented by the enclosing 
 	InteractionStateResumedAfterRestart InteractionState = "resumed_after_restart"
 )
 
+// StillPending reports whether the interaction still awaits resolution:
+// opened, pending, or resumed after a restart. Settled (resolved,
+// dismissed) and unknown states return false.
+func (s InteractionState) StillPending() bool {
+	switch s {
+	case InteractionStateOpened, InteractionStatePending, InteractionStateResumedAfterRestart:
+		return true
+	default:
+		return false
+	}
+}
+
 // ContinuityStatus captures the adapter's continuity proof level.
 type ContinuityStatus string
 

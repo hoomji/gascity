@@ -403,12 +403,21 @@ func (s *Server) findLiveActiveBeadForAssignees(rig string, assignees ...string)
 
 // findActiveBeadForAssigneesWithFreshness returns the in_progress bead of the
 // highest-priority identity: identity order first, then store order, then
-// newest first within a store. Cached reads use a targeted ListQuery with
-// Limit=1 per identity and store, stopping at the first match; live reads go
-// through findLiveActiveBeadInStores. Both read only the stores
+// newest first within a store. Cached reads are the row lookup's ID; live
+// reads go through findLiveActiveBeadInStores. Both read only the stores
 // activeBeadSearchScope picks.
 func (s *Server) findActiveBeadForAssigneesWithFreshness(rig string, live bool, assignees ...string) string {
-	stores, rigNames := activeBeadSearchScope(workStoresByName(s.state.Stores(), s.state.CityName()), s.loadCacheColdRigs(), rig)
+	if live {
+		stores, rigNames := activeBeadSearchScope(workStoresByName(s.state.Stores(), s.state.CityName()), s.loadCacheColdRigs(), rig)
+		return findLiveActiveBeadInStores(stores, rigNames, uniqueAssigneeIdentities(assignees))
+	}
+	return s.findActiveBeadRowForAssignees(rig, assignees...).ID
+}
+
+// uniqueAssigneeIdentities normalizes an active-bead lookup's identities:
+// trimmed, empties dropped, first occurrence wins. Identity order is the
+// lookup's first precedence rank, so it is preserved.
+func uniqueAssigneeIdentities(assignees []string) []string {
 	seen := make(map[string]bool, len(assignees))
 	var unique []string
 	for _, assignee := range assignees {
@@ -419,36 +428,7 @@ func (s *Server) findActiveBeadForAssigneesWithFreshness(rig string, live bool, 
 		seen[assignee] = true
 		unique = append(unique, assignee)
 	}
-	if live {
-		return findLiveActiveBeadInStores(stores, rigNames, unique)
-	}
-	for _, assignee := range unique {
-		for _, rn := range rigNames {
-			query := beads.ListQuery{
-				Assignee: assignee,
-				Status:   "in_progress",
-				Limit:    1,
-				Sort:     beads.SortCreatedDesc,
-			}
-			if cached, ok := beads.As[beads.CachedLister](stores[rn]); ok {
-				matches, cacheOK := cached.CachedList(query)
-				if cacheOK {
-					if len(matches) > 0 {
-						return matches[0].ID
-					}
-					continue
-				}
-			}
-			matches, err := stores[rn].List(query)
-			if err != nil {
-				continue
-			}
-			if len(matches) > 0 {
-				return matches[0].ID
-			}
-		}
-	}
-	return ""
+	return unique
 }
 
 // interactionLineage is the bead linkage stamped onto pending and
@@ -487,6 +467,13 @@ func (lin interactionLineage) stamp(pending *runtime.PendingInteraction) {
 // agents views, and degrades to the zero lineage when the session has no
 // active bead or the lookup fails, so a lineage miss never fails the read
 // it annotates.
+//
+// The lead is a read-time heuristic: the newest in_progress bead for the
+// session's identities (Limit 1, newest first), so with several
+// in_progress beads the newest wins. Callers resolve once per stream or
+// transcript read, so a session whose bead changes mid-stream keeps the
+// stream's initial lineage on later pending events (a stale lead) until
+// the client reconnects.
 func (s *Server) activeBeadLineage(info session.Info) interactionLineage {
 	if s == nil || s.state == nil {
 		return interactionLineage{}
@@ -515,26 +502,14 @@ func (s *Server) pendingLineageForSession(store beads.SessionStore, id string) i
 	return s.activeBeadLineage(info)
 }
 
-// findActiveBeadRowForAssignees is findActiveBeadForAssignees' cached path
-// returning the matched row instead of its ID, so the caller can project
-// the bead's own linkage. It issues the same query in the same order (same
-// identity priority, store order and newest-first sort), so the row is the
-// match the ID lookup would return. It returns the zero bead when nothing
-// matches. Keep the two in sync.
+// findActiveBeadRowForAssignees is the cached active-bead lookup returning
+// the matched row instead of its ID, so the caller can project the bead's
+// own linkage; the ID lookup is a thin wrapper over it. It returns the zero
+// bead when nothing matches.
 func (s *Server) findActiveBeadRowForAssignees(rig string, assignees ...string) beads.Bead {
 	var row beads.Bead
 	stores, rigNames := activeBeadSearchScope(workStoresByName(s.state.Stores(), s.state.CityName()), s.loadCacheColdRigs(), rig)
-	seen := make(map[string]bool, len(assignees))
-	var unique []string
-	for _, assignee := range assignees {
-		assignee = strings.TrimSpace(assignee)
-		if assignee == "" || seen[assignee] {
-			continue
-		}
-		seen[assignee] = true
-		unique = append(unique, assignee)
-	}
-	for _, assignee := range unique {
+	for _, assignee := range uniqueAssigneeIdentities(assignees) {
 		for _, rn := range rigNames {
 			query := beads.ListQuery{
 				Assignee: assignee,

@@ -312,8 +312,10 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 <Note>
 The adapter package was renamed to `@agentclientprotocol/claude-agent-acp`,
 but the new line's latest release (0.102.0, checked 2026-11-10) does not
-install — pin the verified `@zed-industries/claude-code-acp@0.16.2` until
-the new line stabilizes.
+install — pin the verified `@zed-industries/claude-code-acp@0.16.2`.
+Remove this pin once a `@agentclientprotocol/claude-agent-acp` release
+installs cleanly and the `initialize` handshake above answers with a
+`protocolVersion`.
 </Note>
 
 ## Axis 5 — Runtime (where it runs)

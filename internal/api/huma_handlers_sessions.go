@@ -53,6 +53,10 @@ func humaSessionManagerError(err error) error {
 		return apierr.NotImplemented.Msg("unsupported: " + err.Error())
 	case errors.Is(err, session.ErrInteractionTextUnsupported):
 		return apierr.InteractionTextUnsupported.Msg("interaction_text_unsupported: " + err.Error())
+	case errors.Is(err, session.ErrInteractionReplyUndelivered):
+		// The answer landed; only its follow-up text was lost. A state
+		// conflict, never a silent 500: the client must not answer again.
+		return apierr.SessionConflict.Msg("reply_undelivered: " + err.Error())
 	case errors.Is(err, session.ErrTurnInterruptUnsupported):
 		return apierr.NotImplemented.Msg(turnInterruptUnsupportedCode + ": " + err.Error())
 	case errors.Is(err, session.ErrPendingInteraction):

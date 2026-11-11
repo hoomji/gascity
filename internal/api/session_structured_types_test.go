@@ -299,9 +299,9 @@ func TestHistoryEntryToStructuredMessageUsesActorAsRole(t *testing.T) {
 }
 
 // TestHistorySnapshotStructuredMessagesStampsInteractionLineage proves the
-// helper-lineage contract on the interaction shape: every interaction block
-// in the projected history carries the session's bead linkage
-// (lead/parent/origin), resolved once per read.
+// helper-lineage contract on the interaction shape: the still-pending
+// interaction block in the projected history carries the session's bead
+// linkage (lead/parent/origin), resolved once per read.
 func TestHistorySnapshotStructuredMessagesStampsInteractionLineage(t *testing.T) {
 	snapshot := &worker.HistorySnapshot{
 		Entries: []worker.HistoryEntry{{
@@ -341,6 +341,64 @@ func TestHistorySnapshotStructuredMessagesStampsInteractionLineage(t *testing.T)
 	plain := unstamped[0].Blocks[0].Interaction
 	if plain == nil || plain.Lead != "" || plain.Parent != "" || plain.Origin != "" {
 		t.Fatalf("unstamped interaction = %+v, want empty lineage", plain)
+	}
+}
+
+// TestHistorySnapshotStructuredMessagesStampsOnlyPendingInteractions proves
+// history is not attributed to the session's current bead: settled
+// (resolved/dismissed) and unknown interaction blocks project with empty
+// lineage even when the read resolved a lineage, while the still-pending
+// interaction (opened/pending/resumed_after_restart) carries it.
+func TestHistorySnapshotStructuredMessagesStampsOnlyPendingInteractions(t *testing.T) {
+	states := []struct {
+		state   worker.InteractionState
+		stamped bool
+	}{
+		{worker.InteractionStateOpened, true},
+		{worker.InteractionStatePending, true},
+		{worker.InteractionStateResumedAfterRestart, true},
+		{worker.InteractionStateResolved, false},
+		{worker.InteractionStateDismissed, false},
+		{worker.InteractionStateUnknown, false},
+	}
+	lin := interactionLineage{Lead: "bd-work", Parent: "bd-epic", Origin: "bd-root"}
+	for _, tc := range states {
+		snapshot := &worker.HistorySnapshot{
+			Entries: []worker.HistoryEntry{{
+				ID:     "assistant-1",
+				Kind:   "assistant",
+				Actor:  worker.ActorAssistant,
+				Status: worker.ResultStatusFinal,
+				Blocks: []worker.HistoryBlock{{
+					Kind: worker.BlockKindInteraction,
+					Interaction: &worker.HistoryInteraction{
+						RequestID: "req-1",
+						Kind:      "approval",
+						State:     tc.state,
+						Prompt:    "approve?",
+					},
+				}},
+			}},
+		}
+		messages, _ := historySnapshotStructuredMessages(snapshot, false, lin)
+		if len(messages) != 1 || len(messages[0].Blocks) != 1 {
+			t.Fatalf("state %q: messages = %+v, want one message with one block", tc.state, messages)
+		}
+		got := messages[0].Blocks[0].Interaction
+		if got == nil {
+			t.Fatalf("state %q: interaction = nil, want the projected block", tc.state)
+		}
+		if tc.stamped {
+			if got.Lead != "bd-work" || got.Parent != "bd-epic" || got.Origin != "bd-root" {
+				t.Errorf("state %q: lineage = lead %q parent %q origin %q, want bd-work bd-epic bd-root",
+					tc.state, got.Lead, got.Parent, got.Origin)
+			}
+			continue
+		}
+		if got.Lead != "" || got.Parent != "" || got.Origin != "" {
+			t.Errorf("state %q: lineage = lead %q parent %q origin %q, want empty lineage",
+				tc.state, got.Lead, got.Parent, got.Origin)
+		}
 	}
 }
 

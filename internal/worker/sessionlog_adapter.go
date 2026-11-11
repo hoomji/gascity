@@ -456,10 +456,10 @@ func transcriptGlobalFacts(messages []*sessionlog.Entry) (int, string, []string)
 			if id == "" {
 				continue
 			}
-			switch normalizeInteractionState(block.State) {
-			case InteractionStateOpened, InteractionStatePending, InteractionStateResumedAfterRestart:
+			switch state := normalizeInteractionState(block.State); {
+			case state.StillPending():
 				pending[id] = true
-			case InteractionStateResolved, InteractionStateDismissed:
+			case state == InteractionStateResolved || state == InteractionStateDismissed:
 				delete(pending, id)
 			}
 		}
